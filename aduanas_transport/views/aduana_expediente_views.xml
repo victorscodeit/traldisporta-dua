@@ -14,7 +14,7 @@
         <field name="consignatario"/>
         <field name="oficina"/>
         <field name="mrn"/>
-        <field name="state"/>
+        <field name="state" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="fecha_prevista"/>
       </tree>
     </field>
