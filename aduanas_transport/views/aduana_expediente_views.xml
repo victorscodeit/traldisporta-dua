@@ -74,7 +74,27 @@
               <field name="transportista"/>
               <field name="matricula"/>
               <field name="fecha_prevista"/>
+              <field name="fecha_salida_real"/>
+              <field name="fecha_entrada_real"/>
             </group>
+          </group>
+          
+          <group string="Información Adicional" col="2">
+            <group>
+              <field name="numero_factura"/>
+              <field name="referencia_transporte"/>
+              <field name="conductor_nombre"/>
+              <field name="conductor_dni"/>
+            </group>
+            <group>
+              <field name="observaciones" placeholder="Observaciones adicionales..."/>
+            </group>
+          </group>
+          
+          <group string="Estado y Errores" col="2" invisible="[['state','!=','error']]">
+            <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
+            <field name="last_response_date" readonly="1"/>
+          </group>
           </group>
 
           <notebook>
@@ -106,6 +126,7 @@
             <page string="Bandeja / Técnico">
               <group>
                 <field name="bandeja_last_num"/>
+                <field name="last_response_date" readonly="1"/>
               </group>
             </page>
             <page string="Chatter">
@@ -126,11 +147,55 @@
     </field>
   </record>
 
+  <!-- Vista Kanban -->
+  <record id="view_aduana_expediente_kanban" model="ir.ui.view">
+    <field name="name">aduana.expediente.kanban</field>
+    <field name="model">aduana.expediente</field>
+    <field name="arch" type="xml">
+      <kanban default_group_by="state" class="o_kanban_small_column">
+        <field name="name"/>
+        <field name="state"/>
+        <field name="direction"/>
+        <field name="mrn"/>
+        <field name="remitente"/>
+        <field name="fecha_prevista"/>
+        <templates>
+          <t t-name="card">
+            <div class="oe_kanban_card oe_kanban_global_click">
+              <div class="oe_kanban_content">
+                <div class="o_kanban_record_top">
+                  <div class="o_kanban_record_headings">
+                    <strong class="o_kanban_record_title">
+                      <field name="name"/>
+                    </strong>
+                  </div>
+                </div>
+                <div class="o_kanban_record_body">
+                  <field name="direction"/>
+                  <div t-if="record.mrn.raw_value">
+                    <strong>MRN:</strong> <field name="mrn"/>
+                  </div>
+                  <div>
+                    <field name="remitente"/>
+                  </div>
+                  <div t-if="record.fecha_prevista.raw_value">
+                    <field name="fecha_prevista"/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </t>
+        </templates>
+      </kanban>
+    </field>
+  </record>
+
   <!-- Acción -->
   <record id="action_aduana_expediente" model="ir.actions.act_window">
     <field name="name">Expedientes Aduaneros</field>
     <field name="res_model">aduana.expediente</field>
-    <field name="view_mode">tree,form</field>
+    <field name="view_mode">kanban,tree,form</field>
+    <field name="context">{'search_default_draft': 1}</field>
   </record>
 
   <!-- Menú -->

@@ -1,5 +1,5 @@
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 import base64
 import logging
 _logger = logging.getLogger(__name__)
@@ -54,6 +54,17 @@ class AduanaExpediente(models.Model):
     lrn = fields.Char(string="LRN")
     mrn = fields.Char(string="MRN", index=True)
     bandeja_last_num = fields.Integer(string="Último mensaje bandeja procesado", default=0)
+    
+    # Campos adicionales
+    fecha_salida_real = fields.Datetime(string="Fecha Salida Real")
+    fecha_entrada_real = fields.Datetime(string="Fecha Entrada Real")
+    numero_factura = fields.Char(string="Nº Factura Comercial")
+    referencia_transporte = fields.Char(string="Referencia Transporte")
+    conductor_nombre = fields.Char(string="Nombre Conductor")
+    conductor_dni = fields.Char(string="DNI Conductor")
+    observaciones = fields.Text(string="Observaciones")
+    error_message = fields.Text(string="Último Error", readonly=True)
+    last_response_date = fields.Datetime(string="Última Respuesta", readonly=True)
 
     state = fields.Selection([
         ("draft","Borrador"),
@@ -91,18 +102,23 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("CC515C solo aplica a exportación"))
+            # Validar datos antes de generar
+            validator = self.env["aduanas.validator"]
+            validator.validate_expediente_export(rec)
             xml = self.env['ir.ui.view']._render_template(
                 "aduanas_transport.tpl_cc515c",
                 {"exp": rec}
             )
             rec._attach_xml(f"{rec.name}_CC515C.xml", xml)
             rec.state = "predeclared"
+            rec.error_message = False
         return True
 
 
 
     def action_send_cc515c(self):
         client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("CC515C solo aplica a exportación"))
@@ -114,16 +130,35 @@ class AduanaExpediente(models.Model):
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
             resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), xml_content, service="CC515C")
             rec._attach_xml(f"{rec.name}_CC515C_response.xml", resp_xml or "")
-            if "<MRN>" in (resp_xml or ""):
-                rec.mrn = resp_xml.split("<MRN>")[1].split("</MRN>")[0]
+            
+            # Parsear respuesta mejorada
+            parsed = parser.parse_aeat_response(resp_xml, "CC515C")
+            rec.last_response_date = fields.Datetime.now()
+            
+            if parsed.get("success") and parsed.get("mrn"):
+                rec.mrn = parsed["mrn"]
                 rec.state = "accepted"
+                rec.error_message = False
+                if parsed.get("messages"):
+                    rec.message_post(body=_("Expediente aceptado. MRN: %s\nMensajes: %s") % (
+                        rec.mrn, "\n".join(parsed["messages"])
+                    ))
+            else:
+                rec.state = "error"
+                error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                rec.error_message = error_msg
+                rec.message_post(body=_("Error al enviar CC515C:\n%s") % error_msg, subtype='mail.mt_note')
+                raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
     def action_present_cc511c(self):
         client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("CC511C solo aplica a exportación"))
+            if not rec.mrn:
+                raise UserError(_("Debe tener un MRN antes de presentar CC511C"))
             xml = self.env['ir.ui.view']._render_template(
                 "aduanas_transport.tpl_cc511c",
                 {"exp": rec}
@@ -132,8 +167,21 @@ class AduanaExpediente(models.Model):
             settings = rec._get_settings()
             resp_xml = client.send_xml(settings.get("aeat_endpoint_cc511c"), xml, service="CC511C")
             rec._attach_xml(f"{rec.name}_CC511C_response.xml", resp_xml or "")
-            if "ACEPTACION" in (resp_xml or ""):
+            
+            # Parsear respuesta mejorada
+            parsed = parser.parse_aeat_response(resp_xml, "CC511C")
+            rec.last_response_date = fields.Datetime.now()
+            
+            if parsed.get("accepted") or parsed.get("success"):
                 rec.state = "presented"
+                rec.error_message = False
+                rec.message_post(body=_("CC511C presentado correctamente"))
+            else:
+                rec.state = "error"
+                error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                rec.error_message = error_msg
+                rec.message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype='mail.mt_note')
+                raise UserError(_("Error al presentar CC511C:\n%s") % error_msg)
         return True
 
 
@@ -142,17 +190,22 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "import":
                 raise UserError(_("La declaración de importación solo aplica a importación"))
+            # Validar datos antes de generar
+            validator = self.env["aduanas.validator"]
+            validator.validate_expediente_import(rec)
             xml = self.env['ir.ui.view']._render_template(
                 "aduanas_transport.tpl_imp_decl",
                 {"exp": rec}
             )
             rec._attach_xml(f"{rec.name}_IMP_DECL.xml", xml)
             rec.state = "predeclared"
+            rec.error_message = False
         return True
 
 
     def action_send_imp_decl(self):
         client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "import":
                 raise UserError(_("La declaración de importación solo aplica a importación"))
@@ -164,14 +217,31 @@ class AduanaExpediente(models.Model):
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
             resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
             rec._attach_xml(f"{rec.name}_IMP_DECL_response.xml", resp_xml or "")
-            if "<MRN>" in (resp_xml or ""):
-                rec.mrn = resp_xml.split("<MRN>")[1].split("</MRN>")[0]
+            
+            # Parsear respuesta mejorada
+            parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
+            rec.last_response_date = fields.Datetime.now()
+            
+            if parsed.get("success") and parsed.get("mrn"):
+                rec.mrn = parsed["mrn"]
                 rec.state = "accepted"
+                rec.error_message = False
+                if parsed.get("messages"):
+                    rec.message_post(body=_("Declaración aceptada. MRN: %s\nMensajes: %s") % (
+                        rec.mrn, "\n".join(parsed["messages"])
+                    ))
+            else:
+                rec.state = "error"
+                error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                rec.error_message = error_msg
+                rec.message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype='mail.mt_note')
+                raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
     # ===== Bandeja AEAT (común) =====
     def action_poll_bandeja(self, limit=50):
         client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
         for rec in self:
             settings = rec._get_settings()
             codigo = "EXPORAES" if rec.direction == "export" else "IMPORAES"
@@ -185,14 +255,19 @@ class AduanaExpediente(models.Model):
             )
             resp = client.send_xml(settings.get("aeat_endpoint_bandeja"), xml, service="BANDEJA")
             self._attach_xml(f"{rec.name}_BANDEJA_response_{rec.bandeja_last_num+1}.xml", resp or "")
-            if "<NumUltimoMensaje>" in (resp or ""):
-                try:
-                    last = int(resp.split("<NumUltimoMensaje>")[1].split("</NumUltimoMensaje>")[0])
-                    rec.bandeja_last_num = max(rec.bandeja_last_num, last)
-                except Exception:
-                    _logger.exception("No se pudo parsear NumUltimoMensaje")
-            if "LEVANTE" in (resp or "") and rec.state not in ("released", "exited", "closed"):
+            # Usar parser mejorado
+            parsed = parser.parse_aeat_response(resp, "BANDEJA")
+            rec.last_response_date = fields.Datetime.now()
+            
+            if parsed.get("last_message_num"):
+                rec.bandeja_last_num = max(rec.bandeja_last_num, parsed["last_message_num"])
+            
+            if parsed.get("released") and rec.state not in ("released", "exited", "closed"):
                 rec.state = "released"
+                rec.message_post(body=_("Levante confirmado desde bandeja AEAT"))
+            
+            if parsed.get("errors"):
+                rec.message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype='mail.mt_note')
         return True
 
 
