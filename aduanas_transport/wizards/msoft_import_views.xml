@@ -42,9 +42,6 @@
     <field name="target">new</field>
   </record>
 
-  <!-- Menú -->
-  <menuitem id="menu_aduanas_import_msoft" name="Importar desde MSoft"
-            parent="menu_aduanas_root" action="action_msoft_import_wizard" sequence="10"/>
 
 </odoo>
 
