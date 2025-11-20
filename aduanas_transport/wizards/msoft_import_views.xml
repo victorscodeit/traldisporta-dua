@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <record id="view_msoft_import_wizard_form" model="ir.ui.view">
+    <field name="name">msoft.import.wizard.form</field>
+    <field name="model">aduanas.msoft.import.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Importar Expedientes desde MSoft">
+        <sheet>
+          <group>
+            <group string="Modo de Importación">
+              <field name="import_mode"/>
+              <field name="fecha_desde" invisible="[['import_mode','!=','incremental']]"/>
+              <field name="fecha_hasta" invisible="[['import_mode','!=','incremental']]"/>
+            </group>
+            <group string="Opciones">
+              <field name="crear_partners"/>
+              <field name="actualizar_partners"/>
+              <field name="crear_camiones"/>
+              <field name="solo_confirmados"/>
+              <field name="excluir_anulados"/>
+            </group>
+          </group>
+          
+          <group string="Resultado" invisible="not resultado_importacion">
+            <field name="resultado_importacion" nolabel="1" readonly="1" widget="text"/>
+          </group>
+        </sheet>
+        <footer>
+          <button string="Importar" name="action_import_expedientes" type="object" class="btn-primary"/>
+          <button string="Cancelar" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <!-- Acción para abrir wizard -->
+  <record id="action_msoft_import_wizard" model="ir.actions.act_window">
+    <field name="name">Importar desde MSoft</field>
+    <field name="res_model">aduanas.msoft.import.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="target">new</field>
+  </record>
+
+  <!-- Menú -->
+  <menuitem id="menu_aduanas_import_msoft" name="Importar desde MSoft"
+            parent="menu_aduanas_root" action="action_msoft_import_wizard" sequence="10"/>
+
+</odoo>
+

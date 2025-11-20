@@ -71,30 +71,84 @@
               <field name="consignatario"/>
               <field name="oficina"/>
               <field name="incoterm"/>
-              <field name="transportista"/>
-              <field name="matricula"/>
+              <field name="incoterm_info" nolabel="1" invisible="not incoterm"/>
               <field name="fecha_prevista"/>
               <field name="fecha_salida_real"/>
               <field name="fecha_entrada_real"/>
+              <field name="fecha_levante"/>
+              <field name="fecha_recepcion"/>
             </group>
           </group>
           
-          <group string="Información Adicional" col="2">
+          <group string="Transporte" col="2">
             <group>
-              <field name="numero_factura"/>
               <field name="referencia_transporte"/>
+              <field name="matricula"/>
+              <field name="transportista"/>
+              <field name="remolque"/>
+              <field name="codigo_transporte"/>
+            </group>
+            <group>
               <field name="conductor_nombre"/>
               <field name="conductor_dni"/>
             </group>
+          </group>
+          
+          <group string="Referencias MSoft" col="2" invisible="not msoft_codigo">
             <group>
-              <field name="observaciones" placeholder="Observaciones adicionales..."/>
+              <field name="msoft_codigo" readonly="1"/>
+              <field name="msoft_recepcion_num" readonly="1"/>
+              <field name="msoft_estado_original" readonly="1"/>
+              <field name="msoft_sincronizado" readonly="1"/>
             </group>
+            <group>
+              <field name="msoft_fecha_recepcion" readonly="1"/>
+              <field name="msoft_fecha_modificacion" readonly="1"/>
+              <field name="msoft_ultima_sincronizacion" readonly="1"/>
+              <field name="msoft_usuario_modificacion" readonly="1"/>
+            </group>
+          </group>
+          
+          <group string="Control" col="2">
+            <group>
+              <field name="flag_confirmado"/>
+              <field name="flag_origen_ok"/>
+              <field name="flag_destino_ok"/>
+            </group>
+            <group>
+              <field name="flag_anulado" invisible="[['flag_anulado','=',False]]"/>
+            </group>
+          </group>
+          
+          <group string="Facturación">
+            <field name="valor_factura"/>
+            <field name="moneda"/>
+          </group>
+          
+          <group string="Documentación" col="2">
+            <group>
+              <field name="numero_factura"/>
+              <field name="numero_albaran_remitente"/>
+              <field name="numero_albaran_destinatario"/>
+            </group>
+            <group>
+              <field name="codigo_orden"/>
+              <field name="descripcion_orden"/>
+              <field name="referencia_proveedor"/>
+            </group>
+          </group>
+          
+          <group string="Oficinas Adicionales">
+            <field name="oficina_destino"/>
+          </group>
+          
+          <group string="Observaciones">
+            <field name="observaciones" placeholder="Observaciones adicionales..."/>
           </group>
           
           <group string="Estado y Errores" col="2" invisible="[['state','!=','error']]">
             <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
             <field name="last_response_date" readonly="1"/>
-          </group>
           </group>
 
           <notebook>

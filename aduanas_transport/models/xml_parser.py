@@ -47,21 +47,69 @@ class AduanaXmlParser(models.AbstractModel):
             if lrn_elements:
                 result["lrn"] = lrn_elements[0].text
             
-            # Buscar errores
+            # Buscar errores e incidencias
             error_elements = (
                 root.findall(".//Error") + 
                 root.findall(".//{*}Error") +
                 root.findall(".//ERROR") +
                 root.findall(".//{*}ERROR") +
                 root.findall(".//CodigoError") +
-                root.findall(".//{*}CodigoError")
+                root.findall(".//{*}CodigoError") +
+                root.findall(".//Incidencia") +
+                root.findall(".//{*}Incidencia") +
+                root.findall(".//Requerimiento") +
+                root.findall(".//{*}Requerimiento") +
+                root.findall(".//Solicitud") +
+                root.findall(".//{*}Solicitud")
             )
+            
+            # Estructura para incidencias
+            result["incidencias"] = []
+            
             for err in error_elements:
                 error_text = err.text or ""
+                error_code = err.get("codigo") or err.get("code") or ""
+                
+                # Extraer información estructurada
+                incidencia_data = {
+                    "codigo": error_code,
+                    "mensaje": error_text,
+                    "tipo": "error",  # Por defecto
+                    "elemento_padre": err.tag,
+                }
+                
+                # Determinar tipo de incidencia por el tag o contenido
+                tag_lower = err.tag.lower()
+                if "requerimiento" in tag_lower or "requirement" in tag_lower:
+                    incidencia_data["tipo"] = "requerimiento"
+                elif "solicitud" in tag_lower or "request" in tag_lower:
+                    incidencia_data["tipo"] = "solicitud_info"
+                elif "advertencia" in tag_lower or "warning" in tag_lower:
+                    incidencia_data["tipo"] = "advertencia"
+                elif "rechazo" in tag_lower or "rejected" in tag_lower:
+                    incidencia_data["tipo"] = "rechazo"
+                elif "suspension" in tag_lower or "suspended" in tag_lower:
+                    incidencia_data["tipo"] = "suspension"
+                
+                # Buscar más información en elementos hijos
+                for child in err:
+                    if child.tag.endswith("Tipo") or child.tag.endswith("Type"):
+                        incidencia_data["tipo"] = child.text or incidencia_data["tipo"]
+                    elif child.tag.endswith("Descripcion") or child.tag.endswith("Description"):
+                        incidencia_data["mensaje"] = child.text or incidencia_data["mensaje"]
+                    elif child.tag.endswith("Codigo") or child.tag.endswith("Code"):
+                        incidencia_data["codigo"] = child.text or incidencia_data["codigo"]
+                
+                result["incidencias"].append(incidencia_data)
+                
+                # Mantener compatibilidad con formato anterior
                 if err.tag.endswith("Error") or err.tag.endswith("ERROR"):
                     result["errors"].append(error_text)
                 elif "Codigo" in err.tag:
                     result["errors"].append(f"Código: {error_text}")
+                else:
+                    # Otros tipos también se añaden a errors para compatibilidad
+                    result["errors"].append(error_text)
             
             # Buscar mensajes
             message_elements = (

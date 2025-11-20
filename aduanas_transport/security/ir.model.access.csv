@@ -1,3 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_aduana_expediente_user,access_aduana_expediente_user,model_aduana_expediente,base.group_user,1,1,1,0
 access_aduana_expediente_line_user,access_aduana_expediente_line_user,model_aduana_expediente_line,base.group_user,1,1,1,0
+access_msoft_import_wizard_user,access_msoft_import_wizard_user,model_aduanas_msoft_import_wizard,base.group_user,1,1,1,1
+access_aduana_incidencia_user,access_aduana_incidencia_user,model_aduana_incidencia,base.group_user,1,1,1,1

@@ -43,7 +43,9 @@
                   <InvoiceAmount t-att-currency="exp.moneda or 'EUR'">
                     <t t-esc="'%.2f' % (l.valor_linea or 0.0)"/>
                   </InvoiceAmount>
-                  <TermsOfDelivery t-esc="exp.incoterm or 'DAP'"/>
+                  <TermsOfDelivery>
+                    <Code t-esc="exp.incoterm or 'DAP'"/>
+                  </TermsOfDelivery>
                 </Invoice>
                 <CountryOfDestination t-esc="exp.pais_destino or 'AD'"/>
               </GoodsItem>
@@ -107,7 +109,9 @@
                 <DatosGenerales>
                     <PaisOrigen t-esc="exp.pais_origen or 'AD'"/>
                     <PaisDestino>ES</PaisDestino>
-                    <Incoterm t-esc="exp.incoterm or 'DAP'"/>
+                    <Incoterm>
+                      <Code t-esc="exp.incoterm or 'DAP'"/>
+                    </Incoterm>
                     <ImporteFactura t-att-moneda="exp.moneda or 'EUR'">
                         <t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/>
                     </ImporteFactura>

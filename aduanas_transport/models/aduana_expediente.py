@@ -33,10 +33,19 @@ class AduanaExpediente(models.Model):
     # Datos clave (ingresan desde MSoft)
     remitente = fields.Many2one("res.partner", string="Remitente")
     consignatario = fields.Many2one("res.partner", string="Consignatario")
-    incoterm = fields.Char()
+    incoterm = fields.Selection([
+        ("EXW", "EXW – En fábrica"),
+        ("FCA", "FCA – Free Carrier"),
+        ("CPT", "CPT – Carriage Paid To"),
+        ("CIP", "CIP – Carriage and Insurance Paid To"),
+        ("DAP", "DAP – Delivered At Place"),
+        ("DPU", "DPU – Delivered at Place Unloaded"),
+        ("DDP", "DDP – Delivered Duty Paid"),
+    ], string="Incoterm", default="DAP", tracking=True)
+    incoterm_info = fields.Html(string="Información Incoterm", compute="_compute_incoterm_info")
     oficina = fields.Char(string="Oficina Aduanas", help="Ej. 0801 Barcelona")
-    transportista = fields.Char()
-    matricula = fields.Char()
+    transportista = fields.Char(string="Transportista (legacy)")
+    matricula = fields.Char(string="Matrícula (legacy)", help="Campo legacy. Para gestión por camión, usar referencia_transporte.")
     fecha_prevista = fields.Datetime()
 
     # Totales factura
@@ -58,13 +67,50 @@ class AduanaExpediente(models.Model):
     # Campos adicionales
     fecha_salida_real = fields.Datetime(string="Fecha Salida Real")
     fecha_entrada_real = fields.Datetime(string="Fecha Entrada Real")
+    fecha_levante = fields.Datetime(string="Fecha Levante")
+    fecha_recepcion = fields.Datetime(string="Fecha Recepción")
     numero_factura = fields.Char(string="Nº Factura Comercial")
     referencia_transporte = fields.Char(string="Referencia Transporte")
     conductor_nombre = fields.Char(string="Nombre Conductor")
     conductor_dni = fields.Char(string="DNI Conductor")
+    remolque = fields.Char(string="Remolque")
+    codigo_transporte = fields.Char(string="Código Transporte")
     observaciones = fields.Text(string="Observaciones")
     error_message = fields.Text(string="Último Error", readonly=True)
     last_response_date = fields.Datetime(string="Última Respuesta", readonly=True)
+    
+    # Referencias MSoft (para sincronización)
+    msoft_codigo = fields.Char(string="Código MSoft", index=True, help="Código original del expediente en MSoft (ExpCod)")
+    msoft_recepcion_num = fields.Integer(string="Nº Recepción MSoft", help="Número de recepción en MSoft (ExpRecNum)")
+    msoft_fecha_recepcion = fields.Datetime(string="Fecha Recepción MSoft")
+    msoft_fecha_modificacion = fields.Datetime(string="Fecha Modificación MSoft", index=True, help="Última modificación en MSoft para sincronización incremental")
+    msoft_usuario_modificacion = fields.Char(string="Usuario Modificación MSoft")
+    msoft_usuario_creacion = fields.Char(string="Usuario Creación MSoft")
+    msoft_fecha_creacion = fields.Datetime(string="Fecha Creación MSoft")
+    msoft_estado_original = fields.Integer(string="Estado MSoft Original", help="Estado original en MSoft (ExpSit)")
+    msoft_sincronizado = fields.Boolean(string="Sincronizado con MSoft", default=False)
+    msoft_ultima_sincronizacion = fields.Datetime(string="Última Sincronización")
+    
+    # Flags de control
+    flag_confirmado = fields.Boolean(string="Confirmado", help="Expediente confirmado en MSoft")
+    flag_origen_ok = fields.Boolean(string="Origen OK", help="Origen validado")
+    flag_destino_ok = fields.Boolean(string="Destino OK", help="Destino validado")
+    flag_anulado = fields.Boolean(string="Anulado", help="Expediente anulado (no procesar)")
+    
+    # Documentación adicional
+    numero_albaran_remitente = fields.Char(string="Albarán Remitente")
+    numero_albaran_destinatario = fields.Char(string="Albarán Destinatario")
+    codigo_orden = fields.Char(string="Código Orden")
+    descripcion_orden = fields.Char(string="Descripción Orden")
+    referencia_proveedor = fields.Char(string="Referencia Proveedor")
+    
+    # Oficinas adicionales
+    oficina_destino = fields.Char(string="Oficina Aduanas Destino")
+    
+    # Incidencias
+    incidencia_ids = fields.One2many("aduana.incidencia", "expediente_id", string="Incidencias")
+    incidencias_count = fields.Integer(string="Nº Incidencias", compute="_compute_incidencias_count", store=True)
+    incidencias_pendientes_count = fields.Integer(string="Nº Incidencias Pendientes", compute="_compute_incidencias_count", store=True)
 
     state = fields.Selection([
         ("draft","Borrador"),
@@ -76,6 +122,115 @@ class AduanaExpediente(models.Model):
         ("closed","Cerrado"),
         ("error","Error"),
     ], default="draft", tracking=True)
+
+    @api.depends("incidencia_ids", "incidencia_ids.state")
+    def _compute_incidencias_count(self):
+        """Calcula número de incidencias"""
+        for rec in self:
+            rec.incidencias_count = len(rec.incidencia_ids)
+            rec.incidencias_pendientes_count = len(rec.incidencia_ids.filtered(lambda i: i.state in ("pendiente", "en_revision")))
+    
+    @api.depends("incidencia_ids", "incidencia_ids.state")
+    def _compute_incidencias_count(self):
+        """Calcula número de incidencias"""
+        for rec in self:
+            rec.incidencias_count = len(rec.incidencia_ids)
+            rec.incidencias_pendientes_count = len(rec.incidencia_ids.filtered(lambda i: i.state in ("pendiente", "en_revision")))
+    
+    @api.depends("incoterm")
+    def _compute_incoterm_info(self):
+        """Calcula información contextual del incoterm"""
+        incoterm_data = {
+            "EXW": {
+                "transporte": "Comprador",
+                "seguro": "Comprador",
+                "riesgo": "Comprador (desde origen)",
+                "aduana_exp": "Comprador",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor pone la mercancía a disposición del comprador en sus instalaciones. El comprador asume todos los costes y riesgos.",
+            },
+            "FCA": {
+                "transporte": "Comprador",
+                "seguro": "Comprador",
+                "riesgo": "Comprador (desde punto entrega)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor entrega la mercancía al transportista designado por el comprador en el punto acordado.",
+            },
+            "CPT": {
+                "transporte": "Vendedor",
+                "seguro": "Comprador",
+                "riesgo": "Comprador (desde entrega al transportista)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor paga el transporte hasta el destino, pero el riesgo se transfiere al comprador cuando se entrega al primer transportista.",
+            },
+            "CIP": {
+                "transporte": "Vendedor",
+                "seguro": "Vendedor",
+                "riesgo": "Comprador (desde entrega al transportista)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor paga transporte y seguro hasta el destino, pero el riesgo se transfiere al comprador cuando se entrega al primer transportista.",
+            },
+            "DAP": {
+                "transporte": "Vendedor",
+                "seguro": "Vendedor",
+                "riesgo": "Vendedor (hasta destino)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor entrega la mercancía en el lugar de destino acordado. El comprador asume los trámites aduaneros de importación.",
+            },
+            "DPU": {
+                "transporte": "Vendedor",
+                "seguro": "Vendedor",
+                "riesgo": "Vendedor (hasta descarga)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Comprador",
+                "descripcion": "El vendedor entrega la mercancía descargada en el lugar de destino. El comprador asume los trámites aduaneros de importación.",
+            },
+            "DDP": {
+                "transporte": "Vendedor",
+                "seguro": "Vendedor",
+                "riesgo": "Vendedor (hasta destino)",
+                "aduana_exp": "Vendedor",
+                "aduana_imp": "Vendedor",
+                "descripcion": "El vendedor asume todos los costes, riesgos y trámites aduaneros hasta la entrega en destino.",
+            },
+        }
+        
+        for rec in self:
+            if rec.incoterm and rec.incoterm in incoterm_data:
+                data = incoterm_data[rec.incoterm]
+                rec.incoterm_info = f"""
+                <div class="alert alert-info" role="alert">
+                    <h5><strong>{rec.incoterm}</strong> - {data['descripcion']}</h5>
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Transporte:</strong></td>
+                            <td>{data['transporte']}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Seguro:</strong></td>
+                            <td>{data['seguro']}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Riesgo:</strong></td>
+                            <td>{data['riesgo']}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aduana Exportación:</strong></td>
+                            <td>{data['aduana_exp']}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aduana Importación:</strong></td>
+                            <td>{data['aduana_imp']}</td>
+                        </tr>
+                    </table>
+                </div>
+                """
+            else:
+                rec.incoterm_info = False
 
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
@@ -143,11 +298,17 @@ class AduanaExpediente(models.Model):
                     rec.message_post(body=_("Expediente aceptado. MRN: %s\nMensajes: %s") % (
                         rec.mrn, "\n".join(parsed["messages"])
                     ))
+                # Procesar incidencias si las hay
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "cc515c")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
                 rec.message_post(body=_("Error al enviar CC515C:\n%s") % error_msg, subtype='mail.mt_note')
+                # Procesar incidencias de error
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "cc515c")
                 raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
@@ -176,11 +337,17 @@ class AduanaExpediente(models.Model):
                 rec.state = "presented"
                 rec.error_message = False
                 rec.message_post(body=_("CC511C presentado correctamente"))
+                # Procesar incidencias si las hay
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "cc511c")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
                 rec.message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype='mail.mt_note')
+                # Procesar incidencias de error
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "cc511c")
                 raise UserError(_("Error al presentar CC511C:\n%s") % error_msg)
         return True
 
@@ -230,11 +397,17 @@ class AduanaExpediente(models.Model):
                     rec.message_post(body=_("Declaración aceptada. MRN: %s\nMensajes: %s") % (
                         rec.mrn, "\n".join(parsed["messages"])
                     ))
+                # Procesar incidencias si las hay
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
                 rec.message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype='mail.mt_note')
+                # Procesar incidencias de error
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
                 raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
@@ -266,8 +439,62 @@ class AduanaExpediente(models.Model):
                 rec.state = "released"
                 rec.message_post(body=_("Levante confirmado desde bandeja AEAT"))
             
+            # Procesar incidencias detectadas
+            if parsed.get("incidencias"):
+                rec._procesar_incidencias(parsed["incidencias"], "bandeja")
+            
             if parsed.get("errors"):
                 rec.message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype='mail.mt_note')
+        return True
+    
+    def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
+        """Procesa y crea incidencias desde datos parseados de AEAT"""
+        self.ensure_one()
+        Incidencia = self.env["aduana.incidencia"]
+        
+        for inc_data in incidencias_data:
+            # Determinar prioridad según tipo
+            prioridad_map = {
+                "error": "alta",
+                "rechazo": "critica",
+                "suspension": "critica",
+                "requerimiento": "alta",
+                "solicitud_info": "media",
+                "advertencia": "baja",
+                "notificacion": "baja",
+            }
+            prioridad = prioridad_map.get(inc_data.get("tipo", "error"), "media")
+            
+            # Crear incidencia
+            incidencia = Incidencia.create({
+                "expediente_id": self.id,
+                "tipo_incidencia": inc_data.get("tipo", "error"),
+                "codigo_incidencia": inc_data.get("codigo", ""),
+                "titulo": inc_data.get("mensaje", _("Incidencia detectada"))[:200] or _("Incidencia detectada"),
+                "descripcion": inc_data.get("mensaje", ""),
+                "mensaje_aeat": str(inc_data),
+                "fecha_incidencia": fields.Datetime.now(),
+                "origen": origen,
+                "prioridad": prioridad,
+                "state": "pendiente",
+            })
+            
+            # Notificar en el chatter
+            self.message_post(
+                body=_("Nueva incidencia detectada: %s\nTipo: %s\nCódigo: %s") % (
+                    incidencia.titulo,
+                    dict(incidencia._fields["tipo_incidencia"].selection).get(incidencia.tipo_incidencia),
+                    incidencia.codigo_incidencia or _("N/A")
+                ),
+                subtype='mail.mt_note',
+                partner_ids=[(4, p.id) for p in self.message_partner_ids]
+            )
+            
+            # Si es crítica, cambiar estado del expediente
+            if prioridad == "critica":
+                self.state = "error"
+                self.error_message = incidencia.descripcion
+        
         return True
 
 
