@@ -6,7 +6,8 @@
     <field name="name">aduana.expediente.tree</field>
     <field name="model">aduana.expediente</field>
     <field name="arch" type="xml">
-      <tree string="Expedientes Aduaneros">
+      <tree string="Expedientes Aduaneros" default_order="matricula, name">
+        <field name="matricula"/>
         <field name="name"/>
         <field name="direction"/>
         <field name="remitente"/>
@@ -80,12 +81,15 @@
               <field name="oficina"/>
               <field name="incoterm"/>
               <field name="incoterm_info" nolabel="1" invisible="not incoterm"/>
-              <field name="fecha_prevista"/>
-              <field name="fecha_salida_real"/>
-              <field name="fecha_entrada_real"/>
-              <field name="fecha_levante"/>
-              <field name="fecha_recepcion"/>
             </group>
+          </group>
+          
+          <group string="Fechas" col="4">
+            <field name="fecha_prevista"/>
+            <field name="fecha_salida_real"/>
+            <field name="fecha_entrada_real"/>
+            <field name="fecha_levante"/>
+            <field name="fecha_recepcion"/>
           </group>
           
           <group string="Transporte" col="2">
@@ -115,39 +119,6 @@
               <field name="msoft_ultima_sincronizacion" readonly="1"/>
               <field name="msoft_usuario_modificacion" readonly="1"/>
             </group>
-          </group>
-          
-          <group string="Control" col="2">
-            <group>
-              <field name="flag_confirmado"/>
-              <field name="flag_origen_ok"/>
-              <field name="flag_destino_ok"/>
-            </group>
-            <group>
-              <field name="flag_anulado" invisible="[['flag_anulado','=',False]]"/>
-            </group>
-          </group>
-          
-          <group string="Facturación">
-            <field name="valor_factura"/>
-            <field name="moneda"/>
-          </group>
-          
-          <group string="Documentación" col="2">
-            <group>
-              <field name="numero_factura"/>
-              <field name="numero_albaran_remitente"/>
-              <field name="numero_albaran_destinatario"/>
-            </group>
-            <group>
-              <field name="codigo_orden"/>
-              <field name="descripcion_orden"/>
-              <field name="referencia_proveedor"/>
-            </group>
-          </group>
-          
-          <group string="Oficinas Adicionales">
-            <field name="oficina_destino"/>
           </group>
           
           <group string="Observaciones">
@@ -224,6 +195,37 @@
     </field>
   </record>
 
+  <!-- Vista Search -->
+  <record id="view_aduana_expediente_search" model="ir.ui.view">
+    <field name="name">aduana.expediente.search</field>
+    <field name="model">aduana.expediente</field>
+    <field name="arch" type="xml">
+      <search string="Buscar Expedientes Aduaneros">
+        <field name="name"/>
+        <field name="mrn"/>
+        <field name="remitente"/>
+        <field name="consignatario"/>
+        <field name="matricula"/>
+        <field name="msoft_codigo"/>
+        <filter string="Pendientes" name="pending" domain="[('state', 'in', ('draft', 'predeclared', 'presented', 'accepted', 'released'))]"/>
+        <filter string="Con Error" name="error" domain="[('state', '=', 'error')]"/>
+        <filter string="Cerrados" name="closed" domain="[('state', '=', 'closed')]"/>
+        <filter string="Exportación" name="export_filter" domain="[('direction', '=', 'export')]"/>
+        <filter string="Importación" name="import_filter" domain="[('direction', '=', 'import')]"/>
+        <filter string="Hoy" name="today_filter" domain="[('create_date', '>=', datetime.combine(context_today(), time.min)), ('create_date', '&lt;=', datetime.combine(context_today(), time.max))]"/>
+        <filter string="Con Incidencias Pendientes" name="with_pending_incidents" domain="[('incidencias_pendientes_count', '&gt;', 0)]"/>
+        <group expand="0" string="Agrupar por">
+          <filter string="Matrícula" name="group_by_matricula" context="{'group_by': 'matricula'}" icon="fa-truck"/>
+          <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
+          <filter string="Sentido" name="group_by_direction" context="{'group_by': 'direction'}"/>
+          <filter string="Remitente" name="group_by_remitente" context="{'group_by': 'remitente'}"/>
+          <filter string="Fecha Prevista" name="group_by_fecha_prevista" context="{'group_by': 'fecha_prevista'}"/>
+          <filter string="Oficina" name="group_by_oficina" context="{'group_by': 'oficina'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
   <!-- Vista Kanban -->
   <record id="view_aduana_expediente_kanban" model="ir.ui.view">
     <field name="name">aduana.expediente.kanban</field>
@@ -272,7 +274,7 @@
     <field name="name">Expedientes Aduaneros</field>
     <field name="res_model">aduana.expediente</field>
     <field name="view_mode">tree,kanban,form</field>
-    <field name="context">{'search_default_pending': 1}</field>
+    <field name="context">{'search_default_pending': 1, 'search_default_group_by_matricula': 1}</field>
     <field name="search_view_id" ref="view_aduana_expediente_search"/>
   </record>
 
