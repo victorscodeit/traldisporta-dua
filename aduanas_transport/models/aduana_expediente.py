@@ -44,8 +44,8 @@ class AduanaExpediente(models.Model):
     ], string="Incoterm", default="DAP", tracking=True)
     incoterm_info = fields.Html(string="Información Incoterm", compute="_compute_incoterm_info")
     oficina = fields.Char(string="Oficina Aduanas", help="Ej. 0801 Barcelona")
-    transportista = fields.Char(string="Transportista (legacy)")
-    matricula = fields.Char(string="Matrícula (legacy)", help="Campo legacy. Para gestión por camión, usar referencia_transporte.")
+    transportista = fields.Char(string="Transportista")
+    matricula = fields.Char(string="Matrícula")
     fecha_prevista = fields.Datetime()
 
     # Totales factura
