@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- Lista -->
+  <record id="view_aduana_expediente_tree" model="ir.ui.view">
+    <field name="name">aduana.expediente.tree</field>
+    <field name="model">aduana.expediente</field>
+    <field name="arch" type="xml">
+      <tree string="Expedientes Aduaneros">
+        <field name="name"/>
+        <field name="direction"/>
+        <field name="remitente"/>
+        <field name="consignatario"/>
+        <field name="oficina"/>
+        <field name="mrn"/>
+        <field name="state"/>
+        <field name="fecha_prevista"/>
+      </tree>
+    </field>
+  </record>
+
+  <!-- Formulario -->
+  <record id="view_aduana_expediente_form" model="ir.ui.view">
+    <field name="name">aduana.expediente.form</field>
+    <field name="model">aduana.expediente</field>
+    <field name="arch" type="xml">
+      <form string="Expediente Aduanero">
+        <header>
+          <!-- Odoo 17: usar invisible en vez de attrs/states -->
+          <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
+                  class="oe_highlight"
+                  invisible="[['direction','!=','export']]"/>
+          <button name="action_send_cc515c" string="(Export) Enviar CC515C" type="object"
+                  invisible="[['direction','!=','export']]"/>
+          <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
+                  invisible="[['direction','!=','export']]"/>
+
+          <button name="action_preview_cc515c" string="(Export) Previsualizar CC515C" type="object"
+                  class="btn btn-secondary"
+                  invisible="not id or direction != 'export'"/>
+          <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
+                  class="btn btn-light"
+                  invisible="not id or direction != 'export'"/>
+
+          <button name="action_generate_imp_decl" string="(Import) Generar Declaración" type="object"
+                  class="oe_highlight"
+                  invisible="[['direction','!=','import']]"/>
+          <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
+                  invisible="[['direction','!=','import']]"/>
+          <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
+                  class="btn btn-secondary"
+                  invisible="not id or direction != 'import'"/>
+
+          <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
+
+          <field name="state" widget="statusbar"
+                 statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
+        </header>
+
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="direction"/>
+              <field name="state" readonly="1"/>
+              <field name="lrn"/>
+              <field name="mrn"/>
+            </group>
+            <group>
+              <field name="remitente"/>
+              <field name="consignatario"/>
+              <field name="oficina"/>
+              <field name="incoterm"/>
+              <field name="transportista"/>
+              <field name="matricula"/>
+              <field name="fecha_prevista"/>
+            </group>
+          </group>
+
+          <notebook>
+            <page string="Líneas">
+              <field name="line_ids">
+                <tree editable="bottom">
+                  <field name="item_number"/>
+                  <field name="partida"/>
+                  <field name="descripcion"/>
+                  <field name="unidades"/>
+                  <field name="bultos"/>
+                  <field name="peso_bruto"/>
+                  <field name="peso_neto"/>
+                  <field name="valor_linea"/>
+                  <field name="pais_origen"/>
+                </tree>
+              </field>
+            </page>
+
+            <page string="Totales">
+              <group>
+                <field name="valor_factura"/>
+                <field name="moneda"/>
+                <field name="pais_origen"/>
+                <field name="pais_destino"/>
+              </group>
+            </page>
+
+            <page string="Bandeja / Técnico">
+              <group>
+                <field name="bandeja_last_num"/>
+              </group>
+            </page>
+            <page string="Chatter">
+              <chatter>
+                <field name="message_ids"/>
+                <field name="activity_ids"/>
+                <field name="message_follower_ids"/>
+              </chatter>
+            </page>
+          </notebook>
+        </sheet>
+        <div class="oe_chatter">
+                <field name="message_follower_ids" widget="mail_followers"/>
+                <field name="activity_ids" widget="mail_activity"/>
+                <field name="message_ids" widget="mail_thread"/>
+            </div>
+      </form>
+    </field>
+  </record>
+
+  <!-- Acción -->
+  <record id="action_aduana_expediente" model="ir.actions.act_window">
+    <field name="name">Expedientes Aduaneros</field>
+    <field name="res_model">aduana.expediente</field>
+    <field name="view_mode">tree,form</field>
+  </record>
+
+  <!-- Menú -->
+  <menuitem id="menu_aduanas_root" name="Aduanas"/>
+  <menuitem id="menu_aduanas_expedientes" name="Expedientes"
+            parent="menu_aduanas_root" action="action_aduana_expediente"/>
+
+</odoo>

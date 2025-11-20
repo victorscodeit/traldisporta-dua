@@ -1,0 +1,148 @@
+<odoo>
+  <record id="ir_cron_aduanas_bandeja_unif" model="ir.cron">
+    <field name="name">Aduanas (Unificado): Consultar Bandeja AEAT</field>
+    <field name="model_id" ref="model_aduana_expediente"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_poll_bandeja_all()</field>
+    <field name="interval_type">minutes</field>
+    <field name="interval_number">3</field>
+    <field name="numbercall">-1</field>
+    <field name="active">True</field>
+  </record>
+
+  <template id="tpl_cc515c" name="CC515C XML" t-name="aduanas_transport.tpl_cc515c">
+    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:aes="urn:aeat:adex:jdit:ws:aes">
+      <soapenv:Header/>
+      <soapenv:Body>
+        <aes:CC515CV1Ent>
+          <SegmentosDeServicio>
+            <Id t-esc="exp.name"/>
+          </SegmentosDeServicio>
+          <EXPORT_OPERATION>
+            <AdditionalDeclarationType>A</AdditionalDeclarationType>
+            <CustomsOfficeOfExport>
+              <ReferenceNumber t-esc="exp.oficina or '0801'"/>
+            </CustomsOfficeOfExport>
+            <Declarant>
+              <IdentificationNumber t-esc="(exp.remitente.vat or '').replace(' ','')"/>
+            </Declarant>
+            <t t-foreach="exp.line_ids or []" t-as="l">
+              <GoodsItem>
+                <ItemNumber t-esc="l.item_number or loop.index"/>
+                <Commodity>
+                  <CommodityCode t-esc="l.partida or '0000000000'"/>
+                  <CountryOfOrigin t-esc="l.pais_origen or exp.pais_origen or 'ES'"/>
+                </Commodity>
+                <Packages>
+                  <NumberOfPackages t-esc="l.bultos or 1"/>
+                  <KindOfPackages>CT</KindOfPackages>
+                </Packages>
+                <GrossMass t-esc="'%.2f' % (l.peso_bruto or 0.0)"/>
+                <NetMass t-esc="'%.2f' % (l.peso_neto or 0.0)"/>
+                <Invoice>
+                  <InvoiceAmount t-att-currency="exp.moneda or 'EUR'">
+                    <t t-esc="'%.2f' % (l.valor_linea or 0.0)"/>
+                  </InvoiceAmount>
+                  <TermsOfDelivery t-esc="exp.incoterm or 'DAP'"/>
+                </Invoice>
+                <CountryOfDestination t-esc="exp.pais_destino or 'AD'"/>
+              </GoodsItem>
+            </t>
+          </EXPORT_OPERATION>
+        </aes:CC515CV1Ent>
+      </soapenv:Body>
+    </soapenv:Envelope>
+  </template>
+
+  <template id="tpl_cc511c" name="CC511C XML" t-name="aduanas_transport.tpl_cc511c">
+    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:aes="urn:aeat:adex:jdit:ws:aes">
+      <soapenv:Header/>
+      <soapenv:Body>
+        <aes:CC511CV1Ent>
+          <SegmentosDeServicio>
+            <Id t-esc="exp.name"/>
+          </SegmentosDeServicio>
+          <EXPORT_PRESENTATION>
+            <CustomsOffice>
+              <ReferenceNumber t-esc="exp.oficina or '0801'"/>
+            </CustomsOffice>
+            <Declaration>
+              <LRN t-esc="exp.lrn or ''"/>
+              <MRN t-esc="exp.mrn or ''"/>
+            </Declaration>
+            <Declarant>
+              <IdentificationNumber t-esc="(exp.remitente.vat or '').replace(' ','')"/>
+            </Declarant>
+            <GoodsItems>
+              <t t-foreach="exp.line_ids or []" t-as="l" t-foreach-index="l_index">
+                <GoodsItem>
+                  <ItemNumber t-esc="l.item_number or (l_index + 1)"/>
+                  <CommodityCode t-esc="l.partida or '0000000000'"/>
+                  <NetMass t-esc="'%.2f' % (l.peso_neto or 0.0)"/>
+                </GoodsItem>
+              </t>
+            </GoodsItems>
+          </EXPORT_PRESENTATION>
+        </aes:CC511CV1Ent>
+      </soapenv:Body>
+    </soapenv:Envelope>
+  </template>
+
+  <template id="tpl_imp_decl" name="Declaracion Importacion XML" t-name="aduanas_transport.tpl_imp_decl">
+    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+        <soapenv:Header/>
+        <soapenv:Body>
+            <DeclaracionImportacionEnt xmlns="urn:aeat:adu:importacion">
+                <Cabecera>
+                    <IdEnvio t-esc="exp.name"/>
+                    <OficinaAduanas t-esc="exp.oficina or '0801'"/>
+                    <TipoDeclaracion>H1</TipoDeclaracion>
+                </Cabecera>
+                <Declarante>
+                    <NIF t-esc="(exp.remitente.vat or '').replace(' ','')"/>
+                </Declarante>
+                <Consignatario>
+                    <NIF t-esc="(exp.consignatario.vat or '').replace(' ','')"/>
+                </Consignatario>
+                <DatosGenerales>
+                    <PaisOrigen t-esc="exp.pais_origen or 'AD'"/>
+                    <PaisDestino>ES</PaisDestino>
+                    <Incoterm t-esc="exp.incoterm or 'DAP'"/>
+                    <ImporteFactura t-att-moneda="exp.moneda or 'EUR'">
+                        <t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/>
+                    </ImporteFactura>
+                </DatosGenerales>
+                <Partidas>
+                    <t t-foreach="exp.line_ids or []" t-as="l" t-foreach-index="l_index">
+                        <Partida t-att-num="l.item_number or (l_index + 1)">
+                            <CodigoNC t-esc="l.partida or '0000000000'"/>
+                            <PaisOrigen t-esc="l.pais_origen or exp.pais_origen or 'AD'"/>
+                            <PesoNeto t-esc="'%.2f' % (l.peso_neto or 0.0)"/>
+                            <PesoBruto t-esc="'%.2f' % (l.peso_bruto or 0.0)"/>
+                            <Unidades t-esc="'%.2f' % (l.unidades or 0.0)"/>
+                            <ValorAduana t-esc="'%.2f' % (l.valor_linea or 0.0)"/>
+                            <Documentos>
+                                <Documento tipo="N380" t-att-ref="f'%s-FAC' % (exp.name or '')"/>
+                            </Documentos>
+                        </Partida>
+                    </t>
+                </Partidas>
+            </DeclaracionImportacionEnt>
+        </soapenv:Body>
+    </soapenv:Envelope>
+</template>
+
+
+<template id="tpl_bandeja_req" name="Bandeja AEAT XML" t-name="aduanas_transport.tpl_bandeja_req">
+  <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+    <soapenv:Header/>
+    <soapenv:Body>
+      <DetalleV5Ent xmlns="urn:aeat:adht:band:det">
+        <CodigoBandeja><t t-esc="codigo_bandeja"/></CodigoBandeja>
+        <NumUltimoMensajeLeido><t t-esc="ultimo"/></NumUltimoMensajeLeido>
+        <MaxMensajes><t t-esc="maxm"/></MaxMensajes>
+      </DetalleV5Ent>
+    </soapenv:Body>
+  </soapenv:Envelope>
+</template>
+</odoo>

@@ -1,0 +1,60 @@
+<odoo>
+<record id="res_config_settings_view_form_aduanas_unif" model="ir.ui.view">
+    <field name="name">res.config.settings.view.form.aduanas.unif</field>
+    <field name="model">res.config.settings</field>
+    <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+    <field name="arch" type="xml">
+        <!-- Inserta dentro de <div class="settings"/> -->
+        <xpath expr="//form[contains(@class, 'oe_form_configuration')]" position="inside">
+            <div class="app_settings_block" string="Aduanas AEAT (Unificado)">
+                <h2>Aduanas AEAT</h2>
+
+                <div class="row mt16 o_setting_container">
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="aeat_endpoint_cc515c"/>
+                            <field name="aeat_endpoint_cc511c"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="aeat_endpoint_cc515c"/>
+                            <div class="text-muted">Exportación (AES)</div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="aeat_endpoint_imp_decl"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="aeat_endpoint_imp_decl"/>
+                            <div class="text-muted">Importación (DUA)</div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="aeat_endpoint_bandeja"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="aeat_endpoint_bandeja"/>
+                            <div class="text-muted">Bandeja AEAT (común)</div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="cert_attachment_id"/>
+                            <field name="cert_password" password="True"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="cert_attachment_id"/>
+                            <div class="text-muted">Certificado P12/PFX para firma (cliente SOAP)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </xpath>
+    </field>
+</record>
+
+</odoo>
