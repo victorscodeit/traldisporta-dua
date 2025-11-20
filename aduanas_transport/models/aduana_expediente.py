@@ -516,6 +516,33 @@ class AduanaExpediente(models.Model):
             ("res_id", "=", self.id),
             ("name", "ilike", name_contains),
         ], limit=1)
+    
+    def action_view_incidencias(self):
+        """Abre la vista de incidencias filtrada por este expediente"""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Incidencias de %s", self.name),
+            "res_model": "aduana.incidencia",
+            "view_mode": "tree,form",
+            "domain": [("expediente_id", "=", self.id)],
+            "context": {"default_expediente_id": self.id},
+        }
+    
+    def action_view_incidencias_pendientes(self):
+        """Abre la vista de incidencias pendientes filtrada por este expediente"""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Incidencias Pendientes de %s", self.name),
+            "res_model": "aduana.incidencia",
+            "view_mode": "tree,form",
+            "domain": [
+                ("expediente_id", "=", self.id),
+                ("state", "in", ("pendiente", "en_revision"))
+            ],
+            "context": {"default_expediente_id": self.id, "search_default_pending": 1},
+        }
 
     def _ensure_cc515c_xml(self):
         self.ensure_one()

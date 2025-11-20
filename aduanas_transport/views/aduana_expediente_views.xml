@@ -59,10 +59,10 @@
 
         <sheet>
           <div class="oe_button_box" name="button_box">
-            <button name="%(aduanas_transport.action_aduana_incidencia)d" type="action" class="oe_stat_button" context="{'search_default_expediente_id': active_id}">
+            <button name="action_view_incidencias" type="object" class="oe_stat_button" context="{'search_default_expediente_id': active_id}">
               <field name="incidencias_count" widget="statinfo" string="Incidencias"/>
             </button>
-            <button name="%(aduanas_transport.action_aduana_incidencia)d" type="action" class="oe_stat_button" context="{'search_default_expediente_id': active_id, 'search_default_pending': 1}">
+            <button name="action_view_incidencias_pendientes" type="object" class="oe_stat_button" context="{'search_default_expediente_id': active_id, 'search_default_pending': 1}">
               <field name="incidencias_pendientes_count" widget="statinfo" string="Pendientes"/>
             </button>
           </div>
