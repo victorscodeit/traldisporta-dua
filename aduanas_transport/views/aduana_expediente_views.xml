@@ -92,9 +92,6 @@
               <field name="factura_mensaje_error" widget="text" readonly="1" nolabel="1"
                      invisible="not factura_mensaje_error or factura_estado_procesamiento in ['completado', 'pendiente']"
                      placeholder="Los mensajes de error o advertencias aparecerán aquí..."/>
-              <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
-                     invisible="not factura_datos_extraidos"
-                     placeholder="Los datos extraídos de la factura aparecerán aquí después del procesamiento..."/>
             </group>
           </group>
           
@@ -111,7 +108,7 @@
               <field name="consignatario"/>
               <field name="oficina"/>
               <field name="incoterm"/>
-              <field name="incoterm_info" nolabel="1" invisible="not incoterm"/>
+              <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
           </group>
           
@@ -172,10 +169,17 @@
                   <field name="bultos"/>
                   <field name="peso_bruto"/>
                   <field name="peso_neto"/>
+                  <field name="descuento"/>
                   <field name="valor_linea"/>
                   <field name="pais_origen"/>
                 </tree>
               </field>
+            </page>
+            <page string="Datos Técnicos Factura" name="datos_tecnicos" invisible="not factura_datos_extraidos">
+              <group string="Información Técnica de Extracción">
+                <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
+                       placeholder="Los datos técnicos extraídos de la factura aparecerán aquí..."/>
+              </group>
             </page>
             <page string="Incidencias" name="incidencias">
               <field name="incidencia_ids">

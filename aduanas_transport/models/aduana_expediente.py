@@ -16,6 +16,7 @@ class AduanaExpedienteLine(models.Model):
     peso_bruto = fields.Float()
     peso_neto = fields.Float()
     valor_linea = fields.Float()
+    descuento = fields.Float(string="Descuento (%)", help="Porcentaje de descuento aplicado a la línea")
     pais_origen = fields.Char(default="ES")
 
 class AduanaExpediente(models.Model):
@@ -759,22 +760,33 @@ class AduanaExpediente(models.Model):
                 # Notificación según estado
                 notif_type = "warning" if advertencias else "success"
                 notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
-                notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraído.")
+                notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraídos.")
                 
+                # Forzar recarga del registro para actualizar la vista
+                rec.invalidate_recordset()
+                
+                # Recargar el formulario para mostrar los cambios
+                # Odoo mostrará automáticamente los cambios en el registro
                 return {
-                    "type": "ir.actions.client",
-                    "tag": "display_notification",
-                    "params": {
-                        "title": notif_title,
-                        "message": notif_message,
-                        "type": notif_type,
-                        "sticky": bool(advertencias),  # Hacer sticky si hay advertencias
-                    }
+                    "type": "ir.actions.act_window",
+                    "res_model": "aduana.expediente",
+                    "res_id": rec.id,
+                    "view_mode": "form",
+                    "target": "current",
+                    "context": dict(self.env.context),
                 }
-            except UserError:
-                # Re-raise UserError sin modificar
+            except UserError as ue:
+                # Guardar estado de error y recargar vista
                 rec.factura_estado_procesamiento = "error"
-                raise
+                rec.invalidate_recordset()
+                # Devolver acción que recarga el formulario
+                return {
+                    "type": "ir.actions.act_window",
+                    "res_model": "aduana.expediente",
+                    "res_id": rec.id,
+                    "view_mode": "form",
+                    "target": "current",
+                }
             except Exception as e:
                 error_msg = str(e)
                 rec.factura_estado_procesamiento = "error"
@@ -784,7 +796,16 @@ class AduanaExpediente(models.Model):
                     subtype_xmlid='mail.mt_note'
                 )
                 _logger.exception("Error al procesar factura PDF: %s", e)
-                raise UserError(_("Error al procesar la factura:\n%s\n\nRevisa el campo 'Mensaje de Error' para más detalles.") % error_msg)
+                # Forzar recarga del registro
+                rec.invalidate_recordset()
+                # Devolver acción que recarga el formulario
+                return {
+                    "type": "ir.actions.act_window",
+                    "res_model": "aduana.expediente",
+                    "res_id": rec.id,
+                    "view_mode": "form",
+                    "target": "current",
+                }
 
     def action_auto_generate_dua(self):
         """

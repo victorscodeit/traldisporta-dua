@@ -225,7 +225,18 @@ class InvoiceOCRService(models.AbstractModel):
             full_text = "\n\n".join(all_texts)
             _logger.info("Texto total extraído: %d caracteres de %d página(s)", len(full_text), num_pages)
             
-            # Parsear datos de la factura
+            # Intentar interpretar el texto con GPT-4o para estructurarlo
+            try:
+                structured_data = self._interpret_text_with_gpt(api_key, full_text)
+                if structured_data:
+                    # Agregar el texto extraído al resultado
+                    structured_data["texto_extraido"] = full_text
+                    _logger.info("Datos estructurados extraídos con GPT-4o")
+                    return structured_data
+            except Exception as gpt_error:
+                _logger.warning("Error al interpretar texto con GPT-4o: %s. Usando parsing con regex...", gpt_error)
+            
+            # Fallback: Parsear datos de la factura con regex
             return self._parse_invoice_text(full_text)
             
         except ImportError as import_err:
@@ -532,6 +543,279 @@ class InvoiceOCRService(models.AbstractModel):
                 raise UserError(_("El archivo no es un PDF válido o está corrupto. Por favor, verifica el archivo e intenta de nuevo."))
             raise UserError(_("Error al procesar el PDF: %s\n\nPosibles causas:\n- El PDF está corrupto\n- El PDF está protegido o encriptado\n- El formato no es compatible") % error_msg)
 
+    def _interpret_text_with_gpt(self, api_key, text):
+        """
+        Usa GPT-4o para interpretar el texto extraído y estructurarlo en formato JSON.
+        
+        :param api_key: API key de OpenAI
+        :param text: Texto extraído de la factura
+        :return: Diccionario con datos estructurados o None si falla
+        """
+        try:
+            from openai import OpenAI
+            
+            client = OpenAI(api_key=api_key)
+            
+            # Prompt detallado para extraer información estructurada
+            prompt = """Eres un experto en procesamiento de facturas comerciales para documentos aduaneros.
+
+Analiza el siguiente texto extraído de una factura y extrae TODA la información relevante en formato JSON estricto.
+
+FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JSON):
+{
+  "numero_factura": "número o null",
+  "fecha_factura": "DD.MM.YYYY o DD/MM/YYYY o null",
+  "remitente_nombre": "nombre completo de la empresa emisora o null",
+  "remitente_nif": "NIF/CIF español (formato A12345678) o NIF andorrano (L123456H) o null",
+  "remitente_direccion": "dirección completa o null",
+  "consignatario_nombre": "nombre completo del destinatario o null",
+  "consignatario_nif": "NIF/CIF o null",
+  "consignatario_direccion": "dirección completa o null",
+  "valor_total": número decimal o null,
+  "moneda": "EUR" o "USD" o null,
+  "incoterm": "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP" o null (si encuentras CIF, FOB, CFR, mapea a CIP, FCA, CPT respectivamente),
+  "pais_origen": "código ISO de 2 letras (ES, AD, FR, etc.) o null",
+  "pais_destino": "código ISO de 2 letras o null",
+  "transportista": "nombre del transportista o null",
+  "matricula": "matrícula del vehículo o null",
+  "referencia_transporte": "referencia o número de transporte o null",
+  "remolque": "matrícula del remolque o null",
+  "codigo_transporte": "código del transporte o null",
+  "lineas": [
+    {
+      "articulo": "código del artículo o null",
+      "descripcion": "descripción completa del producto",
+      "cantidad": número decimal,
+      "unidades": número decimal (igual que cantidad),
+      "precio_unitario": número decimal o null,
+      "total": número decimal o null,
+      "descuento": número decimal (porcentaje de descuento) o null,
+      "partida": "código H.S. (8-10 dígitos) o null",
+      "bultos": número entero o null,
+      "peso_bruto": número decimal en KG o null,
+      "peso_neto": número decimal en KG o null
+    }
+  ]
+}
+
+INSTRUCCIONES IMPORTANTES:
+1. Extrae SOLO los artículos/productos de la factura ACTUAL. IGNORA completamente cualquier sección que diga "Pedido pendiente", "Pedidos pendientes", "Pendiente" o similar. Esos productos NO deben aparecer en las líneas.
+2. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
+3. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto
+4. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD
+5. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
+6. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
+7. Para transporte, busca:
+   - Transportista: nombre de la empresa transportista
+   - Matrícula: número de matrícula del vehículo (formato como 5728-KXF)
+   - Referencia Transporte: número de referencia del transporte o albarán
+   - Remolque: matrícula del remolque si aparece
+   - Código Transporte: código alfanumérico del transporte (como TXT, TX5X)
+8. Para descuentos, busca porcentajes de descuento asociados a cada línea o descuento general. Si hay "Descuento Principal 64,00%" o similar, inclúyelo en las líneas correspondientes.
+8. Si un campo no se encuentra, usa null (no uses cadenas vacías)
+9. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
+10. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
+
+TEXTO DE LA FACTURA:
+""" + text[:15000]  # Limitar a 15000 caracteres para evitar exceder límites
+            
+            _logger.info("Enviando texto a GPT-4o para interpretación estructurada...")
+            
+            # Intentar usar response_format si está disponible (GPT-4o y modelos recientes)
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Eres un experto en extracción de datos de facturas comerciales. Siempre devuelves JSON válido y estructurado. Responde ÚNICAMENTE con JSON, sin explicaciones ni texto adicional."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.1,  # Baja temperatura para respuestas más consistentes
+                    max_tokens=4000,
+                    response_format={"type": "json_object"}  # Forzar formato JSON (GPT-4o)
+                )
+            except TypeError:
+                # Si response_format no está disponible, usar sin él
+                _logger.warning("response_format no disponible, usando prompt sin formato forzado")
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Eres un experto en extracción de datos de facturas comerciales. Siempre devuelves JSON válido y estructurado. Responde ÚNICAMENTE con JSON, sin explicaciones ni texto adicional."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.1,
+                    max_tokens=4000
+                )
+            
+            response_text = response.choices[0].message.content
+            _logger.info("Respuesta de GPT-4o recibida: %d caracteres", len(response_text))
+            
+            # Limpiar la respuesta (quitar markdown si existe)
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            # Parsear JSON
+            try:
+                data = json.loads(response_text)
+                
+                # Validar y normalizar datos
+                if not isinstance(data, dict):
+                    raise ValueError("La respuesta no es un diccionario")
+                
+                # Asegurar que lineas es una lista
+                if "lineas" in data and not isinstance(data["lineas"], list):
+                    data["lineas"] = []
+                
+                # Validar incoterm
+                if data.get("incoterm"):
+                    incoterm = data["incoterm"].upper()
+                    incoterm_map = {
+                        "FOB": "FCA",
+                        "CIF": "CIP",
+                        "CFR": "CPT",
+                    }
+                    valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+                    
+                    if incoterm in incoterm_map:
+                        data["incoterm"] = incoterm_map[incoterm]
+                    elif incoterm not in valid_incoterms:
+                        data["incoterm"] = "DAP"  # Valor por defecto
+                    else:
+                        data["incoterm"] = incoterm
+                
+                # Normalizar valores numéricos
+                if data.get("valor_total"):
+                    try:
+                        if isinstance(data["valor_total"], str):
+                            # Convertir formato español a decimal
+                            data["valor_total"] = float(data["valor_total"].replace('.', '').replace(',', '.'))
+                        else:
+                            data["valor_total"] = float(data["valor_total"])
+                    except:
+                        data["valor_total"] = None
+                
+                # Normalizar líneas y filtrar productos de pedidos pendientes
+                lineas_validas = []
+                for linea in data.get("lineas", []):
+                    # Filtrar productos que puedan ser de pedidos pendientes
+                    descripcion = linea.get("descripcion", "").lower()
+                    # Si la descripción contiene indicadores de pedido pendiente, saltar
+                    if any(palabra in descripcion for palabra in ["pedido pendiente", "pendiente", "pending order"]):
+                        _logger.info("Ignorando línea con descripción de pedido pendiente: %s", linea.get("descripcion"))
+                        continue
+                    # Normalizar cantidad y unidades
+                    if linea.get("cantidad"):
+                        try:
+                            if isinstance(linea["cantidad"], str):
+                                linea["cantidad"] = float(linea["cantidad"].replace(',', '.'))
+                            else:
+                                linea["cantidad"] = float(linea["cantidad"])
+                            if not linea.get("unidades"):
+                                linea["unidades"] = linea["cantidad"]
+                        except:
+                            pass
+                    
+                    # Normalizar precios
+                    for campo_precio in ["precio_unitario", "total"]:
+                        if linea.get(campo_precio):
+                            try:
+                                if isinstance(linea[campo_precio], str):
+                                    linea[campo_precio] = float(linea[campo_precio].replace('.', '').replace(',', '.'))
+                                else:
+                                    linea[campo_precio] = float(linea[campo_precio])
+                            except:
+                                linea[campo_precio] = None
+                    
+                    # Normalizar descuento
+                    if linea.get("descuento"):
+                        try:
+                            if isinstance(linea["descuento"], str):
+                                # Puede venir como "64,00%" o "64.00" o "64"
+                                descuento_str = linea["descuento"].replace('%', '').replace(',', '.')
+                                linea["descuento"] = float(descuento_str)
+                            else:
+                                linea["descuento"] = float(linea["descuento"])
+                        except:
+                            linea["descuento"] = None
+                    
+                    # Normalizar pesos
+                    for campo_peso in ["peso_bruto", "peso_neto"]:
+                        if linea.get(campo_peso):
+                            try:
+                                if isinstance(linea[campo_peso], str):
+                                    linea[campo_peso] = float(linea[campo_peso].replace(',', '.'))
+                                else:
+                                    linea[campo_peso] = float(linea[campo_peso])
+                            except:
+                                linea[campo_peso] = None
+                    
+                    # Normalizar bultos
+                    if linea.get("bultos"):
+                        try:
+                            if isinstance(linea["bultos"], str):
+                                linea["bultos"] = int(float(linea["bultos"].replace(',', '.')))
+                            else:
+                                linea["bultos"] = int(linea["bultos"])
+                        except:
+                            linea["bultos"] = None
+                    
+                    # Normalizar partida arancelaria (asegurar formato correcto)
+                    if linea.get("partida"):
+                        partida = str(linea["partida"]).strip()
+                        # Limpiar espacios y caracteres no numéricos
+                        partida = ''.join(filter(str.isdigit, partida))
+                        if partida:
+                            # Asegurar que tenga al menos 8 dígitos
+                            if len(partida) < 8:
+                                partida = partida.zfill(8)
+                            # Truncar si tiene más de 10
+                            if len(partida) > 10:
+                                partida = partida[:10]
+                            linea["partida"] = partida
+                        else:
+                            linea["partida"] = None
+                    else:
+                        _logger.warning("Línea sin partida arancelaria: %s", linea.get("descripcion"))
+                    
+                    lineas_validas.append(linea)
+                
+                # Reemplazar lineas con las válidas
+                data["lineas"] = lineas_validas
+                
+                _logger.info("Datos estructurados validados: %d líneas extraídas", len(data.get("lineas", [])))
+                return data
+                
+            except json.JSONDecodeError as json_err:
+                _logger.error("Error parseando JSON de GPT-4o: %s. Respuesta: %s", json_err, response_text[:500])
+                return None
+            except Exception as parse_err:
+                _logger.error("Error procesando respuesta de GPT-4o: %s", parse_err)
+                return None
+                
+        except ImportError:
+            _logger.warning("OpenAI no disponible para interpretación de texto")
+            return None
+        except Exception as e:
+            _logger.exception("Error al interpretar texto con GPT-4o: %s", e)
+            return None
+
     def _parse_invoice_text(self, text):
         """
         Parsea el texto extraído de la factura y extrae información estructurada.
@@ -563,8 +847,9 @@ class InvoiceOCRService(models.AbstractModel):
         
         # Buscar número de factura
         factura_patterns = [
-            r'(?:FACTURA|Invoice|Factura)\s*(?:N[º°]?|Número|No\.?|#)\s*:?\s*([A-Z0-9\-/]+)',
-            r'N[º°]?\s*FACTURA\s*:?\s*([A-Z0-9\-/]+)',
+            r'(?:FACTURA|Invoice|Factura)\s*(?:n[º°]?|N[º°]?|Número|No\.?|#)\s*:?\s*(\d+)',
+            r'N[º°]?\s*FACTURA\s*:?\s*(\d+)',
+            r'Factura\s+n[º°]?\s*:?\s*(\d+)',
             r'Factura\s+([A-Z0-9\-/]+)',
         ]
         for pattern in factura_patterns:
@@ -573,10 +858,10 @@ class InvoiceOCRService(models.AbstractModel):
                 data["numero_factura"] = match.group(1).strip()
                 break
         
-        # Buscar fecha
+        # Buscar fecha (priorizar fechas después de "Factura" o "de")
         fecha_patterns = [
-            r'(?:Fecha|Date)\s*:?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            r'(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            r'(?:Factura\s+n[º°]?:\s*\d+\s+de\s+|Fecha|Date)\s*:?\s*(\d{1,2}[\./]\d{1,2}[\./]\d{2,4})',
+            r'(\d{1,2}[\./]\d{1,2}[\./]\d{2,4})',
         ]
         for pattern in fecha_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -584,25 +869,60 @@ class InvoiceOCRService(models.AbstractModel):
                 data["fecha_factura"] = match.group(1).strip()
                 break
         
-        # Buscar NIF/CIF (formato español)
-        nif_pattern = r'[A-Z]?\d{8}[A-Z]?'
-        nifs = re.findall(nif_pattern, text)
-        if nifs:
-            # El primer NIF suele ser el emisor, el segundo el receptor
-            if len(nifs) >= 1:
-                data["remitente_nif"] = nifs[0]
-            if len(nifs) >= 2:
-                data["consignatario_nif"] = nifs[1]
+        # Buscar NIF/CIF (formato español y andorrano)
+        # Patrón mejorado para NIF español (A12345678) y andorrano (L123456H)
+        nif_patterns = [
+            r'\b([A-Z]\d{8}[A-Z]?)\b',  # NIF español: A12345678 o A12345678Z
+            r'\b(L\d{6,7}[A-Z]?)\b',    # NIF andorrano: L714949H
+            r'\bNIF[:\s]+([A-Z]?\d{6,8}[A-Z]?)\b',  # NIF: A12345678
+            r'\bC\.I\.F\.?[:\s]+([A-Z]?\d{6,8}[A-Z]?)\b',  # C.I.F.: A12345678
+            r'\bNRT[:\s]+([A-Z]?\d{6,8}[A-Z]?)\b',  # NRT: L714949H
+        ]
+        nifs = []
+        for pattern in nif_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                nif = match.group(1).strip().upper()
+                if nif not in nifs:
+                    nifs.append(nif)
         
-        # Buscar importe total
+        if nifs:
+            # Buscar contexto para identificar remitente y consignatario
+            # Remitente suele aparecer primero, cerca de "Motul" o "Propietario"
+            # Consignatario suele aparecer después, cerca de "Destinatario" o "Cliente"
+            text_lower = text.lower()
+            for nif in nifs:
+                # Buscar contexto alrededor del NIF
+                nif_pos = text.upper().find(nif.upper())
+                if nif_pos > 0:
+                    context = text[max(0, nif_pos-100):nif_pos+100].lower()
+                    if any(word in context for word in ['propietario', 'motul', 'remitente', 'emisor']):
+                        if not data["remitente_nif"]:
+                            data["remitente_nif"] = nif
+                    elif any(word in context for word in ['destinatario', 'consignatario', 'cliente', 'multi retail']):
+                        if not data["consignatario_nif"]:
+                            data["consignatario_nif"] = nif
+            
+            # Si no se identificaron por contexto, usar orden de aparición
+            if not data["remitente_nif"] and len(nifs) >= 1:
+                data["remitente_nif"] = nifs[0]
+            if not data["consignatario_nif"] and len(nifs) >= 2:
+                data["consignatario_nif"] = nifs[1]
+            elif not data["consignatario_nif"] and len(nifs) >= 1:
+                # Si solo hay un NIF y no se identificó remitente, puede ser consignatario
+                if not data["remitente_nif"]:
+                    data["remitente_nif"] = nifs[0]
+        
+        # Buscar importe total (priorizar "Total Factura" o "Importe Neto")
         total_patterns = [
+            r'(?:TOTAL\s+FACTURA|Total\s+Factura|Importe\s+Neto\s+2)\s*:?\s*([\d.,]+)',
             r'(?:TOTAL|Total|Importe Total|Amount)\s*:?\s*([\d.,]+)\s*([A-Z]{3})?',
             r'([\d.,]+)\s*(?:EUR|€|USD|\$)',
         ]
         for pattern in total_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                valor_str = match.group(1).replace(',', '.')
+                valor_str = match.group(1).replace('.', '').replace(',', '.')  # Formato español: 2.195,42
                 try:
                     data["valor_total"] = float(valor_str)
                 except:
@@ -611,18 +931,36 @@ class InvoiceOCRService(models.AbstractModel):
                     data["moneda"] = match.group(2).upper()
                 break
         
-        # Buscar nombres de empresas (patrones comunes)
-        # Buscar después de palabras clave como "De:", "From:", "Cliente:", etc.
-        nombre_patterns = [
-            r'(?:De|From|Emisor|Cliente|Customer)\s*:?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]+)',
+        # Buscar nombres de empresas (patrones mejorados)
+        # Remitente: buscar después de "Propietario:", "Motul", o al inicio del documento
+        remitente_patterns = [
+            r'Propietario:\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]+?)(?:\n|C/|CIF|Tel\.)',
+            r'(Motul\s+Ibérica\s+SA?[A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]*?)(?:\n|C/|CIF|Tel\.)',
         ]
-        for pattern in nombre_patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for i, match in enumerate(matches):
-                if i == 0:
-                    data["remitente_nombre"] = match.group(1).strip()[:100]
-                elif i == 1:
-                    data["consignatario_nombre"] = match.group(1).strip()[:100]
+        for pattern in remitente_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                nombre = match.group(1).strip()
+                # Limpiar nombre (quitar espacios múltiples, saltos de línea)
+                nombre = re.sub(r'\s+', ' ', nombre).strip()
+                data["remitente_nombre"] = nombre[:100]
+                break
+        
+        # Consignatario: buscar después de "Destinatario:", "DIRECCION ENTREGA", "Cliente N°"
+        consignatario_patterns = [
+            r'Destinatario:\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]+?)(?:\n|NIF|NRT|Tel\.)',
+            r'DIRECCION\s+ENTREGA\s+[0-9]+:\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]+?)(?:\n|NRT|NIF)',
+            r'(?:Cliente\s+N[º°]?|Cliente:)\s*[0-9]+\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]+?)(?:\n|NRT|NIF)',
+            r'(MULTI\s+RETAIL\s+TRADE[,\s]+S\.L\.U\.[A-ZÁÉÍÓÚÑa-záéíóúñ\s,\.]*?)(?:\n|NRT|NIF)',
+        ]
+        for pattern in consignatario_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                nombre = match.group(1).strip()
+                # Limpiar nombre
+                nombre = re.sub(r'\s+', ' ', nombre).strip()
+                data["consignatario_nombre"] = nombre[:100]
+                break
         
         # Buscar Incoterm
         incoterm_pattern = r'\b(EXW|FCA|CPT|CIP|DAP|DPU|DDP|FOB|CFR|CIF)\b'
@@ -630,12 +968,57 @@ class InvoiceOCRService(models.AbstractModel):
         if match:
             data["incoterm"] = match.group(1).upper()
         
-        # Buscar países (códigos ISO comunes)
-        pais_pattern = r'\b(ES|AD|FR|PT|DE|IT|GB|US)\b'
-        paises = re.findall(pais_pattern, text)
-        if paises:
-            data["pais_origen"] = paises[0] if len(paises) > 0 else "ES"
-            data["pais_destino"] = paises[1] if len(paises) > 1 else "AD"
+        # Buscar países (códigos ISO comunes y nombres de países)
+        # Buscar por contexto: "España" o "Spain" -> ES, "Andorra" -> AD
+        pais_origen_patterns = [
+            r'(?:Origen|Origin|From|España|Spain|Español)\s*:?\s*([A-Z]{2})',
+            r'\b(ES|ESPAÑA|SPAIN)\b',
+        ]
+        for pattern in pais_origen_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                pais = match.group(1).upper()[:2]
+                if pais == 'ES' or 'ESPAÑA' in pais or 'SPAIN' in pais:
+                    data["pais_origen"] = "ES"
+                    break
+        
+        pais_destino_patterns = [
+            r'(?:Destino|Destination|To|Andorra)\s*:?\s*([A-Z]{2})',
+            r'\b(AD|ANDORRA)\b',
+        ]
+        for pattern in pais_destino_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                pais = match.group(1).upper()[:2]
+                if pais == 'AD' or 'ANDORRA' in pais:
+                    data["pais_destino"] = "AD"
+                    break
+        
+        # Si no se encontraron por contexto, buscar códigos ISO en el texto
+        if not data["pais_origen"] or not data["pais_destino"]:
+            pais_pattern = r'\b(ES|AD|FR|PT|DE|IT|GB|US)\b'
+            paises = re.findall(pais_pattern, text)
+            if paises:
+                # Filtrar paises que aparecen en direcciones (códigos postales)
+                paises_validos = []
+                for pais in paises:
+                    # Evitar falsos positivos (códigos que aparecen en otros contextos)
+                    if pais in ['ES', 'AD', 'FR', 'PT', 'DE', 'IT', 'GB', 'US']:
+                        paises_validos.append(pais)
+                
+                if paises_validos:
+                    # Si hay "ANDORRA" en el texto, el destino es AD
+                    if 'ANDORRA' in text.upper() or 'AD500' in text.upper():
+                        data["pais_destino"] = "AD"
+                    # Si hay "Barcelona" o "España" en el texto, el origen es ES
+                    if 'BARCELONA' in text.upper() or 'ESPAÑA' in text.upper() or 'SPAIN' in text.upper():
+                        data["pais_origen"] = "ES"
+                    
+                    # Valores por defecto si no se encontraron
+                    if not data["pais_origen"]:
+                        data["pais_origen"] = paises_validos[0] if len(paises_validos) > 0 else "ES"
+                    if not data["pais_destino"]:
+                        data["pais_destino"] = paises_validos[1] if len(paises_validos) > 1 else "AD"
         
         # Intentar extraer líneas de productos
         # Buscar patrones comunes de tablas de factura
@@ -652,67 +1035,182 @@ class InvoiceOCRService(models.AbstractModel):
         """
         lineas = []
         
-        # Patrón para líneas de factura típicas:
-        # Cantidad | Descripción | Precio unitario | Total
-        # O: Descripción | Cantidad | Precio | Total
+        # Método 1: Buscar formato estructurado con etiquetas **Artículo:**, **Descripción:**, etc.
+        # Este formato es común en facturas procesadas por OCR/IA
+        # Patrones flexibles que aceptan asteriscos o sin ellos
+        articulo_pattern = r'(?:\*\*)?Artículo(?:\*\*)?\s*:?\s*(\d+)'
+        descripcion_pattern = r'(?:\*\*)?Descripción(?:\*\*)?\s*:?\s*([^\n]+?)(?=\n(?:\*\*)?[A-Z]|\n\n|$)'
+        cantidad_pattern = r'(?:\*\*)?Cantidad\s+Expedición(?:\*\*)?\s*:?\s*(\d+[.,]?\d*)\s*([A-Z/]+)?'
+        importe_pattern = r'(?:\*\*)?Importe\s+\(EUR\)(?:\*\*)?\s*:?\s*([\d.,]+)'
+        importe_neto_pattern = r'(?:\*\*)?Importe\s+Neto\s+2(?:\*\*)?\s*:?\s*([\d.,]+)'
+        hs_pattern = r'(?:\*\*)?H\.S\.(?:\*\*)?\s*:?\s*(\d+)'
         
-        # Buscar números seguidos de descripciones y precios
-        # Patrón mejorado para líneas de factura
-        line_patterns = [
-            # Formato: cantidad descripción precio total
-            r'(\d+[.,]?\d*)\s+([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+([\d.,]+)\s*([€$]?)\s+([\d.,]+)\s*([€$]?)',
-            # Formato: descripción cantidad precio
-            r'([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+(\d+[.,]?\d*)\s+([\d.,]+)\s*([€$]?)',
-        ]
+        # Buscar todas las ocurrencias de artículos
+        articulos = list(re.finditer(articulo_pattern, text, re.IGNORECASE))
         
-        lines_found = []
-        for pattern in line_patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
-            for match in matches:
-                # Intentar identificar qué es cada grupo
-                groups = match.groups()
-                if len(groups) >= 3:
-                    linea = {
-                        "descripcion": None,
-                        "cantidad": None,
-                        "precio_unitario": None,
-                        "total": None,
-                    }
-                    
-                    # El primer número suele ser cantidad
+        for articulo_match in articulos:
+            articulo_pos = articulo_match.start()
+            # Buscar descripción, cantidad e importe después de este artículo
+            texto_desde_articulo = text[articulo_pos:articulo_pos+2000]  # Buscar en los siguientes 2000 caracteres
+            
+            linea = {
+                "articulo": articulo_match.group(1).strip(),
+                "descripcion": None,
+                "cantidad": None,
+                "unidades": None,
+                "precio_unitario": None,
+                "total": None,
+                "partida": None,
+            }
+            
+            # Buscar descripción
+            desc_match = re.search(descripcion_pattern, texto_desde_articulo, re.IGNORECASE)
+            if desc_match:
+                linea["descripcion"] = desc_match.group(1).strip()
+            
+            # Buscar cantidad
+            cant_match = re.search(cantidad_pattern, texto_desde_articulo, re.IGNORECASE)
+            if cant_match:
+                try:
+                    cantidad_str = cant_match.group(1).replace(',', '.')
+                    cantidad = float(cantidad_str)
+                    linea["cantidad"] = cantidad
+                    linea["unidades"] = cantidad
+                except:
+                    pass
+            
+            # Buscar importe total
+            importe_match = re.search(importe_pattern, texto_desde_articulo, re.IGNORECASE)
+            if importe_match:
+                try:
+                    importe_str = importe_match.group(1).replace('.', '').replace(',', '.')
+                    importe = float(importe_str)
+                    linea["total"] = importe
+                    # Calcular precio unitario si hay cantidad
+                    if linea.get("cantidad") and linea["cantidad"] > 0:
+                        linea["precio_unitario"] = importe / linea["cantidad"]
+                except:
+                    pass
+            
+            # Si no hay importe total, buscar importe neto
+            if not linea.get("total"):
+                importe_neto_match = re.search(importe_neto_pattern, texto_desde_articulo, re.IGNORECASE)
+                if importe_neto_match:
                     try:
-                        cantidad = float(groups[0].replace(',', '.'))
-                        if cantidad > 0 and cantidad < 10000:  # Rango razonable
-                            linea["cantidad"] = cantidad
-                            linea["unidades"] = cantidad
+                        importe_str = importe_neto_match.group(1).replace('.', '').replace(',', '.')
+                        importe = float(importe_str)
+                        linea["total"] = importe
+                        if linea.get("cantidad") and linea["cantidad"] > 0:
+                            linea["precio_unitario"] = importe / linea["cantidad"]
                     except:
                         pass
-                    
-                    # Buscar descripción (texto largo)
-                    for i, group in enumerate(groups):
-                        if isinstance(group, str) and len(group) > 10 and not re.match(r'^[\d.,€$]+$', group):
-                            if not linea["descripcion"]:
-                                linea["descripcion"] = group.strip()[:200]
-                    
-                    # Buscar precios (números con decimales)
-                    for i, group in enumerate(groups):
-                        if isinstance(group, str) and re.match(r'^[\d.,]+$', group):
-                            try:
-                                precio = float(group.replace(',', '.'))
-                                if precio > 0:
-                                    if not linea["precio_unitario"]:
-                                        linea["precio_unitario"] = precio
-                                    else:
-                                        linea["total"] = precio
-                            except:
-                                pass
-                    
-                    # Solo agregar si tiene al menos descripción y cantidad
-                    if linea["descripcion"] and linea["cantidad"]:
-                        lines_found.append(linea)
+            
+            # Buscar partida arancelaria (H.S.)
+            hs_match = re.search(hs_pattern, texto_desde_articulo, re.IGNORECASE)
+            if hs_match:
+                linea["partida"] = hs_match.group(1).strip()
+            
+            # Solo agregar si tiene al menos descripción y cantidad
+            if linea.get("descripcion") and linea.get("cantidad"):
+                lineas.append(linea)
+        
+        # Método 2: Buscar formato tabla (ARTICULO DESCRIPCION BULTOS PESO)
+        if not lineas:
+            tabla_pattern = r'ARTICULO\s+DESCRIPCION\s+BULTOS\s+PESO\s+BRUTO\s+PESO\s+NETO\s*\n\s*(\d+)\s+([^\n]+?)\s+(\d+)\s+C/U\s+(\d+)\s+KG\s+(\d+)\s+KG'
+            tabla_match = re.search(tabla_pattern, text, re.IGNORECASE | re.MULTILINE)
+            if tabla_match:
+                linea = {
+                    "articulo": tabla_match.group(1).strip(),
+                    "descripcion": tabla_match.group(2).strip(),
+                    "cantidad": None,
+                    "unidades": None,
+                    "precio_unitario": None,
+                    "total": None,
+                    "bultos": None,
+                    "peso_bruto": None,
+                    "peso_neto": None,
+                }
+                
+                try:
+                    cantidad = int(tabla_match.group(3))
+                    linea["cantidad"] = cantidad
+                    linea["unidades"] = cantidad
+                    linea["bultos"] = cantidad
+                except:
+                    pass
+                
+                try:
+                    peso_bruto = float(tabla_match.group(4))
+                    linea["peso_bruto"] = peso_bruto
+                except:
+                    pass
+                
+                try:
+                    peso_neto = float(tabla_match.group(5))
+                    linea["peso_neto"] = peso_neto
+                except:
+                    pass
+                
+                if linea.get("descripcion") and linea.get("cantidad"):
+                    lineas.append(linea)
+        
+        # Método 3: Buscar formato genérico (fallback)
+        if not lineas:
+            # Buscar números seguidos de descripciones y precios
+            line_patterns = [
+                # Formato: cantidad descripción precio total
+                r'(\d+[.,]?\d*)\s+([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+([\d.,]+)\s*([€$]?)\s+([\d.,]+)\s*([€$]?)',
+                # Formato: descripción cantidad precio
+                r'([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+(\d+[.,]?\d*)\s+([\d.,]+)\s*([€$]?)',
+            ]
+            
+            for pattern in line_patterns:
+                matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+                for match in matches:
+                    groups = match.groups()
+                    if len(groups) >= 3:
+                        linea = {
+                            "descripcion": None,
+                            "cantidad": None,
+                            "precio_unitario": None,
+                            "total": None,
+                        }
+                        
+                        # El primer número suele ser cantidad
+                        try:
+                            cantidad = float(groups[0].replace(',', '.'))
+                            if cantidad > 0 and cantidad < 10000:  # Rango razonable
+                                linea["cantidad"] = cantidad
+                                linea["unidades"] = cantidad
+                        except:
+                            pass
+                        
+                        # Buscar descripción (texto largo)
+                        for i, group in enumerate(groups):
+                            if isinstance(group, str) and len(group) > 10 and not re.match(r'^[\d.,€$]+$', group):
+                                if not linea["descripcion"]:
+                                    linea["descripcion"] = group.strip()[:200]
+                        
+                        # Buscar precios (números con decimales)
+                        for i, group in enumerate(groups):
+                            if isinstance(group, str) and re.match(r'^[\d.,]+$', group):
+                                try:
+                                    precio = float(group.replace(',', '.'))
+                                    if precio > 0:
+                                        if not linea["precio_unitario"]:
+                                            linea["precio_unitario"] = precio
+                                        else:
+                                            linea["total"] = precio
+                                except:
+                                    pass
+                        
+                        # Solo agregar si tiene al menos descripción y cantidad
+                        if linea["descripcion"] and linea["cantidad"]:
+                            lineas.append(linea)
+                            break  # Solo tomar la primera coincidencia válida
         
         # Limitar a máximo 20 líneas para evitar ruido
-        return lines_found[:20]
+        return lineas[:20]
 
     def fill_expediente_from_invoice(self, expediente, invoice_data):
         """
@@ -744,6 +1242,22 @@ class InvoiceOCRService(models.AbstractModel):
             expediente.pais_origen = invoice_data["pais_origen"]
         if invoice_data.get("pais_destino"):
             expediente.pais_destino = invoice_data["pais_destino"]
+        
+        # Actualizar campos de transporte
+        if invoice_data.get("transportista"):
+            expediente.transportista = invoice_data["transportista"]
+        
+        if invoice_data.get("matricula"):
+            expediente.matricula = invoice_data["matricula"]
+        
+        if invoice_data.get("referencia_transporte"):
+            expediente.referencia_transporte = invoice_data["referencia_transporte"]
+        
+        if invoice_data.get("remolque"):
+            expediente.remolque = invoice_data["remolque"]
+        
+        if invoice_data.get("codigo_transporte"):
+            expediente.codigo_transporte = invoice_data["codigo_transporte"]
         
         # Buscar o crear remitente
         if invoice_data.get("remitente_nif") or invoice_data.get("remitente_nombre"):
@@ -781,22 +1295,97 @@ class InvoiceOCRService(models.AbstractModel):
                     "valor_linea": linea_data.get("total") or linea_data.get("precio_unitario") or 0.0,
                     "pais_origen": expediente.pais_origen or "ES",
                 }
-                # Si hay peso en la descripción, intentar extraerlo
-                desc = linea_data.get("descripcion", "")
-                peso_match = re.search(r'(\d+[.,]?\d*)\s*(kg|KG|Kg|kilogramos?)', desc)
-                if peso_match:
+                
+                # Agregar descuento si está disponible
+                if linea_data.get("descuento"):
                     try:
-                        peso = float(peso_match.group(1).replace(',', '.'))
-                        line_vals["peso_bruto"] = peso
-                        line_vals["peso_neto"] = peso * 0.95  # Aproximación
+                        descuento = linea_data.get("descuento")
+                        if isinstance(descuento, str):
+                            descuento = float(descuento.replace('%', '').replace(',', '.'))
+                        else:
+                            descuento = float(descuento)
+                        line_vals["descuento"] = descuento
                     except:
                         pass
                 
+                # Agregar partida arancelaria si está disponible (OBLIGATORIO)
+                if linea_data.get("partida"):
+                    # Limpiar y validar partida (debe ser 8-10 dígitos)
+                    partida = str(linea_data.get("partida")).strip()
+                    # Si tiene menos de 8 dígitos, rellenar con ceros a la izquierda
+                    if partida.isdigit() and len(partida) < 8:
+                        partida = partida.zfill(8)
+                    # Si tiene más de 10 dígitos, truncar
+                    if len(partida) > 10:
+                        partida = partida[:10]
+                    line_vals["partida"] = partida
+                else:
+                    # Si no hay partida, intentar buscarla en el texto completo
+                    _logger.warning("Línea %d: No se encontró partida arancelaria", idx)
+                
+                # Agregar bultos si está disponible
+                if linea_data.get("bultos"):
+                    line_vals["bultos"] = int(linea_data.get("bultos"))
+                elif linea_data.get("cantidad"):
+                    # Si no hay bultos explícitos, usar cantidad como bultos
+                    try:
+                        line_vals["bultos"] = int(linea_data.get("cantidad"))
+                    except:
+                        pass
+                
+                # Agregar pesos si están disponibles directamente
+                if linea_data.get("peso_bruto"):
+                    line_vals["peso_bruto"] = float(linea_data.get("peso_bruto"))
+                if linea_data.get("peso_neto"):
+                    line_vals["peso_neto"] = float(linea_data.get("peso_neto"))
+                
+                # Si no hay peso directo, intentar extraerlo de la descripción
+                if not line_vals.get("peso_bruto") and not line_vals.get("peso_neto"):
+                    desc = linea_data.get("descripcion", "")
+                    peso_match = re.search(r'(\d+[.,]?\d*)\s*(kg|KG|Kg|kilogramos?)', desc)
+                    if peso_match:
+                        try:
+                            peso = float(peso_match.group(1).replace(',', '.'))
+                            line_vals["peso_bruto"] = peso
+                            line_vals["peso_neto"] = peso * 0.95  # Aproximación
+                        except:
+                            pass
+                
                 LineModel.create(line_vals)
         
-        # Guardar datos extraídos como texto para referencia
+        # Guardar datos extraídos como texto para referencia técnica
         expediente.factura_datos_extraidos = json.dumps(invoice_data, indent=2, ensure_ascii=False)
         expediente.factura_procesada = True
+        
+        # Agregar información técnica al chatter
+        metodo_usado = invoice_data.get("metodo_usado", "Desconocido")
+        num_lineas = len(invoice_data.get("lineas", []))
+        texto_extraido_len = len(invoice_data.get("texto_extraido", ""))
+        
+        # Crear mensaje técnico para el chatter
+        mensaje_tecnico = _("""
+<b>📋 Información Técnica de Extracción de Factura</b>
+
+<b>Método usado:</b> %s
+<b>Líneas extraídas:</b> %d
+<b>Tamaño del texto extraído:</b> %d caracteres
+
+<b>Datos técnicos completos (JSON):</b>
+<pre style="background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; overflow-x: auto; font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">%s</pre>
+
+<i>Nota: Los datos técnicos completos también están disponibles en la pestaña "Datos Técnicos Factura" del expediente.</i>
+        """) % (
+            metodo_usado,
+            num_lineas,
+            texto_extraido_len,
+            json.dumps(invoice_data, indent=2, ensure_ascii=False)
+        )
+        
+        expediente.message_post(
+            body=mensaje_tecnico,
+            subtype_xmlid='mail.mt_note',
+            author_id=False,  # Sistema
+        )
         
         return True
 
