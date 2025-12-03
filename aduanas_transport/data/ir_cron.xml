@@ -10,7 +10,104 @@
     <field name="active">True</field>
   </record>
 
-  <template id="tpl_cc515c" name="CC515C XML" t-name="aduanas_transport.tpl_cc515c">
+  <!-- Template CUSDEC EX1 - Formato oficial DUA para exportación -->
+  <template id="tpl_cusdec_ex1" name="CUSDEC EX1 XML (DUA Exportación)" t-name="aduanas_transport.tpl_cusdec_ex1">
+    <CUSDEC xmlns="http://www.eurocustoms.eu/EX1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.eurocustoms.eu/EX1 CUSDEC_EX1.xsd">
+      <Declaration>
+        <FunctionCode>EX1</FunctionCode>
+        <Type>EX</Type>
+        <CustomsOfficeOfFirstEntry>
+          <ReferenceNumber t-esc="exp.oficina or '0801'"/>
+        </CustomsOfficeOfFirstEntry>
+        <CustomsOfficeOfExport>
+          <ReferenceNumber t-esc="exp.oficina or '0801'"/>
+        </CustomsOfficeOfExport>
+        <AdditionalDeclarationType>A</AdditionalDeclarationType>
+        <DeclarationNumber>
+          <ReferenceNumber t-esc="exp.name"/>
+        </DeclarationNumber>
+        <Declarant>
+          <IdentificationNumber t-esc="(exp.remitente.vat or '').replace(' ','')"/>
+          <Name t-esc="exp.remitente.name or ''"/>
+        </Declarant>
+        <Exporter>
+          <IdentificationNumber t-esc="(exp.remitente.vat or '').replace(' ','')"/>
+          <Name t-esc="exp.remitente.name or ''"/>
+        </Exporter>
+        <t t-if="exp.consignatario">
+          <Consignee>
+            <IdentificationNumber t-esc="(exp.consignatario.vat or '').replace(' ','')"/>
+            <Name t-esc="exp.consignatario.name or ''"/>
+          </Consignee>
+        </t>
+        <Invoice>
+          <InvoiceNumber t-esc="exp.numero_factura or exp.name"/>
+          <t t-if="exp.fecha_prevista">
+            <InvoiceDate t-esc="exp.fecha_prevista.strftime('%Y%m%d')"/>
+          </t>
+          <InvoiceAmount t-att-currency="exp.moneda or 'EUR'">
+            <t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/>
+          </InvoiceAmount>
+          <TermsOfDelivery>
+            <Code t-esc="exp.incoterm or 'DAP'"/>
+          </TermsOfDelivery>
+        </Invoice>
+        <TransportDetails>
+          <t t-if="exp.transportista">
+            <TransportMeans>
+              <Identification t-esc="exp.matricula or ''"/>
+              <TypeOfIdentification>12</TypeOfIdentification>
+            </TransportMeans>
+          </t>
+          <t t-if="exp.referencia_transporte">
+            <TransportDocument>
+              <DocumentNumber t-esc="exp.referencia_transporte"/>
+            </TransportDocument>
+          </t>
+        </TransportDetails>
+        <GoodsItems>
+          <t t-foreach="exp.line_ids or []" t-as="l" t-foreach-index="l_index">
+            <GoodsItem>
+              <ItemNumber t-esc="l.item_number or (l_index + 1)"/>
+              <Commodity>
+                <CommodityCode t-esc="l.partida or '0000000000'"/>
+                <Description t-esc="l.descripcion or ''"/>
+                <CountryOfOriginCode t-esc="l.pais_origen or exp.pais_origen or 'ES'"/>
+              </Commodity>
+              <Packaging>
+                <MarksNumbersOfPackages t-esc="str(l.bultos or 1)"/>
+                <NumberOfPackages t-esc="l.bultos or 1"/>
+                <TypeOfPackages>CT</TypeOfPackages>
+              </Packaging>
+              <GoodsMeasure>
+                <GrossMass t-esc="'%.2f' % (l.peso_bruto or 0.0)"/>
+                <NetMass t-esc="'%.2f' % (l.peso_neto or 0.0)"/>
+              </GoodsMeasure>
+              <InvoiceLine>
+                <LineNumber t-esc="l.item_number or (l_index + 1)"/>
+                <ArticleDescription t-esc="l.descripcion or ''"/>
+                <InvoiceQuantity t-esc="'%.2f' % (l.unidades or 0.0)"/>
+                <InvoiceAmount t-att-currency="exp.moneda or 'EUR'">
+                  <t t-esc="'%.2f' % (l.valor_linea or 0.0)"/>
+                </InvoiceAmount>
+              </InvoiceLine>
+              <Destination>
+                <CountryOfDestination t-esc="exp.pais_destino or 'AD'"/>
+              </Destination>
+            </GoodsItem>
+          </t>
+        </GoodsItems>
+        <TotalAmounts>
+          <TotalAmountInvoiced t-att-currency="exp.moneda or 'EUR'">
+            <t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/>
+          </TotalAmountInvoiced>
+        </TotalAmounts>
+      </Declaration>
+    </CUSDEC>
+  </template>
+
+  <!-- Template CC515C (mantenido para compatibilidad, pero deprecado) -->
+  <template id="tpl_cc515c" name="CC515C XML (Deprecado - usar CUSDEC EX1)" t-name="aduanas_transport.tpl_cc515c">
     <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:aes="urn:aeat:adex:jdit:ws:aes">
       <soapenv:Header/>
       <soapenv:Body>

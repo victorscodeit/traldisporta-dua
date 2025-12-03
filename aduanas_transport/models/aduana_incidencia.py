@@ -57,7 +57,7 @@ class AduanaIncidencia(models.Model):
     # Origen
     origen = fields.Selection([
         ("bandeja", "Bandeja AEAT"),
-        ("cc515c", "CC515C (Exportación)"),
+        ("cusdec_ex1", "CUSDEC EX1 (DUA Exportación)"),
         ("cc511c", "CC511C (Exportación)"),
         ("imp_decl", "Declaración Importación"),
         ("manual", "Manual"),

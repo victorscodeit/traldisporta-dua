@@ -111,6 +111,34 @@ class AduanaExpediente(models.Model):
     # Factura PDF y procesamiento IA (FLUJO PRINCIPAL)
     factura_pdf = fields.Binary(string="Factura PDF", help="Sube la factura PDF para extraer datos automáticamente. Este es el punto de partida del expediente.")
     factura_pdf_filename = fields.Char(string="Nombre Archivo Factura")
+    factura_pdf_url = fields.Char(string="URL Factura PDF", compute="_compute_factura_pdf_url", help="URL para previsualizar el PDF")
+    
+    @api.depends('factura_pdf')
+    def _compute_factura_pdf_url(self):
+        """Genera la URL del PDF para previsualización"""
+        for record in self:
+            if record.factura_pdf:
+                # Buscar el attachment más reciente asociado a este registro con el nombre del archivo
+                attachment = self.env['ir.attachment'].search([
+                    ('res_model', '=', 'aduana.expediente'),
+                    ('res_id', '=', record.id),
+                    ('name', '=', record.factura_pdf_filename)
+                ], limit=1, order='create_date desc')
+                
+                if not attachment and record.factura_pdf_filename:
+                    # Si no se encuentra, buscar por nombre similar
+                    attachment = self.env['ir.attachment'].search([
+                        ('res_model', '=', 'aduana.expediente'),
+                        ('res_id', '=', record.id),
+                        ('name', 'ilike', record.factura_pdf_filename.split('.')[0] if '.' in record.factura_pdf_filename else record.factura_pdf_filename)
+                    ], limit=1, order='create_date desc')
+                
+                if attachment:
+                    record.factura_pdf_url = f'/web/content/{attachment.id}?download=0'
+                else:
+                    record.factura_pdf_url = False
+            else:
+                record.factura_pdf_url = False
     factura_procesada = fields.Boolean(string="Factura Procesada", default=False, help="Indica si la factura ha sido procesada con IA")
     factura_estado_procesamiento = fields.Selection([
         ("pendiente", "Pendiente de Procesar"),
@@ -272,17 +300,19 @@ class AduanaExpediente(models.Model):
 
     # ===== Exportación (AES) =====
     def action_generate_cc515c(self):
+        """Genera el DUA en formato CUSDEC EX1 (formato oficial)"""
         for rec in self:
             if rec.direction != "export":
-                raise UserError(_("CC515C solo aplica a exportación"))
+                raise UserError(_("DUA solo aplica a exportación"))
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_export(rec)
+            # Generar CUSDEC EX1 (formato oficial del DUA)
             xml = self.env['ir.ui.view']._render_template(
-                "aduanas_transport.tpl_cc515c",
+                "aduanas_transport.tpl_cusdec_ex1",
                 {"exp": rec}
             )
-            rec._attach_xml(f"{rec.name}_CC515C.xml", xml)
+            rec._attach_xml(f"{rec.name}_CUSDEC_EX1.xml", xml)
             rec.state = "predeclared"
             rec.error_message = False
         return True
@@ -290,22 +320,32 @@ class AduanaExpediente(models.Model):
 
 
     def action_send_cc515c(self):
+        """Envía el DUA en formato CUSDEC EX1 a AEAT"""
         client = self.env["aduanas.aeat.client"]
         parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "export":
-                raise UserError(_("CC515C solo aplica a exportación"))
+                raise UserError(_("DUA solo aplica a exportación"))
             settings = rec._get_settings()
-            xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%CC515C.xml")], limit=1)
+            # Buscar el archivo CUSDEC EX1
+            xmls = self.env["ir.attachment"].search([
+                ("res_model","=",rec._name),
+                ("res_id","=",rec.id),
+                ("name","like","%CUSDEC_EX1.xml")
+            ], limit=1)
             if not xmls:
                 rec.action_generate_cc515c()
-                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%CC515C.xml")], limit=1)
+                xmls = self.env["ir.attachment"].search([
+                    ("res_model","=",rec._name),
+                    ("res_id","=",rec.id),
+                    ("name","like","%CUSDEC_EX1.xml")
+                ], limit=1)
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
-            resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), xml_content, service="CC515C")
-            rec._attach_xml(f"{rec.name}_CC515C_response.xml", resp_xml or "")
+            resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), xml_content, service="CUSDEC_EX1")
+            rec._attach_xml(f"{rec.name}_CUSDEC_EX1_response.xml", resp_xml or "")
             
             # Parsear respuesta mejorada
-            parsed = parser.parse_aeat_response(resp_xml, "CC515C")
+            parsed = parser.parse_aeat_response(resp_xml, "CUSDEC_EX1")
             rec.last_response_date = fields.Datetime.now()
             
             if parsed.get("success") and parsed.get("mrn"):
@@ -313,20 +353,20 @@ class AduanaExpediente(models.Model):
                 rec.state = "accepted"
                 rec.error_message = False
                 if parsed.get("messages"):
-                    rec.message_post(body=_("Expediente aceptado. MRN: %s\nMensajes: %s") % (
+                    rec.message_post(body=_("DUA aceptado. MRN: %s\nMensajes: %s") % (
                         rec.mrn, "\n".join(parsed["messages"])
                     ))
                 # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
-                    rec._procesar_incidencias(parsed["incidencias"], "cc515c")
+                    rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al enviar CC515C:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
+                rec.message_post(body=_("Error al enviar DUA (CUSDEC EX1):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
-                    rec._procesar_incidencias(parsed["incidencias"], "cc515c")
+                    rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
                 raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
@@ -563,19 +603,20 @@ class AduanaExpediente(models.Model):
         }
 
     def _ensure_cc515c_xml(self):
+        """Genera o recupera el XML del DUA en formato CUSDEC EX1"""
         self.ensure_one()
-        # Renderizar correctamente con QWeb (no plantilla literal)
+        # Renderizar correctamente con QWeb (formato CUSDEC EX1)
         xml = self.env['ir.ui.view']._render_template(
-            "aduanas_transport.tpl_cc515c",
+            "aduanas_transport.tpl_cusdec_ex1",
             {"exp": self}
         )
         # Crear o actualizar adjunto
-        att = self._get_xml_attachment("CC515C.xml")
+        att = self._get_xml_attachment("CUSDEC_EX1.xml")
         if att:
             att.datas = base64.b64encode(xml.encode("utf-8"))
             return att
-        self._attach_xml(f"{self.name}_CC515C.xml", xml)
-        return self._get_xml_attachment("CC515C.xml")
+        self._attach_xml(f"{self.name}_CUSDEC_EX1.xml", xml)
+        return self._get_xml_attachment("CUSDEC_EX1.xml")
 
     def _ensure_cc511c_xml(self):
         self.ensure_one()
@@ -747,13 +788,102 @@ class AduanaExpediente(models.Model):
                     rec.factura_estado_procesamiento = "completado"
                     rec.factura_mensaje_error = False
                 
-                # Mensaje de éxito con detalles
-                mensaje_body = _("Factura procesada correctamente.\n\nDatos extraídos:\n%s") % "\n".join(datos_extraidos)
+                # Crear mensaje detallado para el chatter con todos los datos extraídos
+                mensaje_chatter = _("<b>✅ Factura procesada correctamente</b><br/><br/>")
+                
+                # Resumen de datos extraídos
+                mensaje_chatter += _("<b>📋 Resumen de datos extraídos:</b><br/>")
+                mensaje_chatter += "<ul>"
+                for dato in datos_extraidos:
+                    mensaje_chatter += f"<li>{dato}</li>"
+                mensaje_chatter += "</ul><br/>"
+                
+                # Detalles de remitente y consignatario
+                if invoice_data.get("remitente_nombre") or invoice_data.get("remitente_nif"):
+                    mensaje_chatter += _("<b>📤 Remitente:</b><br/>")
+                    if invoice_data.get("remitente_nombre"):
+                        mensaje_chatter += f"• Nombre: {invoice_data.get('remitente_nombre')}<br/>"
+                    if invoice_data.get("remitente_nif"):
+                        mensaje_chatter += f"• NIF: {invoice_data.get('remitente_nif')}<br/>"
+                    if invoice_data.get("remitente_direccion"):
+                        mensaje_chatter += f"• Dirección: {invoice_data.get('remitente_direccion')}<br/>"
+                    mensaje_chatter += "<br/>"
+                
+                if invoice_data.get("consignatario_nombre") or invoice_data.get("consignatario_nif"):
+                    mensaje_chatter += _("<b>📥 Consignatario:</b><br/>")
+                    if invoice_data.get("consignatario_nombre"):
+                        mensaje_chatter += f"• Nombre: {invoice_data.get('consignatario_nombre')}<br/>"
+                    if invoice_data.get("consignatario_nif"):
+                        mensaje_chatter += f"• NIF: {invoice_data.get('consignatario_nif')}<br/>"
+                    if invoice_data.get("consignatario_direccion"):
+                        mensaje_chatter += f"• Dirección: {invoice_data.get('consignatario_direccion')}<br/>"
+                    mensaje_chatter += "<br/>"
+                
+                # Información de factura
+                mensaje_chatter += _("<b>🧾 Información de factura:</b><br/>")
+                if invoice_data.get("numero_factura"):
+                    mensaje_chatter += f"• Nº Factura: {invoice_data.get('numero_factura')}<br/>"
+                if invoice_data.get("fecha_factura"):
+                    mensaje_chatter += f"• Fecha: {invoice_data.get('fecha_factura')}<br/>"
+                if invoice_data.get("valor_total"):
+                    mensaje_chatter += f"• Valor Total: {invoice_data.get('valor_total')} {invoice_data.get('moneda', 'EUR')}<br/>"
+                if invoice_data.get("incoterm"):
+                    mensaje_chatter += f"• Incoterm: {invoice_data.get('incoterm')}<br/>"
+                mensaje_chatter += "<br/>"
+                
+                # Información de transporte
+                if invoice_data.get("transportista") or invoice_data.get("matricula"):
+                    mensaje_chatter += _("<b>🚚 Información de transporte:</b><br/>")
+                    if invoice_data.get("transportista"):
+                        mensaje_chatter += f"• Transportista: {invoice_data.get('transportista')}<br/>"
+                    if invoice_data.get("matricula"):
+                        mensaje_chatter += f"• Matrícula: {invoice_data.get('matricula')}<br/>"
+                    if invoice_data.get("referencia_transporte"):
+                        mensaje_chatter += f"• Referencia: {invoice_data.get('referencia_transporte')}<br/>"
+                    if invoice_data.get("remolque"):
+                        mensaje_chatter += f"• Remolque: {invoice_data.get('remolque')}<br/>"
+                    if invoice_data.get("codigo_transporte"):
+                        mensaje_chatter += f"• Código: {invoice_data.get('codigo_transporte')}<br/>"
+                    mensaje_chatter += "<br/>"
+                
+                # Líneas de productos
+                if invoice_data.get("lineas"):
+                    mensaje_chatter += _("<b>📦 Líneas de productos extraídas ({0}):</b><br/>").format(len(invoice_data.get("lineas", [])))
+                    mensaje_chatter += "<ul>"
+                    for idx, linea in enumerate(invoice_data.get("lineas", [])[:10], 1):  # Mostrar máximo 10 líneas
+                        mensaje_chatter += f"<li><b>Línea {idx}:</b> "
+                        if linea.get("articulo"):
+                            mensaje_chatter += f"Art. {linea.get('articulo')} - "
+                        if linea.get("descripcion"):
+                            mensaje_chatter += f"{linea.get('descripcion')[:50]}"
+                            if len(linea.get("descripcion", "")) > 50:
+                                mensaje_chatter += "..."
+                        if linea.get("cantidad"):
+                            mensaje_chatter += f" | Cantidad: {linea.get('cantidad')}"
+                        if linea.get("partida"):
+                            mensaje_chatter += f" | H.S.: {linea.get('partida')}"
+                        if linea.get("total"):
+                            mensaje_chatter += f" | Total: {linea.get('total')} {invoice_data.get('moneda', 'EUR')}"
+                        mensaje_chatter += "</li>"
+                    mensaje_chatter += "</ul>"
+                    if len(invoice_data.get("lineas", [])) > 10:
+                        mensaje_chatter += _("<i>(Mostrando las primeras 10 líneas de {0} totales)</i><br/>").format(len(invoice_data.get("lineas", [])))
+                    mensaje_chatter += "<br/>"
+                
+                # Advertencias si las hay
                 if advertencias:
-                    mensaje_body += "\n\n" + _("Advertencias:\n%s") % "\n".join(advertencias)
+                    mensaje_chatter += _("<b>⚠️ Advertencias:</b><br/>")
+                    mensaje_chatter += "<ul>"
+                    for adv in advertencias:
+                        mensaje_chatter += f"<li>{adv}</li>"
+                    mensaje_chatter += "</ul><br/>"
+                
+                # Método usado
+                if invoice_data.get("metodo_usado"):
+                    mensaje_chatter += _("<i>Método de extracción: {0}</i>").format(invoice_data.get("metodo_usado"))
                 
                 rec.message_post(
-                    body=mensaje_body,
+                    body=mensaje_chatter,
                     subtype_xmlid='mail.mt_note'
                 )
                 
@@ -776,8 +906,15 @@ class AduanaExpediente(models.Model):
                     "context": dict(self.env.context),
                 }
             except UserError as ue:
-                # Guardar estado de error y recargar vista
+                # Guardar estado de error y mensaje
+                error_msg = str(ue)
                 rec.factura_estado_procesamiento = "error"
+                rec.factura_mensaje_error = error_msg
+                rec.message_post(
+                    body=_("Error al procesar factura: %s") % error_msg,
+                    subtype_xmlid='mail.mt_note'
+                )
+                _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario
                 return {
@@ -790,13 +927,14 @@ class AduanaExpediente(models.Model):
             except Exception as e:
                 error_msg = str(e)
                 rec.factura_estado_procesamiento = "error"
-                rec.factura_mensaje_error = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible") % error_msg
+                # Mensaje de error más detallado
+                mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
+                rec.factura_mensaje_error = mensaje_error_detallado
                 rec.message_post(
-                    body=_("Error al procesar factura: %s") % error_msg,
+                    body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
                     subtype_xmlid='mail.mt_note'
                 )
                 _logger.exception("Error al procesar factura PDF: %s", e)
-                # Forzar recarga del registro
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario
                 return {
@@ -807,59 +945,38 @@ class AduanaExpediente(models.Model):
                     "target": "current",
                 }
 
-    def action_auto_generate_dua(self):
+    def action_generate_dua(self):
         """
-        Procesa la factura PDF, rellena la expedición y genera el DUA automáticamente.
-        Este es el flujo principal: Factura → Procesar → Generar DUA
+        Genera el DUA (CC515C para exportación) sin procesar la factura.
+        Requiere que los datos del expediente estén completos.
         """
         for rec in self:
-            # Validar que hay factura
-            if not rec.factura_pdf:
-                raise UserError(_("Debe subir una factura PDF primero. Este es el punto de partida del expediente."))
+            # Validar que es exportación
+            if rec.direction != "export":
+                raise UserError(_("Este botón solo genera DUA de exportación. Para importación, use 'Generar Declaración'."))
             
-            # Procesar la factura si no está procesada
-            if not rec.factura_procesada:
-                rec.action_process_invoice_pdf()
-            
-            # Validar que tenemos los datos mínimos después del procesamiento
+            # Validar datos mínimos necesarios
             if not rec.remitente:
-                raise UserError(_("No se pudo extraer el remitente de la factura. Por favor, complételo manualmente."))
+                raise UserError(_("Debe especificar el remitente antes de generar el DUA."))
             
             if not rec.consignatario:
-                raise UserError(_("No se pudo extraer el consignatario de la factura. Por favor, complételo manualmente."))
+                raise UserError(_("Debe especificar el consignatario antes de generar el DUA."))
             
-            # Validar que hay líneas si son necesarias
             if not rec.line_ids:
-                rec.message_post(
-                    body=_("Advertencia: No se extrajeron líneas de productos de la factura. Puede que necesites agregarlas manualmente."),
-                    subtype_xmlid='mail.mt_note'
-                )
+                raise UserError(_("Debe agregar al menos una línea de producto antes de generar el DUA."))
             
-            # Determinar qué tipo de DUA generar según la dirección
-            if rec.direction == "export":
-                # Generar y enviar CC515C (exportación)
-                rec.action_generate_cc515c()
-                rec.message_post(
-                    body=_("DUA de exportación (CC515C) generado automáticamente desde la factura."),
-                    subtype_xmlid='mail.mt_note'
-                )
-            elif rec.direction == "import":
-                # Generar declaración de importación
-                rec.action_generate_imp_decl()
-                rec.message_post(
-                    body=_("DUA de importación generado automáticamente desde la factura."),
-                    subtype_xmlid='mail.mt_note'
-                )
-            else:
-                raise UserError(_("Debe especificar el sentido (export/import) antes de generar el DUA."))
+            # Generar DUA en formato CUSDEC EX1 (formato oficial)
+            rec.action_generate_cc515c()
+            rec.message_post(
+                body=_("DUA de exportación (CUSDEC EX1) generado."),
+                subtype_xmlid='mail.mt_note'
+            )
             
+            rec.invalidate_recordset()
             return {
-                "type": "ir.actions.client",
-                "tag": "display_notification",
-                "params": {
-                    "title": _("DUA Generado"),
-                    "message": _("El DUA se ha generado automáticamente desde la factura."),
-                    "type": "success",
-                    "sticky": False,
-                }
+                "type": "ir.actions.act_window",
+                "res_model": "aduana.expediente",
+                "res_id": rec.id,
+                "view_mode": "form",
+                "target": "current",
             }
