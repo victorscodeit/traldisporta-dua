@@ -26,6 +26,30 @@ class InvoiceOCRService(models.AbstractModel):
                 "texto_extraido": ""
             }
         
+        # Guardar pdf_data como atributo para usar en métodos internos
+        self.pdf_data = pdf_data
+        
+        # Validar que el PDF no esté vacío o corrupto
+        try:
+            if isinstance(pdf_data, str):
+                pdf_bytes = base64.b64decode(pdf_data)
+            else:
+                pdf_bytes = pdf_data
+            
+            # Validar que es un PDF válido (debe empezar con %PDF)
+            if len(pdf_bytes) < 4 or not pdf_bytes[:4].startswith(b'%PDF'):
+                return {
+                    "error": _("El archivo no parece ser un PDF válido. Verifica que el archivo esté correcto."),
+                    "texto_extraido": "",
+                    "metodo_usado": "Error de validación"
+                }
+        except Exception as e:
+            return {
+                "error": _("Error al procesar el archivo PDF: %s\n\nVerifica que el archivo no esté corrupto.") % str(e),
+                "texto_extraido": "",
+                "metodo_usado": "Error de validación"
+            }
+        
         # Obtener API key de configuración si no se proporciona
         if not api_key:
             api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.google_vision_api_key')
@@ -35,7 +59,7 @@ class InvoiceOCRService(models.AbstractModel):
         
         if api_key:
             try:
-                resultado = self._extract_with_google_vision(pdf_data, api_key)
+                resultado = self._extract_with_google_vision(api_key)
                 metodo_usado = "Google Vision"
             except Exception as e:
                 _logger.warning("Error con Google Vision, intentando OCR alternativo: %s", e)
@@ -89,6 +113,14 @@ class InvoiceOCRService(models.AbstractModel):
         import os
         import json
         import requests
+        
+        # Asegurar que pdf_data esté disponible
+        if not hasattr(self, 'pdf_data') or not self.pdf_data:
+            raise ValueError("pdf_data no está disponible")
+        
+        # Asegurar que pdf_data esté disponible
+        if not hasattr(self, 'pdf_data') or not self.pdf_data:
+            raise ValueError("pdf_data no está disponible. Debe inicializarse antes de llamar a este método.")
         
         # Convertir base64 a bytes si es necesario
         if isinstance(self.pdf_data, str):
@@ -158,6 +190,8 @@ class InvoiceOCRService(models.AbstractModel):
             return self._extract_with_vision_client(client, pdf_bytes)
         except Exception as cred_error:
             _logger.warning("Error al inicializar Google Vision client: %s. Usando OCR alternativo.", cred_error)
+            if not hasattr(self, 'pdf_data') or not self.pdf_data:
+                raise ValueError("pdf_data no está disponible para fallback")
             return self._extract_with_fallback_ocr(self.pdf_data)
     
     def _extract_with_rest_api(self, api_key, pdf_bytes):
@@ -202,6 +236,9 @@ class InvoiceOCRService(models.AbstractModel):
             
             if not full_text:
                 _logger.warning("Google Vision REST API no extrajo texto. Usando OCR alternativo.")
+                # Asegurar que pdf_data esté disponible
+                if not hasattr(self, 'pdf_data') or not self.pdf_data:
+                    raise ValueError("pdf_data no está disponible para fallback")
                 return self._extract_with_fallback_ocr(self.pdf_data)
             
             # Parsear datos de la factura
@@ -234,12 +271,16 @@ class InvoiceOCRService(models.AbstractModel):
             # Si no hay texto, usar OCR alternativo
             if not full_text:
                 _logger.info("Google Vision no extrajo texto del PDF, usando OCR alternativo.")
+                if not hasattr(self, 'pdf_data') or not self.pdf_data:
+                    raise ValueError("pdf_data no está disponible para fallback")
                 return self._extract_with_fallback_ocr(self.pdf_data)
             
             # Parsear datos de la factura
             return self._parse_invoice_text(full_text)
         except Exception as proc_error:
             _logger.warning("Error procesando con Google Vision: %s. Usando OCR alternativo.", proc_error)
+            if not hasattr(self, 'pdf_data') or not self.pdf_data:
+                raise ValueError("pdf_data no está disponible para fallback")
             return self._extract_with_fallback_ocr(self.pdf_data)
 
     def _extract_with_fallback_ocr(self, pdf_data):
@@ -255,6 +296,10 @@ class InvoiceOCRService(models.AbstractModel):
                 pdf_bytes = base64.b64decode(pdf_data)
             else:
                 pdf_bytes = pdf_data
+            
+            # Validar que es un PDF válido antes de procesar
+            if not pdf_bytes[:4].startswith(b'%PDF'):
+                raise ValueError(_("El archivo no es un PDF válido"))
             
             # Extraer texto del PDF
             full_text = ""
@@ -276,6 +321,10 @@ class InvoiceOCRService(models.AbstractModel):
                 else:
                     pdf_bytes = pdf_data
                 
+                # Validar que es un PDF válido
+                if not pdf_bytes[:4].startswith(b'%PDF'):
+                    raise ValueError(_("El archivo no es un PDF válido"))
+                
                 full_text = ""
                 pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
                 for page in pdf_reader.pages:
@@ -285,9 +334,19 @@ class InvoiceOCRService(models.AbstractModel):
                 
             except ImportError:
                 raise UserError(_("Se requiere instalar pdfplumber o PyPDF2 para procesar PDFs. Ejecute: pip install pdfplumber"))
+            except Exception as pdf_error:
+                _logger.exception("Error con PyPDF2: %s", pdf_error)
+                raise UserError(_("Error al procesar el PDF con PyPDF2: %s\n\nEl archivo puede estar corrupto o no ser un PDF válido.") % str(pdf_error))
+        except ValueError as ve:
+            # Error de validación de PDF
+            _logger.exception("Error de validación de PDF: %s", ve)
+            raise UserError(str(ve))
         except Exception as e:
             _logger.exception("Error al extraer texto del PDF: %s", e)
-            raise UserError(_("Error al procesar el PDF: %s") % str(e))
+            error_msg = str(e)
+            if "No /Root object" in error_msg or "not a PDF" in error_msg.lower():
+                raise UserError(_("El archivo no es un PDF válido o está corrupto. Por favor, verifica el archivo e intenta de nuevo."))
+            raise UserError(_("Error al procesar el PDF: %s\n\nPosibles causas:\n- El PDF está corrupto\n- El PDF está protegido o encriptado\n- El formato no es compatible") % error_msg)
 
     def _parse_invoice_text(self, text):
         """
