@@ -1,1 +1,1 @@
-from . import aeat_client
+from . import aeat_client, invoice_ocr_service

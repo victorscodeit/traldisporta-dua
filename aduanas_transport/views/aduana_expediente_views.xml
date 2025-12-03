@@ -53,6 +53,15 @@
                   invisible="not id or direction != 'import'"/>
 
           <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
+          
+          <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
+                  class="oe_highlight"
+                  invisible="not factura_pdf or factura_procesada"
+                  help="Extrae datos de la factura PDF usando IA/OCR"/>
+          <button name="action_auto_generate_dua" string="Procesar Factura y Generar DUA" type="object"
+                  class="oe_highlight"
+                  invisible="not factura_pdf"
+                  help="Procesa la factura y genera el DUA automáticamente"/>
 
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
@@ -160,6 +169,17 @@
                   <field name="origen"/>
                 </tree>
               </field>
+            </page>
+
+            <page string="Factura PDF">
+              <group string="Factura Comercial">
+                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
+                <field name="factura_pdf_filename" invisible="1"/>
+                <field name="factura_procesada" readonly="1"/>
+                <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
+                       invisible="not factura_datos_extraidos"
+                       placeholder="Los datos extraídos de la factura aparecerán aquí después del procesamiento..."/>
+              </group>
             </page>
 
             <page string="Totales">

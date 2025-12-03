@@ -24,13 +24,29 @@ class ResConfigSettings(models.TransientModel):
     msoft_db = fields.Char(string="MSoft DB", config_parameter="aduanas_transport.msoft.db")
     msoft_user = fields.Char(string="MSoft User", config_parameter="aduanas_transport.msoft.user")
     msoft_pass = fields.Char(string="MSoft Pass", config_parameter="aduanas_transport.msoft.pass")
+    
+    # Google Vision API para OCR de facturas
+    google_vision_api_key = fields.Char(
+        string="Google Vision Credenciales", 
+        config_parameter="aduanas_transport.google_vision_api_key",
+        help="Ruta al archivo JSON de Service Account de Google Cloud Vision (ej: /path/to/credentials.json) "
+             "o contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2). "
+             "Ver: https://cloud.google.com/vision/docs/setup")
 
     @api.model
     def get_values(self):
         res = super().get_values()
         icp = self.env["ir.config_parameter"].sudo()
         attach_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
-        res.update(cert_attachment_id=attach_id)
+        if attach_id:
+            # Convertir ID a recordset para Many2one
+            attachment = self.env["ir.attachment"].browse(attach_id)
+            if attachment.exists():
+                res.update(cert_attachment_id=attachment)
+            else:
+                res.update(cert_attachment_id=False)
+        else:
+            res.update(cert_attachment_id=False)
         return res
 
     def set_values(self):

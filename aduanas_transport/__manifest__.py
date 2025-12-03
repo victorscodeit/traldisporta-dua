@@ -20,6 +20,9 @@
     "external_dependencies": {
         "python": ["requests"],
     },
+    "external_dependencies_optional": {
+        "python": ["pdfplumber", "PyPDF2", "google-cloud-vision"],
+    },
     "assets": {},
     "application": True,
     "installable": True,

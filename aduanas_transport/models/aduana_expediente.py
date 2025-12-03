@@ -107,6 +107,12 @@ class AduanaExpediente(models.Model):
     # Oficinas adicionales
     oficina_destino = fields.Char(string="Oficina Aduanas Destino")
     
+    # Factura PDF y procesamiento IA
+    factura_pdf = fields.Binary(string="Factura PDF", help="Sube la factura PDF para extraer datos automáticamente")
+    factura_pdf_filename = fields.Char(string="Nombre Archivo Factura")
+    factura_procesada = fields.Boolean(string="Factura Procesada", default=False, help="Indica si la factura ha sido procesada con IA")
+    factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
+    
     # Incidencias
     incidencia_ids = fields.One2many("aduana.incidencia", "expediente_id", string="Incidencias")
     incidencias_count = fields.Integer(string="Nº Incidencias", compute="_compute_incidencias_count", store=True)
@@ -640,3 +646,96 @@ class AduanaExpediente(models.Model):
             "url": f"/web/content/{att.id}?download=1",
             "target": "self",
         }
+
+    # ===== Procesamiento de Factura PDF con IA/OCR =====
+    def action_process_invoice_pdf(self):
+        """
+        Procesa la factura PDF adjunta, extrae datos con OCR/IA y rellena la expedición.
+        """
+        for rec in self:
+            if not rec.factura_pdf:
+                raise UserError(_("No hay factura PDF adjunta para procesar"))
+            
+            # Obtener servicio OCR
+            ocr_service = self.env["aduanas.invoice.ocr.service"]
+            
+            # Extraer datos de la factura
+            try:
+                invoice_data = ocr_service.extract_invoice_data(rec.factura_pdf)
+                
+                # Rellenar expediente con datos extraídos
+                ocr_service.fill_expediente_from_invoice(rec, invoice_data)
+                
+                # Mensaje de éxito
+                rec.message_post(
+                    body=_("Factura procesada correctamente. Datos extraídos:\n- Número: %s\n- Valor: %s %s\n- Remitente: %s\n- Consignatario: %s") % (
+                        invoice_data.get("numero_factura", "N/A"),
+                        invoice_data.get("valor_total", 0),
+                        invoice_data.get("moneda", "EUR"),
+                        invoice_data.get("remitente_nombre", "N/A"),
+                        invoice_data.get("consignatario_nombre", "N/A"),
+                    ),
+                    subtype='mail.mt_note'
+                )
+                
+                return {
+                    "type": "ir.actions.client",
+                    "tag": "display_notification",
+                    "params": {
+                        "title": _("Factura Procesada"),
+                        "message": _("La factura se ha procesado correctamente y los datos se han extraído."),
+                        "type": "success",
+                        "sticky": False,
+                    }
+                }
+            except Exception as e:
+                rec.message_post(
+                    body=_("Error al procesar factura: %s") % str(e),
+                    subtype='mail.mt_note'
+                )
+                raise UserError(_("Error al procesar la factura: %s") % str(e))
+
+    def action_auto_generate_dua(self):
+        """
+        Procesa la factura PDF, rellena la expedición y genera el DUA automáticamente.
+        """
+        for rec in self:
+            # Primero procesar la factura si no está procesada
+            if not rec.factura_procesada and rec.factura_pdf:
+                rec.action_process_invoice_pdf()
+            
+            # Validar que tenemos los datos mínimos
+            if not rec.remitente:
+                raise UserError(_("Debe especificar un remitente. Procese la factura primero o complételo manualmente."))
+            
+            if not rec.consignatario:
+                raise UserError(_("Debe especificar un consignatario. Procese la factura primero o complételo manualmente."))
+            
+            # Determinar qué tipo de DUA generar según la dirección
+            if rec.direction == "export":
+                # Generar y enviar CC515C (exportación)
+                rec.action_generate_cc515c()
+                rec.message_post(
+                    body=_("DUA de exportación (CC515C) generado automáticamente desde la factura."),
+                    subtype='mail.mt_note'
+                )
+            elif rec.direction == "import":
+                # Generar declaración de importación
+                rec.action_generate_imp_decl()
+                rec.message_post(
+                    body=_("DUA de importación generado automáticamente desde la factura."),
+                    subtype='mail.mt_note'
+                )
+            else:
+                raise UserError(_("Debe especificar el sentido (export/import) antes de generar el DUA."))
+            
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("DUA Generado"),
+                    "message": _("El DUA se ha generado automáticamente desde la factura."),
+                    "type": "success",
+                    "sticky": False,
+                }
+            }
