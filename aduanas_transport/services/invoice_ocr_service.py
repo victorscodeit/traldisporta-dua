@@ -26,9 +26,6 @@ class InvoiceOCRService(models.AbstractModel):
                 "texto_extraido": ""
             }
         
-        # Guardar pdf_data como atributo para usar en métodos internos
-        self.pdf_data = pdf_data
-        
         # Validar que el PDF no esté vacío o corrupto
         try:
             if isinstance(pdf_data, str):
@@ -59,7 +56,7 @@ class InvoiceOCRService(models.AbstractModel):
         
         if api_key:
             try:
-                resultado = self._extract_with_google_vision(api_key)
+                resultado = self._extract_with_google_vision(api_key, pdf_data)
                 metodo_usado = "Google Vision"
             except Exception as e:
                 _logger.warning("Error con Google Vision, intentando OCR alternativo: %s", e)
@@ -97,7 +94,7 @@ class InvoiceOCRService(models.AbstractModel):
         
         return resultado
 
-    def _extract_with_google_vision(self, api_key_or_path):
+    def _extract_with_google_vision(self, api_key_or_path, pdf_data):
         """
         Extrae datos usando Google Cloud Vision API.
         Requiere: pip install google-cloud-vision
@@ -109,24 +106,22 @@ class InvoiceOCRService(models.AbstractModel):
         
         Para API keys directas, se usa la API REST de Google Vision.
         Para Service Account JSON, se usa el cliente de Python.
+        
+        :param api_key_or_path: API key o ruta a archivo JSON
+        :param pdf_data: Datos binarios del PDF (base64 o bytes)
         """
         import os
         import json
         import requests
         
-        # Asegurar que pdf_data esté disponible
-        if not hasattr(self, 'pdf_data') or not self.pdf_data:
-            raise ValueError("pdf_data no está disponible")
-        
-        # Asegurar que pdf_data esté disponible
-        if not hasattr(self, 'pdf_data') or not self.pdf_data:
-            raise ValueError("pdf_data no está disponible. Debe inicializarse antes de llamar a este método.")
+        if not pdf_data:
+            raise ValueError("pdf_data no puede estar vacío")
         
         # Convertir base64 a bytes si es necesario
-        if isinstance(self.pdf_data, str):
-            pdf_bytes = base64.b64decode(self.pdf_data)
+        if isinstance(pdf_data, str):
+            pdf_bytes = base64.b64decode(pdf_data)
         else:
-            pdf_bytes = self.pdf_data
+            pdf_bytes = pdf_data
         
         # Determinar el tipo de credencial
         api_key = None
@@ -145,7 +140,7 @@ class InvoiceOCRService(models.AbstractModel):
                 credentials = service_account.Credentials.from_service_account_file(api_key_or_path)
                 client = vision.ImageAnnotatorClient(credentials=credentials)
                 _logger.info("Usando Google Vision con Service Account JSON")
-                return self._extract_with_vision_client(client, pdf_bytes)
+                return self._extract_with_vision_client(client, pdf_bytes, pdf_data)
             except Exception as cred_error:
                 _logger.warning("Error con Service Account JSON: %s. Intentando como API key.", cred_error)
                 # Intentar como API key si falla
@@ -163,7 +158,7 @@ class InvoiceOCRService(models.AbstractModel):
                     credentials = service_account.Credentials.from_service_account_info(creds_dict)
                     client = vision.ImageAnnotatorClient(credentials=credentials)
                     _logger.info("Usando Google Vision con Service Account JSON (string)")
-                    return self._extract_with_vision_client(client, pdf_bytes)
+                    return self._extract_with_vision_client(client, pdf_bytes, pdf_data)
                 else:
                     # Intentar extraer API key del JSON
                     api_key = creds_dict.get('api_key') or creds_dict.get('key')
@@ -181,18 +176,19 @@ class InvoiceOCRService(models.AbstractModel):
             
             # Usar API REST de Google Vision con API key
             _logger.info("Usando Google Vision con API key directa (REST API)")
-            return self._extract_with_rest_api(api_key, pdf_bytes)
+            # Guardar pdf_data original para posibles fallbacks
+            pdf_data_original = pdf_data if isinstance(pdf_data, str) else base64.b64encode(pdf_data).decode('utf-8')
+            return self._extract_with_rest_api(api_key, pdf_bytes, pdf_data_original)
         
         # Si llegamos aquí y no hay client, intentar sin credenciales explícitas
         try:
             from google.cloud import vision
             client = vision.ImageAnnotatorClient()
-            return self._extract_with_vision_client(client, pdf_bytes)
+            return self._extract_with_vision_client(client, pdf_bytes, pdf_data)
         except Exception as cred_error:
-            _logger.warning("Error al inicializar Google Vision client: %s. Usando OCR alternativo.", cred_error)
-            if not hasattr(self, 'pdf_data') or not self.pdf_data:
-                raise ValueError("pdf_data no está disponible para fallback")
-            return self._extract_with_fallback_ocr(self.pdf_data)
+            _logger.warning("Error al inicializar Google Vision client: %s", cred_error)
+            # Re-lanzar para que el método padre maneje el fallback
+            raise
     
     def _extract_with_rest_api(self, api_key, pdf_bytes):
         """
@@ -236,10 +232,9 @@ class InvoiceOCRService(models.AbstractModel):
             
             if not full_text:
                 _logger.warning("Google Vision REST API no extrajo texto. Usando OCR alternativo.")
-                # Asegurar que pdf_data esté disponible
-                if not hasattr(self, 'pdf_data') or not self.pdf_data:
-                    raise ValueError("pdf_data no está disponible para fallback")
-                return self._extract_with_fallback_ocr(self.pdf_data)
+                # Necesitamos pasar pdf_data original, no pdf_bytes
+                # Recuperar desde el contexto de llamada
+                raise Exception(_("Google Vision no extrajo texto. Se intentará con OCR alternativo."))
             
             # Parsear datos de la factura
             return self._parse_invoice_text(full_text)
@@ -251,9 +246,13 @@ class InvoiceOCRService(models.AbstractModel):
             _logger.exception("Error procesando respuesta de Google Vision: %s", e)
             raise
     
-    def _extract_with_vision_client(self, client, pdf_bytes):
+    def _extract_with_vision_client(self, client, pdf_bytes, pdf_data_original=None):
         """
         Extrae texto usando el cliente de Python de Google Vision (para Service Account).
+        
+        :param client: Cliente de Google Vision
+        :param pdf_bytes: Datos binarios del PDF (bytes)
+        :param pdf_data_original: Datos originales del PDF (para fallback si es necesario)
         """
         from google.cloud import vision
         
@@ -268,20 +267,17 @@ class InvoiceOCRService(models.AbstractModel):
             # Extraer texto completo
             full_text = response.full_text_annotation.text if response.full_text_annotation else ""
             
-            # Si no hay texto, usar OCR alternativo
+            # Si no hay texto, lanzar excepción para que se use OCR alternativo
             if not full_text:
-                _logger.info("Google Vision no extrajo texto del PDF, usando OCR alternativo.")
-                if not hasattr(self, 'pdf_data') or not self.pdf_data:
-                    raise ValueError("pdf_data no está disponible para fallback")
-                return self._extract_with_fallback_ocr(self.pdf_data)
+                _logger.info("Google Vision no extrajo texto del PDF.")
+                raise Exception(_("Google Vision no extrajo texto. Se intentará con OCR alternativo."))
             
             # Parsear datos de la factura
             return self._parse_invoice_text(full_text)
         except Exception as proc_error:
-            _logger.warning("Error procesando con Google Vision: %s. Usando OCR alternativo.", proc_error)
-            if not hasattr(self, 'pdf_data') or not self.pdf_data:
-                raise ValueError("pdf_data no está disponible para fallback")
-            return self._extract_with_fallback_ocr(self.pdf_data)
+            _logger.warning("Error procesando con Google Vision: %s", proc_error)
+            # Re-lanzar para que el método padre maneje el fallback
+            raise
 
     def _extract_with_fallback_ocr(self, pdf_data):
         """
