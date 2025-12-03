@@ -28,10 +28,27 @@ class InvoiceOCRService(models.AbstractModel):
         
         # Validar que el PDF no esté vacío o corrupto
         try:
-            # En Odoo, los campos Binary siempre vienen como string base64
+            # En Odoo, los campos Binary pueden venir como string base64 o ya decodificados
             if isinstance(pdf_data, str):
                 try:
+                    # Intentar decodificar base64
                     pdf_bytes = base64.b64decode(pdf_data)
+                    # Verificar si después de decodificar sigue siendo base64 (doble encoding)
+                    # Los PDFs válidos empiezan con %PDF, pero si está doblemente codificado,
+                    # después de la primera decodificación tendremos algo que empieza con JVBERi...
+                    if isinstance(pdf_bytes, bytes) and len(pdf_bytes) > 0:
+                        # Verificar si los primeros bytes son base64 válido (empiezan con JVBER)
+                        try:
+                            first_chars = pdf_bytes[:10].decode('utf-8', errors='ignore')
+                            # JVBERi es el inicio de un PDF cuando está codificado en base64
+                            if first_chars.startswith('JVBER') or first_chars.startswith('JVBERi'):
+                                # Es base64 doblemente codificado, decodificar de nuevo
+                                _logger.info("Detectado doble encoding base64 (empieza con %s), decodificando de nuevo...", first_chars[:10])
+                                pdf_bytes = base64.b64decode(pdf_bytes)
+                                _logger.info("Doble decodificación exitosa. Primeros bytes ahora: %s", pdf_bytes[:20].hex() if len(pdf_bytes) >= 20 else pdf_bytes.hex())
+                        except Exception as double_decode_error:
+                            _logger.debug("No es doble encoding o error al verificar: %s", double_decode_error)
+                            # Continuar con pdf_bytes tal cual
                 except Exception as decode_error:
                     _logger.error("Error al decodificar base64: %s. Primeros 100 caracteres: %s", decode_error, pdf_data[:100] if pdf_data else "None")
                     return {
@@ -54,18 +71,49 @@ class InvoiceOCRService(models.AbstractModel):
             # Validar que es un PDF válido (debe empezar con %PDF)
             # Algunos PDFs pueden tener espacios en blanco al inicio, así que los eliminamos
             pdf_start = pdf_bytes[:10].strip()
-            if not pdf_start.startswith(b'%PDF'):
-                # Intentar buscar %PDF en los primeros 1024 bytes (algunos PDFs tienen headers adicionales)
-                found_pdf = False
-                for i in range(min(1024, len(pdf_bytes) - 4)):
+            pdf_valid = False
+            pdf_offset = 0
+            
+            # Verificar si empieza directamente con %PDF
+            if pdf_bytes[:4] == b'%PDF':
+                pdf_valid = True
+                _logger.info("PDF válido: empieza directamente con %%PDF")
+            else:
+                # Intentar buscar %PDF en los primeros 2048 bytes (algunos PDFs tienen headers adicionales)
+                search_range = min(2048, len(pdf_bytes) - 4)
+                for i in range(search_range):
                     if pdf_bytes[i:i+4] == b'%PDF':
-                        found_pdf = True
+                        pdf_valid = True
+                        pdf_offset = i
                         _logger.info("PDF válido encontrado en posición %d (después de %d bytes de header)", i, i)
+                        # Si hay offset, recortar el header
+                        if i > 0:
+                            pdf_bytes = pdf_bytes[i:]
                         break
                 
-                if not found_pdf:
-                    _logger.warning("PDF no válido. Primeros 50 bytes (hex): %s", pdf_bytes[:50].hex() if len(pdf_bytes) >= 50 else pdf_bytes.hex())
-                    _logger.warning("Primeros 50 bytes (ascii): %s", repr(pdf_bytes[:50]) if len(pdf_bytes) >= 50 else repr(pdf_bytes))
+                # Si aún no se encuentra, intentar buscar en todo el archivo (más lento pero más permisivo)
+                if not pdf_valid and len(pdf_bytes) > 4:
+                    _logger.warning("No se encontró %%PDF en los primeros %d bytes. Buscando en todo el archivo...", search_range)
+                    # Buscar en bloques más grandes
+                    for i in range(0, min(len(pdf_bytes) - 4, 10000), 100):  # Buscar cada 100 bytes hasta 10KB
+                        if pdf_bytes[i:i+4] == b'%PDF':
+                            pdf_valid = True
+                            pdf_offset = i
+                            _logger.info("PDF válido encontrado en posición %d después de búsqueda extendida", i)
+                            if i > 0:
+                                pdf_bytes = pdf_bytes[i:]
+                            break
+            
+            if not pdf_valid:
+                # Log detallado para diagnóstico
+                _logger.error("PDF no válido detectado. Tamaño: %d bytes", len(pdf_bytes))
+                _logger.error("Primeros 100 bytes (hex): %s", pdf_bytes[:100].hex() if len(pdf_bytes) >= 100 else pdf_bytes.hex())
+                _logger.error("Primeros 100 bytes (repr): %s", repr(pdf_bytes[:100]) if len(pdf_bytes) >= 100 else repr(pdf_bytes))
+                # Intentar procesar de todas formas si el tamaño es razonable (puede ser un PDF con formato no estándar)
+                if len(pdf_bytes) > 100:  # Si tiene un tamaño razonable, intentar procesarlo de todas formas
+                    _logger.warning("Archivo no tiene header %%PDF estándar pero tiene tamaño razonable (%d bytes). Intentando procesar de todas formas...", len(pdf_bytes))
+                    # No retornar error, continuar con el procesamiento
+                else:
                     return {
                         "error": _("El archivo no parece ser un PDF válido. Verifica que el archivo esté correcto.\n\nSi es una imagen escaneada, asegúrate de que esté en formato PDF, no JPG/PNG."),
                         "texto_extraido": "",
@@ -79,6 +127,10 @@ class InvoiceOCRService(models.AbstractModel):
                 "metodo_usado": "Error de validación"
             }
         
+        # Guardar pdf_bytes para usar en los métodos de extracción
+        # (necesitamos pasar tanto pdf_data original como pdf_bytes procesado)
+        pdf_data_for_methods = pdf_data if isinstance(pdf_data, str) else base64.b64encode(pdf_bytes).decode('utf-8')
+        
         # Obtener API key de configuración si no se proporciona
         if not api_key:
             api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.google_vision_api_key')
@@ -88,7 +140,8 @@ class InvoiceOCRService(models.AbstractModel):
         
         if api_key:
             try:
-                resultado = self._extract_with_google_vision(api_key, pdf_data)
+                # Pasar pdf_data original (base64) para que pueda ser usado en fallbacks
+                resultado = self._extract_with_google_vision(api_key, pdf_data_for_methods)
                 metodo_usado = "Google Vision"
             except Exception as e:
                 _logger.warning("Error con Google Vision, intentando OCR alternativo: %s", e)
