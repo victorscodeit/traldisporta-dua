@@ -124,8 +124,11 @@ class InvoiceOCRService(models.AbstractModel):
 
     def _extract_with_openai_vision(self, api_key, pdf_bytes):
         """
-        Extrae datos usando OpenAI GPT-4o Vision con splitting por páginas.
-        Requiere: pip install openai pdf2image Pillow
+        Extrae datos usando OpenAI GPT-4o Vision convirtiendo PDF a imágenes.
+        Requiere: pip install openai PyMuPDF
+        
+        OpenAI solo acepta imágenes (no PDFs directamente), por lo que necesitamos
+        convertir cada página del PDF a imagen antes de enviarla.
         
         :param api_key: API key de OpenAI
         :param pdf_bytes: Datos binarios del PDF (bytes)
@@ -133,8 +136,7 @@ class InvoiceOCRService(models.AbstractModel):
         """
         try:
             from openai import OpenAI
-            from pdf2image import convert_from_bytes
-            import io
+            import fitz  # PyMuPDF
             
             if not api_key:
                 raise ValueError("API key de OpenAI no proporcionada")
@@ -142,30 +144,36 @@ class InvoiceOCRService(models.AbstractModel):
             # Inicializar cliente de OpenAI
             client = OpenAI(api_key=api_key)
             
-            # Convertir PDF a imágenes (una por página)
+            # Abrir PDF y convertir a imágenes
             _logger.info("Convirtiendo PDF a imágenes por páginas...")
             try:
-                images = convert_from_bytes(pdf_bytes, dpi=200)  # 200 DPI para buena calidad
-                _logger.info("PDF convertido a %d página(s)", len(images))
-            except Exception as img_error:
-                _logger.error("Error al convertir PDF a imágenes: %s", img_error)
-                raise Exception(_("Error al convertir PDF a imágenes. Verifica que pdf2image y poppler estén instalados."))
-            
-            if not images:
-                raise Exception(_("No se pudieron extraer imágenes del PDF"))
+                pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+                num_pages = len(pdf_document)
+                _logger.info("PDF abierto: %d página(s)", num_pages)
+                
+                if num_pages == 0:
+                    raise Exception(_("El PDF no tiene páginas"))
+                
+            except Exception as pdf_error:
+                _logger.error("Error al abrir PDF: %s", pdf_error)
+                raise Exception(_("Error al abrir el PDF. Verifica que el archivo sea un PDF válido."))
             
             # Procesar cada página con GPT-4o Vision
             all_texts = []
-            for page_num, image in enumerate(images, 1):
-                _logger.info("Procesando página %d/%d con GPT-4o Vision...", page_num, len(images))
+            for page_num in range(num_pages):
+                _logger.info("Procesando página %d/%d con GPT-4o Vision...", page_num + 1, num_pages)
                 
-                # Convertir imagen a base64
-                img_buffer = io.BytesIO()
-                image.save(img_buffer, format='PNG')
-                img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
-                
-                # Llamar a OpenAI Vision API
                 try:
+                    # Obtener página y convertir a imagen PNG
+                    page = pdf_document[page_num]
+                    mat = fitz.Matrix(200/72, 200/72)  # 200 DPI para buena calidad
+                    pix = page.get_pixmap(matrix=mat)
+                    
+                    # Convertir a base64
+                    img_bytes = pix.tobytes("png")
+                    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                    
+                    # Llamar a OpenAI Vision API con prompt específico para contexto legal/administrativo
                     response = client.chat.completions.create(
                         model="gpt-4o",
                         messages=[
@@ -174,7 +182,13 @@ class InvoiceOCRService(models.AbstractModel):
                                 "content": [
                                     {
                                         "type": "text",
-                                        "text": "Extrae todo el texto de esta factura. Incluye números de factura, fechas, NIFs/CIFs, importes, direcciones, países, incoterms, y cualquier otro dato relevante. Devuelve el texto completo tal como aparece en la factura."
+                                        "text": "Eres un asistente de procesamiento documental para una empresa de logística y aduanas.\n\n"
+                                                "El documento proporcionado es una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
+                                                "La extracción que vas a hacer es para un proceso legal obligatorio.\n\n"
+                                                "No devuelvas la imagen completa ni reproduzcas el documento.\n"
+                                                "Simplemente transcribe el texto visible, incluyendo: números de factura, fechas, direcciones, detalles de mercancía, bultos y totales.\n\n"
+                                                "La extracción es estrictamente con fines administrativos y está permitida.\n"
+                                                "Devuelve únicamente el texto, sin notas adicionales."
                                     },
                                     {
                                         "type": "image_url",
@@ -191,19 +205,25 @@ class InvoiceOCRService(models.AbstractModel):
                     page_text = response.choices[0].message.content
                     if page_text:
                         all_texts.append(page_text)
-                        _logger.info("Texto extraído de página %d: %d caracteres", page_num, len(page_text))
+                        _logger.info("Texto extraído de página %d: %d caracteres", page_num + 1, len(page_text))
+                    
+                    # Limpiar memoria
+                    pix = None
                     
                 except Exception as api_error:
-                    _logger.error("Error al procesar página %d con OpenAI: %s", page_num, api_error)
+                    _logger.error("Error al procesar página %d con OpenAI: %s", page_num + 1, api_error)
                     # Continuar con las siguientes páginas
                     continue
+            
+            # Cerrar documento
+            pdf_document.close()
             
             if not all_texts:
                 raise Exception(_("No se pudo extraer texto de ninguna página del PDF"))
             
             # Combinar texto de todas las páginas
             full_text = "\n\n".join(all_texts)
-            _logger.info("Texto total extraído: %d caracteres de %d página(s)", len(full_text), len(images))
+            _logger.info("Texto total extraído: %d caracteres de %d página(s)", len(full_text), num_pages)
             
             # Parsear datos de la factura
             return self._parse_invoice_text(full_text)
@@ -212,10 +232,8 @@ class InvoiceOCRService(models.AbstractModel):
             _logger.error("Error de importación: %s", import_err)
             raise Exception(_(
                 "Faltan dependencias para OpenAI Vision. Instala con:\n"
-                "pip install openai pdf2image Pillow\n\n"
-                "También necesitas poppler-utils:\n"
-                "Ubuntu/Debian: sudo apt-get install poppler-utils\n"
-                "CentOS/RHEL: sudo yum install poppler-utils"
+                "pip install openai PyMuPDF\n\n"
+                "PyMuPDF no requiere dependencias externas del sistema."
             ))
         except Exception as e:
             _logger.exception("Error con OpenAI GPT-4o Vision: %s", e)

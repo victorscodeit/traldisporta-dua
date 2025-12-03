@@ -21,7 +21,7 @@
         "python": ["requests"],
     },
     "external_dependencies_optional": {
-        "python": ["pdfplumber", "PyPDF2", "openai", "pdf2image", "Pillow"],
+        "python": ["pdfplumber", "PyPDF2", "openai", "PyMuPDF"],
     },
     "assets": {},
     "application": True,
