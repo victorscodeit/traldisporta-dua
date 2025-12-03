@@ -605,18 +605,25 @@ class AduanaExpediente(models.Model):
     def _ensure_cc515c_xml(self):
         """Genera o recupera el XML del DUA en formato CUSDEC EX1"""
         self.ensure_one()
-        # Renderizar correctamente con QWeb (formato CUSDEC EX1)
-        xml = self.env['ir.ui.view']._render_template(
-            "aduanas_transport.tpl_cusdec_ex1",
-            {"exp": self}
-        )
-        # Crear o actualizar adjunto
+        # Verificar si ya existe el XML
         att = self._get_xml_attachment("CUSDEC_EX1.xml")
         if att:
-            att.datas = base64.b64encode(xml.encode("utf-8"))
             return att
-        self._attach_xml(f"{self.name}_CUSDEC_EX1.xml", xml)
-        return self._get_xml_attachment("CUSDEC_EX1.xml")
+        
+        # Si no existe, generar el DUA primero
+        # Esto requiere que la factura esté procesada y los datos estén completos
+        if not self.factura_procesada:
+            raise UserError(_("Debe procesar la factura primero antes de previsualizar el DUA."))
+        
+        # Generar el DUA
+        self.action_generate_cc515c()
+        
+        # Recuperar el attachment generado
+        att = self._get_xml_attachment("CUSDEC_EX1.xml")
+        if not att:
+            raise UserError(_("No se pudo generar el DUA. Verifique que todos los datos estén completos."))
+        
+        return att
 
     def _ensure_cc511c_xml(self):
         self.ensure_one()
@@ -647,8 +654,13 @@ class AduanaExpediente(models.Model):
 
 
     def action_preview_cc515c(self):
+        """Previsualiza el DUA. Solo funciona si el DUA ya está generado."""
         self.ensure_one()
-        att = self._ensure_cc515c_xml()
+        # Verificar si el DUA ya está generado
+        att = self._get_xml_attachment("CUSDEC_EX1.xml")
+        if not att:
+            raise UserError(_("El DUA no está generado. Por favor, use el botón 'Generar DUA' primero."))
+        
         return {
             "type": "ir.actions.act_url",
             "url": f"/web/content/{att.id}?download=0",
@@ -887,23 +899,36 @@ class AduanaExpediente(models.Model):
                     subtype_xmlid='mail.mt_note'
                 )
                 
-                # Notificación según estado
-                notif_type = "warning" if advertencias else "success"
-                notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
-                notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraídos.")
+                # Marcar factura como procesada
+                rec.factura_procesada = True
                 
                 # Forzar recarga del registro para actualizar la vista
                 rec.invalidate_recordset()
                 
-                # Recargar el formulario para mostrar los cambios
-                # Odoo mostrará automáticamente los cambios en el registro
+                # Preparar mensaje de notificación
+                notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
+                notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraído.")
+                
+                # Recargar el formulario y mostrar notificación
+                # Usar una acción combinada: mostrar notificación y recargar formulario
                 return {
-                    "type": "ir.actions.act_window",
+                    "type": "ir.actions.client",
+                    "tag": "display_notification",
+                    "params": {
+                        "title": notif_title,
+                        "message": notif_message,
+                        "type": "warning" if advertencias else "success",
+                        "sticky": False,
+                    },
+                    "context": {
+                        **self.env.context,
+                        "active_id": rec.id,
+                        "active_model": "aduana.expediente",
+                    },
                     "res_model": "aduana.expediente",
                     "res_id": rec.id,
                     "view_mode": "form",
                     "target": "current",
-                    "context": dict(self.env.context),
                 }
             except UserError as ue:
                 # Guardar estado de error y mensaje
