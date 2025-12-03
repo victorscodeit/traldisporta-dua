@@ -57,15 +57,15 @@
                 <div class="row mt16 o_setting_container">
                     <div class="col-12 col-lg-6 o_setting_box">
                         <div class="o_setting_left_pane">
-                            <field name="google_vision_api_key" password="True"/>
+                            <field name="openai_api_key" password="True"/>
                         </div>
                         <div class="o_setting_right_pane">
-                            <label for="google_vision_api_key"/>
+                            <label for="openai_api_key"/>
                             <div class="text-muted">
-                                <strong>API Key directa</strong> (ej: AIzaSy...) <strong>O</strong> ruta a archivo JSON de Service Account (ej: /path/to/credentials.json) 
-                                <strong>O</strong> contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
+                                <strong>OpenAI API Key</strong> para usar GPT-4o Vision con splitting por páginas.
+                                Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
                                 <br/>
-                                <a href="https://cloud.google.com/vision/docs/setup" target="_blank">Ver documentación de Google Cloud Vision</a>
+                                <a href="https://platform.openai.com/api-keys" target="_blank">Obtener API Key de OpenAI</a>
                             </div>
                         </div>
                     </div>

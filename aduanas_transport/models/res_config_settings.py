@@ -25,13 +25,12 @@ class ResConfigSettings(models.TransientModel):
     msoft_user = fields.Char(string="MSoft User", config_parameter="aduanas_transport.msoft.user")
     msoft_pass = fields.Char(string="MSoft Pass", config_parameter="aduanas_transport.msoft.pass")
     
-    # Google Vision API para OCR de facturas
-    google_vision_api_key = fields.Char(
-        string="Google Vision API Key o Credenciales", 
-        config_parameter="aduanas_transport.google_vision_api_key",
-        help="API Key directa de Google Cloud Vision (ej: AIzaSy...) O ruta a archivo JSON de Service Account (ej: /path/to/credentials.json) "
-             "O contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2). "
-             "Para obtener API Key: Google Cloud Console → APIs & Services → Credentials → Create Credentials → API Key")
+    # OpenAI API para OCR de facturas con GPT-4o Vision
+    openai_api_key = fields.Char(
+        string="OpenAI API Key", 
+        config_parameter="aduanas_transport.openai_api_key",
+        help="API Key de OpenAI para usar GPT-4o Vision. Obtener en: https://platform.openai.com/api-keys. "
+             "Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).")
 
     @api.model
     def get_values(self):

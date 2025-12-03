@@ -21,7 +21,7 @@
         "python": ["requests"],
     },
     "external_dependencies_optional": {
-        "python": ["pdfplumber", "PyPDF2", "google-cloud-vision"],
+        "python": ["pdfplumber", "PyPDF2", "openai", "pdf2image", "Pillow"],
     },
     "assets": {},
     "application": True,

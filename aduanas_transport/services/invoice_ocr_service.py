@@ -14,10 +14,10 @@ class InvoiceOCRService(models.AbstractModel):
 
     def extract_invoice_data(self, pdf_data, api_key=None):
         """
-        Extrae datos de una factura PDF usando Google Vision API o OCR alternativo.
+        Extrae datos de una factura PDF usando OpenAI GPT-4o Vision o OCR alternativo.
         
         :param pdf_data: Datos binarios del PDF (base64 o bytes)
-        :param api_key: API key de Google Vision (opcional, se obtiene de configuración si no se proporciona)
+        :param api_key: API key de OpenAI (opcional, se obtiene de configuración si no se proporciona)
         :return: Diccionario con datos extraídos (incluye campo 'error' si hay problemas)
         """
         if not pdf_data:
@@ -26,144 +26,87 @@ class InvoiceOCRService(models.AbstractModel):
                 "texto_extraido": ""
             }
         
-        # Validar que el PDF no esté vacío o corrupto
+        # Simplificar: solo decodificar base64 si es necesario, sin validaciones complejas
+        # Google Vision se encargará de validar el PDF
         try:
-            # En Odoo, los campos Binary pueden venir como string base64 o ya decodificados
+            # En Odoo, los campos Binary siempre vienen como string base64
             if isinstance(pdf_data, str):
                 try:
-                    # Intentar decodificar base64
+                    # Decodificar base64
                     pdf_bytes = base64.b64decode(pdf_data)
-                    # Verificar si después de decodificar sigue siendo base64 (doble encoding)
-                    # Los PDFs válidos empiezan con %PDF, pero si está doblemente codificado,
-                    # después de la primera decodificación tendremos algo que empieza con JVBERi...
-                    if isinstance(pdf_bytes, bytes) and len(pdf_bytes) > 0:
-                        # Verificar si los primeros bytes son base64 válido (empiezan con JVBER)
+                    # Verificar si está doblemente codificado (empieza con JVBER después de decodificar)
+                    if len(pdf_bytes) > 0:
                         try:
                             first_chars = pdf_bytes[:10].decode('utf-8', errors='ignore')
-                            # JVBERi es el inicio de un PDF cuando está codificado en base64
                             if first_chars.startswith('JVBER') or first_chars.startswith('JVBERi'):
-                                # Es base64 doblemente codificado, decodificar de nuevo
-                                _logger.info("Detectado doble encoding base64 (empieza con %s), decodificando de nuevo...", first_chars[:10])
+                                _logger.info("Doble encoding detectado, decodificando de nuevo...")
                                 pdf_bytes = base64.b64decode(pdf_bytes)
-                                _logger.info("Doble decodificación exitosa. Primeros bytes ahora: %s", pdf_bytes[:20].hex() if len(pdf_bytes) >= 20 else pdf_bytes.hex())
-                        except Exception as double_decode_error:
-                            _logger.debug("No es doble encoding o error al verificar: %s", double_decode_error)
-                            # Continuar con pdf_bytes tal cual
+                        except:
+                            pass
                 except Exception as decode_error:
-                    _logger.error("Error al decodificar base64: %s. Primeros 100 caracteres: %s", decode_error, pdf_data[:100] if pdf_data else "None")
+                    _logger.error("Error al decodificar base64: %s", decode_error)
                     return {
-                        "error": _("Error al decodificar el archivo PDF. El formato puede ser incorrecto."),
+                        "error": _("Error al decodificar el archivo PDF."),
                         "texto_extraido": "",
-                        "metodo_usado": "Error de validación"
+                        "metodo_usado": "Error de decodificación"
                     }
             else:
                 pdf_bytes = pdf_data
             
-            # Validar que no esté vacío
-            if not pdf_bytes or len(pdf_bytes) < 4:
-                _logger.warning("PDF vacío o muy pequeño. Tamaño: %d bytes", len(pdf_bytes) if pdf_bytes else 0)
+            # Validación mínima: solo verificar que no esté vacío
+            if not pdf_bytes or len(pdf_bytes) < 10:
                 return {
                     "error": _("El archivo PDF está vacío o es demasiado pequeño."),
                     "texto_extraido": "",
                     "metodo_usado": "Error de validación"
                 }
             
-            # Validar que es un PDF válido (debe empezar con %PDF)
-            # Algunos PDFs pueden tener espacios en blanco al inicio, así que los eliminamos
-            pdf_start = pdf_bytes[:10].strip()
-            pdf_valid = False
-            pdf_offset = 0
+            _logger.info("PDF preparado para procesamiento. Tamaño: %d bytes", len(pdf_bytes))
             
-            # Verificar si empieza directamente con %PDF
-            if pdf_bytes[:4] == b'%PDF':
-                pdf_valid = True
-                _logger.info("PDF válido: empieza directamente con %%PDF")
-            else:
-                # Intentar buscar %PDF en los primeros 2048 bytes (algunos PDFs tienen headers adicionales)
-                search_range = min(2048, len(pdf_bytes) - 4)
-                for i in range(search_range):
-                    if pdf_bytes[i:i+4] == b'%PDF':
-                        pdf_valid = True
-                        pdf_offset = i
-                        _logger.info("PDF válido encontrado en posición %d (después de %d bytes de header)", i, i)
-                        # Si hay offset, recortar el header
-                        if i > 0:
-                            pdf_bytes = pdf_bytes[i:]
-                        break
-                
-                # Si aún no se encuentra, intentar buscar en todo el archivo (más lento pero más permisivo)
-                if not pdf_valid and len(pdf_bytes) > 4:
-                    _logger.warning("No se encontró %%PDF en los primeros %d bytes. Buscando en todo el archivo...", search_range)
-                    # Buscar en bloques más grandes
-                    for i in range(0, min(len(pdf_bytes) - 4, 10000), 100):  # Buscar cada 100 bytes hasta 10KB
-                        if pdf_bytes[i:i+4] == b'%PDF':
-                            pdf_valid = True
-                            pdf_offset = i
-                            _logger.info("PDF válido encontrado en posición %d después de búsqueda extendida", i)
-                            if i > 0:
-                                pdf_bytes = pdf_bytes[i:]
-                            break
-            
-            if not pdf_valid:
-                # Log detallado para diagnóstico
-                _logger.error("PDF no válido detectado. Tamaño: %d bytes", len(pdf_bytes))
-                _logger.error("Primeros 100 bytes (hex): %s", pdf_bytes[:100].hex() if len(pdf_bytes) >= 100 else pdf_bytes.hex())
-                _logger.error("Primeros 100 bytes (repr): %s", repr(pdf_bytes[:100]) if len(pdf_bytes) >= 100 else repr(pdf_bytes))
-                # Intentar procesar de todas formas si el tamaño es razonable (puede ser un PDF con formato no estándar)
-                if len(pdf_bytes) > 100:  # Si tiene un tamaño razonable, intentar procesarlo de todas formas
-                    _logger.warning("Archivo no tiene header %%PDF estándar pero tiene tamaño razonable (%d bytes). Intentando procesar de todas formas...", len(pdf_bytes))
-                    # No retornar error, continuar con el procesamiento
-                else:
-                    return {
-                        "error": _("El archivo no parece ser un PDF válido. Verifica que el archivo esté correcto.\n\nSi es una imagen escaneada, asegúrate de que esté en formato PDF, no JPG/PNG."),
-                        "texto_extraido": "",
-                        "metodo_usado": "Error de validación"
-                    }
         except Exception as e:
             _logger.exception("Error al procesar el archivo PDF: %s", e)
             return {
-                "error": _("Error al procesar el archivo PDF: %s\n\nVerifica que el archivo no esté corrupto.") % str(e),
+                "error": _("Error al procesar el archivo PDF: %s") % str(e),
                 "texto_extraido": "",
-                "metodo_usado": "Error de validación"
+                "metodo_usado": "Error de procesamiento"
             }
-        
-        # Guardar pdf_bytes para usar en los métodos de extracción
-        # (necesitamos pasar tanto pdf_data original como pdf_bytes procesado)
-        pdf_data_for_methods = pdf_data if isinstance(pdf_data, str) else base64.b64encode(pdf_bytes).decode('utf-8')
         
         # Obtener API key de configuración si no se proporciona
         if not api_key:
-            api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.google_vision_api_key')
+            api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.openai_api_key')
         
         resultado = None
         metodo_usado = None
         
+        # PRIORIDAD: Intentar OpenAI GPT-4o Vision primero (si hay API key)
         if api_key:
             try:
-                # Pasar pdf_data original (base64) para que pueda ser usado en fallbacks
-                resultado = self._extract_with_google_vision(api_key, pdf_data_for_methods)
-                metodo_usado = "Google Vision"
+                _logger.info("Enviando PDF a OpenAI GPT-4o Vision con splitting por páginas...")
+                resultado = self._extract_with_openai_vision(api_key, pdf_bytes)
+                metodo_usado = "OpenAI GPT-4o Vision"
+                _logger.info("OpenAI GPT-4o Vision procesó el PDF exitosamente")
             except Exception as e:
-                _logger.warning("Error con Google Vision, intentando OCR alternativo: %s", e)
+                _logger.warning("Error con OpenAI GPT-4o Vision: %s. Intentando OCR alternativo...", e)
                 try:
-                    resultado = self._extract_with_fallback_ocr(pdf_data)
+                    resultado = self._extract_with_fallback_ocr(pdf_bytes)
                     metodo_usado = "OCR Alternativo (fallback)"
                 except Exception as e2:
                     _logger.exception("Error también con OCR alternativo: %s", e2)
                     return {
-                        "error": _("Error al procesar PDF con ambos métodos:\n- Google Vision: %s\n- OCR Alternativo: %s") % (str(e), str(e2)),
+                        "error": _("Error al procesar PDF:\n- OpenAI GPT-4o Vision: %s\n- OCR Alternativo: %s") % (str(e), str(e2)),
                         "texto_extraido": "",
                         "metodo_usado": "Error en ambos"
                     }
         else:
-            # Usar OCR alternativo si no hay API key
+            # Si no hay API key, usar OCR alternativo
+            _logger.info("No hay API key de OpenAI configurada, usando OCR alternativo...")
             try:
-                resultado = self._extract_with_fallback_ocr(pdf_data)
+                resultado = self._extract_with_fallback_ocr(pdf_bytes)
                 metodo_usado = "OCR Alternativo (pdfplumber/PyPDF2)"
             except Exception as e:
                 _logger.exception("Error con OCR alternativo: %s", e)
                 return {
-                    "error": _("Error al procesar PDF: %s\n\nPosibles soluciones:\n- Verifica que el PDF no esté corrupto\n- Si es una imagen escaneada, configura Google Vision API\n- Instala pdfplumber: pip install pdfplumber") % str(e),
+                    "error": _("Error al procesar PDF: %s\n\nConfigura OpenAI API Key para mejor soporte de PDFs escaneados.") % str(e),
                     "texto_extraido": "",
                     "metodo_usado": "Error"
                 }
@@ -175,9 +118,108 @@ class InvoiceOCRService(models.AbstractModel):
             # Validar que se extrajo texto
             if not resultado.get("texto_extraido") or len(resultado.get("texto_extraido", "").strip()) < 10:
                 if not resultado.get("error"):
-                    resultado["error"] = _("No se pudo extraer texto del PDF. Posibles causas:\n- El PDF es una imagen escaneada (necesitas Google Vision API)\n- El PDF está protegido o encriptado\n- El PDF está corrupto\n- La calidad del escaneado es muy baja")
+                    resultado["error"] = _("No se pudo extraer texto del PDF. Posibles causas:\n- El PDF es una imagen escaneada (necesitas OpenAI API Key)\n- El PDF está protegido o encriptado\n- El PDF está corrupto\n- La calidad del escaneado es muy baja")
         
         return resultado
+
+    def _extract_with_openai_vision(self, api_key, pdf_bytes):
+        """
+        Extrae datos usando OpenAI GPT-4o Vision con splitting por páginas.
+        Requiere: pip install openai pdf2image Pillow
+        
+        :param api_key: API key de OpenAI
+        :param pdf_bytes: Datos binarios del PDF (bytes)
+        :return: Diccionario con datos extraídos
+        """
+        try:
+            from openai import OpenAI
+            from pdf2image import convert_from_bytes
+            import io
+            
+            if not api_key:
+                raise ValueError("API key de OpenAI no proporcionada")
+            
+            # Inicializar cliente de OpenAI
+            client = OpenAI(api_key=api_key)
+            
+            # Convertir PDF a imágenes (una por página)
+            _logger.info("Convirtiendo PDF a imágenes por páginas...")
+            try:
+                images = convert_from_bytes(pdf_bytes, dpi=200)  # 200 DPI para buena calidad
+                _logger.info("PDF convertido a %d página(s)", len(images))
+            except Exception as img_error:
+                _logger.error("Error al convertir PDF a imágenes: %s", img_error)
+                raise Exception(_("Error al convertir PDF a imágenes. Verifica que pdf2image y poppler estén instalados."))
+            
+            if not images:
+                raise Exception(_("No se pudieron extraer imágenes del PDF"))
+            
+            # Procesar cada página con GPT-4o Vision
+            all_texts = []
+            for page_num, image in enumerate(images, 1):
+                _logger.info("Procesando página %d/%d con GPT-4o Vision...", page_num, len(images))
+                
+                # Convertir imagen a base64
+                img_buffer = io.BytesIO()
+                image.save(img_buffer, format='PNG')
+                img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+                
+                # Llamar a OpenAI Vision API
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Extrae todo el texto de esta factura. Incluye números de factura, fechas, NIFs/CIFs, importes, direcciones, países, incoterms, y cualquier otro dato relevante. Devuelve el texto completo tal como aparece en la factura."
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/png;base64,{img_base64}"
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        max_tokens=4096
+                    )
+                    
+                    page_text = response.choices[0].message.content
+                    if page_text:
+                        all_texts.append(page_text)
+                        _logger.info("Texto extraído de página %d: %d caracteres", page_num, len(page_text))
+                    
+                except Exception as api_error:
+                    _logger.error("Error al procesar página %d con OpenAI: %s", page_num, api_error)
+                    # Continuar con las siguientes páginas
+                    continue
+            
+            if not all_texts:
+                raise Exception(_("No se pudo extraer texto de ninguna página del PDF"))
+            
+            # Combinar texto de todas las páginas
+            full_text = "\n\n".join(all_texts)
+            _logger.info("Texto total extraído: %d caracteres de %d página(s)", len(full_text), len(images))
+            
+            # Parsear datos de la factura
+            return self._parse_invoice_text(full_text)
+            
+        except ImportError as import_err:
+            _logger.error("Error de importación: %s", import_err)
+            raise Exception(_(
+                "Faltan dependencias para OpenAI Vision. Instala con:\n"
+                "pip install openai pdf2image Pillow\n\n"
+                "También necesitas poppler-utils:\n"
+                "Ubuntu/Debian: sudo apt-get install poppler-utils\n"
+                "CentOS/RHEL: sudo yum install poppler-utils"
+            ))
+        except Exception as e:
+            _logger.exception("Error con OpenAI GPT-4o Vision: %s", e)
+            raise
 
     def _extract_with_google_vision(self, api_key_or_path, pdf_data):
         """
@@ -261,9 +303,7 @@ class InvoiceOCRService(models.AbstractModel):
             
             # Usar API REST de Google Vision con API key
             _logger.info("Usando Google Vision con API key directa (REST API)")
-            # Guardar pdf_data original para posibles fallbacks
-            pdf_data_original = pdf_data if isinstance(pdf_data, str) else base64.b64encode(pdf_data).decode('utf-8')
-            return self._extract_with_rest_api(api_key, pdf_bytes, pdf_data_original)
+            return self._extract_with_rest_api(api_key, pdf_bytes)
         
         # Si llegamos aquí y no hay client, intentar sin credenciales explícitas
         try:
@@ -302,9 +342,46 @@ class InvoiceOCRService(models.AbstractModel):
         
         try:
             response = requests.post(url, json=payload, timeout=30)
+            
+            # Manejar errores HTTP con mensajes más descriptivos
+            if response.status_code == 403:
+                try:
+                    error_detail = response.json().get('error', {})
+                    error_message = error_detail.get('message', 'Forbidden')
+                except:
+                    error_message = 'Forbidden'
+                _logger.error("Error 403 de Google Vision API. Detalle: %s", error_message)
+                raise Exception(_(
+                    "Error 403: Acceso denegado a Google Vision API.\n\n"
+                    "Posibles causas:\n"
+                    "1. La API key no tiene permisos para usar Vision API\n"
+                    "2. La API 'Cloud Vision API' no está habilitada en tu proyecto de Google Cloud\n"
+                    "3. La API key tiene restricciones que bloquean el acceso\n"
+                    "4. Se han excedido las cuotas de la API\n\n"
+                    "Solución:\n"
+                    "1. Ve a Google Cloud Console → APIs & Services → Library\n"
+                    "2. Busca 'Cloud Vision API' y habilítala\n"
+                    "3. Verifica que la API key tenga permisos para Vision API\n"
+                    "4. Revisa las restricciones de la API key\n\n"
+                    "Detalle del error: %s"
+                ) % error_message)
+            elif response.status_code == 401:
+                _logger.error("Error 401 de Google Vision API: API key inválida")
+                raise Exception(_(
+                    "Error 401: API key inválida o no autorizada.\n\n"
+                    "Verifica que la API key sea correcta y que tenga permisos para usar Vision API."
+                ))
+            
             response.raise_for_status()
             
             result = response.json()
+            
+            # Verificar si hay errores en la respuesta
+            if "error" in result:
+                error_info = result["error"]
+                error_msg = error_info.get("message", "Error desconocido")
+                _logger.error("Error en respuesta de Google Vision: %s", error_msg)
+                raise Exception(_("Error de Google Vision API: %s") % error_msg)
             
             # Extraer texto de la respuesta
             full_text = ""
@@ -316,14 +393,25 @@ class InvoiceOCRService(models.AbstractModel):
                     full_text = result["responses"][0]["textAnnotations"][0].get("description", "")
             
             if not full_text:
-                _logger.warning("Google Vision REST API no extrajo texto. Usando OCR alternativo.")
-                # Necesitamos pasar pdf_data original, no pdf_bytes
-                # Recuperar desde el contexto de llamada
+                _logger.warning("Google Vision REST API no extrajo texto.")
                 raise Exception(_("Google Vision no extrajo texto. Se intentará con OCR alternativo."))
             
             # Parsear datos de la factura
             return self._parse_invoice_text(full_text)
             
+        except requests.exceptions.HTTPError as e:
+            # Ya manejamos 401 y 403 arriba, esto es para otros códigos HTTP
+            if e.response and e.response.status_code not in [401, 403]:
+                _logger.exception("Error HTTP en petición REST a Google Vision: %s", e)
+                if e.response.status_code == 400:
+                    try:
+                        error_detail = e.response.json().get('error', {})
+                        error_message = error_detail.get('message', str(e))
+                    except:
+                        error_message = str(e)
+                    raise Exception(_("Error 400: Solicitud inválida a Google Vision API.\n\nDetalle: %s") % error_message)
+                raise Exception(_("Error HTTP %d al conectar con Google Vision API: %s") % (e.response.status_code, str(e)))
+            raise
         except requests.exceptions.RequestException as e:
             _logger.exception("Error en petición REST a Google Vision: %s", e)
             raise Exception(_("Error al conectar con Google Vision API: %s") % str(e))
@@ -368,19 +456,18 @@ class InvoiceOCRService(models.AbstractModel):
         """
         Método alternativo usando PyPDF2 o pdfplumber para extraer texto.
         Requiere: pip install pdfplumber o PyPDF2
+        
+        :param pdf_data: Bytes del PDF (ya decodificado)
         """
         try:
             import pdfplumber
             
-            # Convertir base64 a bytes si es necesario
-            if isinstance(pdf_data, str):
-                pdf_bytes = base64.b64decode(pdf_data)
-            else:
-                pdf_bytes = pdf_data
+            # pdf_data ya viene como bytes decodificado
+            pdf_bytes = pdf_data
             
-            # Validar que es un PDF válido antes de procesar
-            if not pdf_bytes[:4].startswith(b'%PDF'):
-                raise ValueError(_("El archivo no es un PDF válido"))
+            # Validación mínima: solo verificar que no esté vacío
+            if not pdf_bytes or len(pdf_bytes) < 10:
+                raise ValueError(_("El archivo PDF está vacío o es demasiado pequeño"))
             
             # Extraer texto del PDF
             full_text = ""
@@ -397,14 +484,12 @@ class InvoiceOCRService(models.AbstractModel):
             try:
                 import PyPDF2
                 
-                if isinstance(pdf_data, str):
-                    pdf_bytes = base64.b64decode(pdf_data)
-                else:
-                    pdf_bytes = pdf_data
+                # pdf_data ya viene como bytes decodificado
+                pdf_bytes = pdf_data
                 
-                # Validar que es un PDF válido
-                if not pdf_bytes[:4].startswith(b'%PDF'):
-                    raise ValueError(_("El archivo no es un PDF válido"))
+                # Validación mínima: solo verificar que no esté vacío
+                if not pdf_bytes or len(pdf_bytes) < 10:
+                    raise ValueError(_("El archivo PDF está vacío o es demasiado pequeño"))
                 
                 full_text = ""
                 pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
