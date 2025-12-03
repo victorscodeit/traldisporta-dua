@@ -320,7 +320,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al enviar CC515C:\n%s") % error_msg, subtype='mail.mt_note')
+                rec.message_post(body=_("Error al enviar CC515C:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cc515c")
@@ -359,7 +359,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype='mail.mt_note')
+                rec.message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cc511c")
@@ -419,7 +419,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype='mail.mt_note')
+                rec.message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
@@ -459,7 +459,7 @@ class AduanaExpediente(models.Model):
                 rec._procesar_incidencias(parsed["incidencias"], "bandeja")
             
             if parsed.get("errors"):
-                rec.message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype='mail.mt_note')
+                rec.message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype_xmlid='mail.mt_note')
         return True
     
     def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
@@ -501,7 +501,7 @@ class AduanaExpediente(models.Model):
                     dict(incidencia._fields["tipo_incidencia"].selection).get(incidencia.tipo_incidencia),
                     incidencia.codigo_incidencia or _("N/A")
                 ),
-                subtype='mail.mt_note',
+                subtype_xmlid='mail.mt_note',
                 partner_ids=[(4, p.id) for p in self.message_partner_ids]
             )
             
@@ -684,7 +684,7 @@ class AduanaExpediente(models.Model):
                     rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
                     rec.message_post(
                         body=_("Error al procesar factura: %s") % invoice_data.get("error"),
-                        subtype='mail.mt_note'
+                        subtype_xmlid='mail.mt_note'
                     )
                     raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
                 
@@ -738,7 +738,7 @@ class AduanaExpediente(models.Model):
                 
                 rec.message_post(
                     body=mensaje_body,
-                    subtype='mail.mt_note'
+                    subtype_xmlid='mail.mt_note'
                 )
                 
                 # Notificación según estado
@@ -766,7 +766,7 @@ class AduanaExpediente(models.Model):
                 rec.factura_mensaje_error = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible") % error_msg
                 rec.message_post(
                     body=_("Error al procesar factura: %s") % error_msg,
-                    subtype='mail.mt_note'
+                    subtype_xmlid='mail.mt_note'
                 )
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 raise UserError(_("Error al procesar la factura:\n%s\n\nRevisa el campo 'Mensaje de Error' para más detalles.") % error_msg)
@@ -796,7 +796,7 @@ class AduanaExpediente(models.Model):
             if not rec.line_ids:
                 rec.message_post(
                     body=_("Advertencia: No se extrajeron líneas de productos de la factura. Puede que necesites agregarlas manualmente."),
-                    subtype='mail.mt_note'
+                    subtype_xmlid='mail.mt_note'
                 )
             
             # Determinar qué tipo de DUA generar según la dirección
@@ -805,14 +805,14 @@ class AduanaExpediente(models.Model):
                 rec.action_generate_cc515c()
                 rec.message_post(
                     body=_("DUA de exportación (CC515C) generado automáticamente desde la factura."),
-                    subtype='mail.mt_note'
+                    subtype_xmlid='mail.mt_note'
                 )
             elif rec.direction == "import":
                 # Generar declaración de importación
                 rec.action_generate_imp_decl()
                 rec.message_post(
                     body=_("DUA de importación generado automáticamente desde la factura."),
-                    subtype='mail.mt_note'
+                    subtype_xmlid='mail.mt_note'
                 )
             else:
                 raise UserError(_("Debe especificar el sentido (export/import) antes de generar el DUA."))
