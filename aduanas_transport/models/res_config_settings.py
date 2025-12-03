@@ -27,11 +27,11 @@ class ResConfigSettings(models.TransientModel):
     
     # Google Vision API para OCR de facturas
     google_vision_api_key = fields.Char(
-        string="Google Vision Credenciales", 
+        string="Google Vision API Key o Credenciales", 
         config_parameter="aduanas_transport.google_vision_api_key",
-        help="Ruta al archivo JSON de Service Account de Google Cloud Vision (ej: /path/to/credentials.json) "
-             "o contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2). "
-             "Ver: https://cloud.google.com/vision/docs/setup")
+        help="API Key directa de Google Cloud Vision (ej: AIzaSy...) O ruta a archivo JSON de Service Account (ej: /path/to/credentials.json) "
+             "O contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2). "
+             "Para obtener API Key: Google Cloud Console → APIs & Services → Credentials → Create Credentials → API Key")
 
     @api.model
     def get_values(self):

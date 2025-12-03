@@ -73,107 +73,174 @@ class InvoiceOCRService(models.AbstractModel):
         
         return resultado
 
-    def _extract_with_google_vision(self, pdf_data, api_key):
+    def _extract_with_google_vision(self, api_key_or_path):
         """
         Extrae datos usando Google Cloud Vision API.
         Requiere: pip install google-cloud-vision
         
-        La API key puede ser:
+        La configuración puede ser:
         1. Ruta a un archivo JSON de Service Account (ej: /path/to/credentials.json)
-        2. Una API Key directa (para usar con REST API)
+        2. Contenido JSON de Service Account como texto
+        3. API Key directa de Google Cloud (ej: AIzaSy...)
         
-        Nota: Para PDFs, Google Vision funciona mejor con Service Account JSON.
-        Para API keys directas, se usa la API REST.
+        Para API keys directas, se usa la API REST de Google Vision.
+        Para Service Account JSON, se usa el cliente de Python.
         """
+        import os
+        import json
+        import requests
+        
+        # Convertir base64 a bytes si es necesario
+        if isinstance(self.pdf_data, str):
+            pdf_bytes = base64.b64decode(self.pdf_data)
+        else:
+            pdf_bytes = self.pdf_data
+        
+        # Determinar el tipo de credencial
+        api_key = None
+        is_service_account = False
+        
+        if not api_key_or_path:
+            raise ValueError("No se proporcionó API key ni archivo de credenciales")
+        
+        # Verificar si es una ruta a archivo JSON
+        if os.path.exists(api_key_or_path) and api_key_or_path.endswith('.json'):
+            # Es un archivo de Service Account JSON
+            is_service_account = True
+            try:
+                from google.cloud import vision
+                from google.oauth2 import service_account
+                credentials = service_account.Credentials.from_service_account_file(api_key_or_path)
+                client = vision.ImageAnnotatorClient(credentials=credentials)
+                _logger.info("Usando Google Vision con Service Account JSON")
+                return self._extract_with_vision_client(client, pdf_bytes)
+            except Exception as cred_error:
+                _logger.warning("Error con Service Account JSON: %s. Intentando como API key.", cred_error)
+                # Intentar como API key si falla
+                is_service_account = False
+        
+        # Verificar si es un JSON string
+        if api_key_or_path.startswith('{') or api_key_or_path.startswith('['):
+            try:
+                creds_dict = json.loads(api_key_or_path)
+                # Si tiene 'type' y es 'service_account', es Service Account
+                if creds_dict.get('type') == 'service_account':
+                    is_service_account = True
+                    from google.cloud import vision
+                    from google.oauth2 import service_account
+                    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+                    client = vision.ImageAnnotatorClient(credentials=credentials)
+                    _logger.info("Usando Google Vision con Service Account JSON (string)")
+                    return self._extract_with_vision_client(client, pdf_bytes)
+                else:
+                    # Intentar extraer API key del JSON
+                    api_key = creds_dict.get('api_key') or creds_dict.get('key')
+            except json.JSONDecodeError:
+                # No es JSON válido, tratar como API key
+                api_key = api_key_or_path
+        
+        # Si no es Service Account, usar como API key directa
+        if not is_service_account:
+            api_key = api_key or api_key_or_path
+            
+            # Validar formato de API key (empieza con AIza)
+            if not api_key.startswith('AIza'):
+                _logger.warning("La API key no tiene el formato esperado (debe empezar con AIza). Intentando de todas formas...")
+            
+            # Usar API REST de Google Vision con API key
+            _logger.info("Usando Google Vision con API key directa (REST API)")
+            return self._extract_with_rest_api(api_key, pdf_bytes)
+        
+        # Si llegamos aquí y no hay client, intentar sin credenciales explícitas
         try:
             from google.cloud import vision
-            from google.oauth2 import service_account
-            import os
-            import json
+            client = vision.ImageAnnotatorClient()
+            return self._extract_with_vision_client(client, pdf_bytes)
+        except Exception as cred_error:
+            _logger.warning("Error al inicializar Google Vision client: %s. Usando OCR alternativo.", cred_error)
+            return self._extract_with_fallback_ocr(self.pdf_data)
+    
+    def _extract_with_rest_api(self, api_key, pdf_bytes):
+        """
+        Extrae texto usando la API REST de Google Vision con API key directa.
+        """
+        import requests
+        
+        # Convertir PDF a base64 para la API REST
+        pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        # URL de la API REST de Google Vision
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+        
+        # Preparar la petición
+        payload = {
+            "requests": [{
+                "image": {
+                    "content": pdf_base64
+                },
+                "features": [{
+                    "type": "DOCUMENT_TEXT_DETECTION",
+                    "maxResults": 1
+                }]
+            }]
+        }
+        
+        try:
+            response = requests.post(url, json=payload, timeout=30)
+            response.raise_for_status()
             
-            # Convertir base64 a bytes si es necesario
-            if isinstance(pdf_data, str):
-                pdf_bytes = base64.b64decode(pdf_data)
-            else:
-                pdf_bytes = pdf_data
+            result = response.json()
             
-            # Determinar si api_key es una ruta a archivo JSON o una API key directa
-            client = None
-            if api_key:
-                # Verificar si es una ruta a archivo JSON
-                if os.path.exists(api_key) and api_key.endswith('.json'):
-                    # Es un archivo de Service Account JSON
-                    try:
-                        credentials = service_account.Credentials.from_service_account_file(api_key)
-                        client = vision.ImageAnnotatorClient(credentials=credentials)
-                        _logger.info("Usando Google Vision con Service Account JSON")
-                    except Exception as cred_error:
-                        _logger.warning("Error cargando Service Account JSON: %s. Intentando variable de entorno.", cred_error)
-                        # Intentar con variable de entorno si existe
-                        if 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-                            client = vision.ImageAnnotatorClient()
-                        else:
-                            raise
-                elif api_key.startswith('{') or api_key.startswith('['):
-                    # Es un JSON string (credenciales como texto)
-                    try:
-                        creds_dict = json.loads(api_key)
-                        credentials = service_account.Credentials.from_service_account_info(creds_dict)
-                        client = vision.ImageAnnotatorClient(credentials=credentials)
-                        _logger.info("Usando Google Vision con Service Account JSON (string)")
-                    except Exception as cred_error:
-                        _logger.warning("Error parseando JSON de credenciales: %s", cred_error)
-                        raise
-                else:
-                    # Asumir que es una ruta a archivo o variable de entorno
-                    if os.path.exists(api_key):
-                        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = api_key
-                    else:
-                        # Intentar usar como variable de entorno directamente
-                        if 'GOOGLE_APPLICATION_CREDENTIALS' not in os.environ:
-                            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = api_key
-                    client = vision.ImageAnnotatorClient()
+            # Extraer texto de la respuesta
+            full_text = ""
+            if "responses" in result and len(result["responses"]) > 0:
+                if "fullTextAnnotation" in result["responses"][0]:
+                    full_text = result["responses"][0]["fullTextAnnotation"].get("text", "")
+                elif "textAnnotations" in result["responses"][0] and len(result["responses"][0]["textAnnotations"]) > 0:
+                    # Fallback: usar primera anotación de texto
+                    full_text = result["responses"][0]["textAnnotations"][0].get("description", "")
             
-            if not client:
-                # Intentar sin credenciales explícitas (usará variable de entorno o credenciales por defecto)
-                try:
-                    client = vision.ImageAnnotatorClient()
-                except Exception as cred_error:
-                    _logger.warning("Error al inicializar Google Vision client: %s. Usando OCR alternativo.", cred_error)
-                    return self._extract_with_fallback_ocr(pdf_data)
+            if not full_text:
+                _logger.warning("Google Vision REST API no extrajo texto. Usando OCR alternativo.")
+                return self._extract_with_fallback_ocr(self.pdf_data)
             
-            # Para PDFs, Google Vision requiere usar async_annotate_file o convertir a imágenes
-            # Intentamos primero con document_text_detection (puede funcionar con algunos PDFs)
-            try:
-                # Intentar procesar como imagen (primera página del PDF)
-                # Nota: Para PDFs completos, usar pdfplumber es más adecuado
-                image = vision.Image(content=pdf_bytes)
-                response = client.document_text_detection(image=image)
-                
-                if response.error.message:
-                    raise Exception(f"Error de Google Vision: {response.error.message}")
-                
-                # Extraer texto completo
-                full_text = response.full_text_annotation.text if response.full_text_annotation else ""
-                
-                # Si no hay texto, usar OCR alternativo
-                if not full_text:
-                    _logger.info("Google Vision no extrajo texto del PDF, usando OCR alternativo.")
-                    return self._extract_with_fallback_ocr(pdf_data)
-                
-                # Parsear datos de la factura
-                return self._parse_invoice_text(full_text)
-            except Exception as proc_error:
-                _logger.warning("Error procesando con Google Vision: %s. Usando OCR alternativo.", proc_error)
-                return self._extract_with_fallback_ocr(pdf_data)
+            # Parsear datos de la factura
+            return self._parse_invoice_text(full_text)
             
-        except ImportError:
-            _logger.warning("google-cloud-vision no está instalado. Usando OCR alternativo.")
-            return self._extract_with_fallback_ocr(pdf_data)
+        except requests.exceptions.RequestException as e:
+            _logger.exception("Error en petición REST a Google Vision: %s", e)
+            raise Exception(_("Error al conectar con Google Vision API: %s") % str(e))
         except Exception as e:
-            _logger.exception("Error con Google Vision API: %s", e)
-            # En caso de error, intentar con OCR alternativo
-            return self._extract_with_fallback_ocr(pdf_data)
+            _logger.exception("Error procesando respuesta de Google Vision: %s", e)
+            raise
+    
+    def _extract_with_vision_client(self, client, pdf_bytes):
+        """
+        Extrae texto usando el cliente de Python de Google Vision (para Service Account).
+        """
+        from google.cloud import vision
+        
+        try:
+            # Intentar procesar como imagen (primera página del PDF)
+            image = vision.Image(content=pdf_bytes)
+            response = client.document_text_detection(image=image)
+            
+            if response.error.message:
+                raise Exception(f"Error de Google Vision: {response.error.message}")
+            
+            # Extraer texto completo
+            full_text = response.full_text_annotation.text if response.full_text_annotation else ""
+            
+            # Si no hay texto, usar OCR alternativo
+            if not full_text:
+                _logger.info("Google Vision no extrajo texto del PDF, usando OCR alternativo.")
+                return self._extract_with_fallback_ocr(self.pdf_data)
+            
+            # Parsear datos de la factura
+            return self._parse_invoice_text(full_text)
+        except Exception as proc_error:
+            _logger.warning("Error procesando con Google Vision: %s. Usando OCR alternativo.", proc_error)
+            return self._extract_with_fallback_ocr(self.pdf_data)
 
     def _extract_with_fallback_ocr(self, pdf_data):
         """

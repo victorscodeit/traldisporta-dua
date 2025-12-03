@@ -218,28 +218,30 @@ class AduanaExpediente(models.Model):
             if rec.incoterm and rec.incoterm in incoterm_data:
                 data = incoterm_data[rec.incoterm]
                 rec.incoterm_info = f"""
-                <div class="alert alert-info" role="alert">
-                    <h5><strong>{rec.incoterm}</strong> - {data['descripcion']}</h5>
-                    <table class="table table-sm">
+                <div style="background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; padding: 12px; margin: 8px 0;">
+                    <p style="margin: 0 0 12px 0; font-size: 14px; line-height: 1.5;">
+                        <strong style="font-size: 16px;">{rec.incoterm}</strong> - {data['descripcion']}
+                    </p>
+                    <table style="width: 100%; border-collapse: collapse; margin: 0;">
                         <tr>
-                            <td><strong>Transporte:</strong></td>
-                            <td>{data['transporte']}</td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb; width: 40%;"><strong>Transporte:</strong></td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;">{data['transporte']}</td>
                         </tr>
                         <tr>
-                            <td><strong>Seguro:</strong></td>
-                            <td>{data['seguro']}</td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;"><strong>Seguro:</strong></td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;">{data['seguro']}</td>
                         </tr>
                         <tr>
-                            <td><strong>Riesgo:</strong></td>
-                            <td>{data['riesgo']}</td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;"><strong>Riesgo:</strong></td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;">{data['riesgo']}</td>
                         </tr>
                         <tr>
-                            <td><strong>Aduana Exportación:</strong></td>
-                            <td>{data['aduana_exp']}</td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;"><strong>Aduana Exportación:</strong></td>
+                            <td style="padding: 6px 8px; border-bottom: 1px solid #bee5eb;">{data['aduana_exp']}</td>
                         </tr>
                         <tr>
-                            <td><strong>Aduana Importación:</strong></td>
-                            <td>{data['aduana_imp']}</td>
+                            <td style="padding: 6px 8px;"><strong>Aduana Importación:</strong></td>
+                            <td style="padding: 6px 8px;">{data['aduana_imp']}</td>
                         </tr>
                     </table>
                 </div>

@@ -62,8 +62,8 @@
                         <div class="o_setting_right_pane">
                             <label for="google_vision_api_key"/>
                             <div class="text-muted">
-                                Ruta al archivo JSON de Service Account (ej: /path/to/credentials.json) 
-                                o contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
+                                <strong>API Key directa</strong> (ej: AIzaSy...) <strong>O</strong> ruta a archivo JSON de Service Account (ej: /path/to/credentials.json) 
+                                <strong>O</strong> contenido JSON como texto. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
                                 <br/>
                                 <a href="https://cloud.google.com/vision/docs/setup" target="_blank">Ver documentación de Google Cloud Vision</a>
                             </div>
