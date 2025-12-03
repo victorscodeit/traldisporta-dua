@@ -28,19 +28,51 @@ class InvoiceOCRService(models.AbstractModel):
         
         # Validar que el PDF no esté vacío o corrupto
         try:
+            # En Odoo, los campos Binary siempre vienen como string base64
             if isinstance(pdf_data, str):
-                pdf_bytes = base64.b64decode(pdf_data)
+                try:
+                    pdf_bytes = base64.b64decode(pdf_data)
+                except Exception as decode_error:
+                    _logger.error("Error al decodificar base64: %s. Primeros 100 caracteres: %s", decode_error, pdf_data[:100] if pdf_data else "None")
+                    return {
+                        "error": _("Error al decodificar el archivo PDF. El formato puede ser incorrecto."),
+                        "texto_extraido": "",
+                        "metodo_usado": "Error de validación"
+                    }
             else:
                 pdf_bytes = pdf_data
             
-            # Validar que es un PDF válido (debe empezar con %PDF)
-            if len(pdf_bytes) < 4 or not pdf_bytes[:4].startswith(b'%PDF'):
+            # Validar que no esté vacío
+            if not pdf_bytes or len(pdf_bytes) < 4:
+                _logger.warning("PDF vacío o muy pequeño. Tamaño: %d bytes", len(pdf_bytes) if pdf_bytes else 0)
                 return {
-                    "error": _("El archivo no parece ser un PDF válido. Verifica que el archivo esté correcto."),
+                    "error": _("El archivo PDF está vacío o es demasiado pequeño."),
                     "texto_extraido": "",
                     "metodo_usado": "Error de validación"
                 }
+            
+            # Validar que es un PDF válido (debe empezar con %PDF)
+            # Algunos PDFs pueden tener espacios en blanco al inicio, así que los eliminamos
+            pdf_start = pdf_bytes[:10].strip()
+            if not pdf_start.startswith(b'%PDF'):
+                # Intentar buscar %PDF en los primeros 1024 bytes (algunos PDFs tienen headers adicionales)
+                found_pdf = False
+                for i in range(min(1024, len(pdf_bytes) - 4)):
+                    if pdf_bytes[i:i+4] == b'%PDF':
+                        found_pdf = True
+                        _logger.info("PDF válido encontrado en posición %d (después de %d bytes de header)", i, i)
+                        break
+                
+                if not found_pdf:
+                    _logger.warning("PDF no válido. Primeros 50 bytes (hex): %s", pdf_bytes[:50].hex() if len(pdf_bytes) >= 50 else pdf_bytes.hex())
+                    _logger.warning("Primeros 50 bytes (ascii): %s", repr(pdf_bytes[:50]) if len(pdf_bytes) >= 50 else repr(pdf_bytes))
+                    return {
+                        "error": _("El archivo no parece ser un PDF válido. Verifica que el archivo esté correcto.\n\nSi es una imagen escaneada, asegúrate de que esté en formato PDF, no JPG/PNG."),
+                        "texto_extraido": "",
+                        "metodo_usado": "Error de validación"
+                    }
         except Exception as e:
+            _logger.exception("Error al procesar el archivo PDF: %s", e)
             return {
                 "error": _("Error al procesar el archivo PDF: %s\n\nVerifica que el archivo no esté corrupto.") % str(e),
                 "texto_extraido": "",

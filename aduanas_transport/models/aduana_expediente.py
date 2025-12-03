@@ -678,7 +678,20 @@ class AduanaExpediente(models.Model):
             
             # Extraer datos de la factura
             try:
-                invoice_data = ocr_service.extract_invoice_data(rec.factura_pdf)
+                # Asegurar que factura_pdf esté en el formato correcto
+                pdf_data = rec.factura_pdf
+                if not pdf_data:
+                    rec.factura_estado_procesamiento = "error"
+                    rec.factura_mensaje_error = _("No hay datos de PDF para procesar")
+                    raise UserError(_("No hay datos de PDF para procesar"))
+                
+                # En Odoo, los campos Binary vienen como string base64
+                # Si viene como bytes, convertirlo a base64
+                if isinstance(pdf_data, bytes):
+                    import base64
+                    pdf_data = base64.b64encode(pdf_data).decode('utf-8')
+                
+                invoice_data = ocr_service.extract_invoice_data(pdf_data)
                 
                 # Validar que se extrajo texto
                 if invoice_data.get("error"):
