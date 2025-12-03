@@ -107,11 +107,20 @@ class AduanaExpediente(models.Model):
     # Oficinas adicionales
     oficina_destino = fields.Char(string="Oficina Aduanas Destino")
     
-    # Factura PDF y procesamiento IA
-    factura_pdf = fields.Binary(string="Factura PDF", help="Sube la factura PDF para extraer datos automáticamente")
+    # Factura PDF y procesamiento IA (FLUJO PRINCIPAL)
+    factura_pdf = fields.Binary(string="Factura PDF", help="Sube la factura PDF para extraer datos automáticamente. Este es el punto de partida del expediente.")
     factura_pdf_filename = fields.Char(string="Nombre Archivo Factura")
     factura_procesada = fields.Boolean(string="Factura Procesada", default=False, help="Indica si la factura ha sido procesada con IA")
+    factura_estado_procesamiento = fields.Selection([
+        ("pendiente", "Pendiente de Procesar"),
+        ("procesando", "Procesando..."),
+        ("completado", "Completado"),
+        ("error", "Error en Procesamiento"),
+        ("advertencia", "Completado con Advertencias"),
+    ], string="Estado Procesamiento", default="pendiente", readonly=True, help="Estado del procesamiento de la factura")
+    factura_mensaje_error = fields.Text(string="Mensaje de Error/Advertencia", readonly=True, help="Mensajes de error o advertencias durante el procesamiento")
     factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
+    
     
     # Incidencias
     incidencia_ids = fields.One2many("aduana.incidencia", "expediente_id", string="Incidencias")
@@ -654,7 +663,13 @@ class AduanaExpediente(models.Model):
         """
         for rec in self:
             if not rec.factura_pdf:
+                rec.factura_estado_procesamiento = "error"
+                rec.factura_mensaje_error = _("No hay factura PDF adjunta para procesar")
                 raise UserError(_("No hay factura PDF adjunta para procesar"))
+            
+            # Marcar como procesando
+            rec.factura_estado_procesamiento = "procesando"
+            rec.factura_mensaje_error = False
             
             # Obtener servicio OCR
             ocr_service = self.env["aduanas.invoice.ocr.service"]
@@ -663,53 +678,126 @@ class AduanaExpediente(models.Model):
             try:
                 invoice_data = ocr_service.extract_invoice_data(rec.factura_pdf)
                 
+                # Validar que se extrajo texto
+                if invoice_data.get("error"):
+                    rec.factura_estado_procesamiento = "error"
+                    rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
+                    rec.message_post(
+                        body=_("Error al procesar factura: %s") % invoice_data.get("error"),
+                        subtype='mail.mt_note'
+                    )
+                    raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
+                
+                # Validar datos mínimos extraídos
+                advertencias = []
+                datos_extraidos = []
+                
+                if not invoice_data.get("texto_extraido"):
+                    advertencias.append(_("No se pudo extraer texto del PDF. Puede ser una imagen escaneada de baja calidad."))
+                
+                if not invoice_data.get("remitente_nombre") and not invoice_data.get("remitente_nif"):
+                    advertencias.append(_("No se pudo identificar el remitente en la factura."))
+                else:
+                    datos_extraidos.append(_("Remitente: %s") % (invoice_data.get("remitente_nombre") or invoice_data.get("remitente_nif")))
+                
+                if not invoice_data.get("consignatario_nombre") and not invoice_data.get("consignatario_nif"):
+                    advertencias.append(_("No se pudo identificar el consignatario en la factura."))
+                else:
+                    datos_extraidos.append(_("Consignatario: %s") % (invoice_data.get("consignatario_nombre") or invoice_data.get("consignatario_nif")))
+                
+                if not invoice_data.get("valor_total"):
+                    advertencias.append(_("No se pudo extraer el valor total de la factura."))
+                else:
+                    datos_extraidos.append(_("Valor: %s %s") % (invoice_data.get("valor_total", 0), invoice_data.get("moneda", "EUR")))
+                
+                if not invoice_data.get("numero_factura"):
+                    advertencias.append(_("No se pudo extraer el número de factura."))
+                else:
+                    datos_extraidos.append(_("Nº Factura: %s") % invoice_data.get("numero_factura"))
+                
+                if not invoice_data.get("lineas"):
+                    advertencias.append(_("No se pudieron extraer líneas de productos. Deberás agregarlas manualmente."))
+                else:
+                    datos_extraidos.append(_("Líneas extraídas: %d") % len(invoice_data.get("lineas", [])))
+                
                 # Rellenar expediente con datos extraídos
                 ocr_service.fill_expediente_from_invoice(rec, invoice_data)
                 
-                # Mensaje de éxito
+                # Determinar estado final
+                if advertencias:
+                    rec.factura_estado_procesamiento = "advertencia"
+                    rec.factura_mensaje_error = "\n".join([_("ADVERTENCIAS:")] + advertencias)
+                else:
+                    rec.factura_estado_procesamiento = "completado"
+                    rec.factura_mensaje_error = False
+                
+                # Mensaje de éxito con detalles
+                mensaje_body = _("Factura procesada correctamente.\n\nDatos extraídos:\n%s") % "\n".join(datos_extraidos)
+                if advertencias:
+                    mensaje_body += "\n\n" + _("Advertencias:\n%s") % "\n".join(advertencias)
+                
                 rec.message_post(
-                    body=_("Factura procesada correctamente. Datos extraídos:\n- Número: %s\n- Valor: %s %s\n- Remitente: %s\n- Consignatario: %s") % (
-                        invoice_data.get("numero_factura", "N/A"),
-                        invoice_data.get("valor_total", 0),
-                        invoice_data.get("moneda", "EUR"),
-                        invoice_data.get("remitente_nombre", "N/A"),
-                        invoice_data.get("consignatario_nombre", "N/A"),
-                    ),
+                    body=mensaje_body,
                     subtype='mail.mt_note'
                 )
+                
+                # Notificación según estado
+                notif_type = "warning" if advertencias else "success"
+                notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
+                notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraído.")
                 
                 return {
                     "type": "ir.actions.client",
                     "tag": "display_notification",
                     "params": {
-                        "title": _("Factura Procesada"),
-                        "message": _("La factura se ha procesado correctamente y los datos se han extraído."),
-                        "type": "success",
-                        "sticky": False,
+                        "title": notif_title,
+                        "message": notif_message,
+                        "type": notif_type,
+                        "sticky": bool(advertencias),  # Hacer sticky si hay advertencias
                     }
                 }
+            except UserError:
+                # Re-raise UserError sin modificar
+                rec.factura_estado_procesamiento = "error"
+                raise
             except Exception as e:
+                error_msg = str(e)
+                rec.factura_estado_procesamiento = "error"
+                rec.factura_mensaje_error = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible") % error_msg
                 rec.message_post(
-                    body=_("Error al procesar factura: %s") % str(e),
+                    body=_("Error al procesar factura: %s") % error_msg,
                     subtype='mail.mt_note'
                 )
-                raise UserError(_("Error al procesar la factura: %s") % str(e))
+                _logger.exception("Error al procesar factura PDF: %s", e)
+                raise UserError(_("Error al procesar la factura:\n%s\n\nRevisa el campo 'Mensaje de Error' para más detalles.") % error_msg)
 
     def action_auto_generate_dua(self):
         """
         Procesa la factura PDF, rellena la expedición y genera el DUA automáticamente.
+        Este es el flujo principal: Factura → Procesar → Generar DUA
         """
         for rec in self:
-            # Primero procesar la factura si no está procesada
-            if not rec.factura_procesada and rec.factura_pdf:
+            # Validar que hay factura
+            if not rec.factura_pdf:
+                raise UserError(_("Debe subir una factura PDF primero. Este es el punto de partida del expediente."))
+            
+            # Procesar la factura si no está procesada
+            if not rec.factura_procesada:
                 rec.action_process_invoice_pdf()
             
-            # Validar que tenemos los datos mínimos
+            # Validar que tenemos los datos mínimos después del procesamiento
             if not rec.remitente:
-                raise UserError(_("Debe especificar un remitente. Procese la factura primero o complételo manualmente."))
+                raise UserError(_("No se pudo extraer el remitente de la factura. Por favor, complételo manualmente."))
             
             if not rec.consignatario:
-                raise UserError(_("Debe especificar un consignatario. Procese la factura primero o complételo manualmente."))
+                raise UserError(_("No se pudo extraer el consignatario de la factura. Por favor, complételo manualmente."))
+            
+            # Validar que hay líneas si son necesarias
+            if not rec.line_ids:
+                rec.message_post(
+                    body=_("Advertencia: No se extrajeron líneas de productos de la factura. Puede que necesites agregarlas manualmente."),
+                    subtype='mail.mt_note'
+                )
             
             # Determinar qué tipo de DUA generar según la dirección
             if rec.direction == "export":

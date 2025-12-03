@@ -18,24 +18,60 @@ class InvoiceOCRService(models.AbstractModel):
         
         :param pdf_data: Datos binarios del PDF (base64 o bytes)
         :param api_key: API key de Google Vision (opcional, se obtiene de configuración si no se proporciona)
-        :return: Diccionario con datos extraídos
+        :return: Diccionario con datos extraídos (incluye campo 'error' si hay problemas)
         """
         if not pdf_data:
-            raise UserError(_("No se proporcionó ningún archivo PDF"))
+            return {
+                "error": _("No se proporcionó ningún archivo PDF"),
+                "texto_extraido": ""
+            }
         
         # Obtener API key de configuración si no se proporciona
         if not api_key:
             api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.google_vision_api_key')
         
+        resultado = None
+        metodo_usado = None
+        
         if api_key:
             try:
-                return self._extract_with_google_vision(pdf_data, api_key)
+                resultado = self._extract_with_google_vision(pdf_data, api_key)
+                metodo_usado = "Google Vision"
             except Exception as e:
                 _logger.warning("Error con Google Vision, intentando OCR alternativo: %s", e)
-                return self._extract_with_fallback_ocr(pdf_data)
+                try:
+                    resultado = self._extract_with_fallback_ocr(pdf_data)
+                    metodo_usado = "OCR Alternativo (fallback)"
+                except Exception as e2:
+                    _logger.exception("Error también con OCR alternativo: %s", e2)
+                    return {
+                        "error": _("Error al procesar PDF con ambos métodos:\n- Google Vision: %s\n- OCR Alternativo: %s") % (str(e), str(e2)),
+                        "texto_extraido": "",
+                        "metodo_usado": "Error en ambos"
+                    }
         else:
             # Usar OCR alternativo si no hay API key
-            return self._extract_with_fallback_ocr(pdf_data)
+            try:
+                resultado = self._extract_with_fallback_ocr(pdf_data)
+                metodo_usado = "OCR Alternativo (pdfplumber/PyPDF2)"
+            except Exception as e:
+                _logger.exception("Error con OCR alternativo: %s", e)
+                return {
+                    "error": _("Error al procesar PDF: %s\n\nPosibles soluciones:\n- Verifica que el PDF no esté corrupto\n- Si es una imagen escaneada, configura Google Vision API\n- Instala pdfplumber: pip install pdfplumber") % str(e),
+                    "texto_extraido": "",
+                    "metodo_usado": "Error"
+                }
+        
+        # Agregar información del método usado
+        if resultado:
+            resultado["metodo_usado"] = metodo_usado
+            
+            # Validar que se extrajo texto
+            if not resultado.get("texto_extraido") or len(resultado.get("texto_extraido", "").strip()) < 10:
+                if not resultado.get("error"):
+                    resultado["error"] = _("No se pudo extraer texto del PDF. Posibles causas:\n- El PDF es una imagen escaneada (necesitas Google Vision API)\n- El PDF está protegido o encriptado\n- El PDF está corrupto\n- La calidad del escaneado es muy baja")
+        
+        return resultado
 
     def _extract_with_google_vision(self, pdf_data, api_key):
         """
@@ -291,10 +327,82 @@ class InvoiceOCRService(models.AbstractModel):
             data["pais_origen"] = paises[0] if len(paises) > 0 else "ES"
             data["pais_destino"] = paises[1] if len(paises) > 1 else "AD"
         
-        # Intentar extraer líneas de productos (más complejo, requiere análisis de tablas)
-        # Por ahora, dejamos esto para una implementación más avanzada con IA
+        # Intentar extraer líneas de productos
+        # Buscar patrones comunes de tablas de factura
+        lineas = self._extract_invoice_lines(text)
+        if lineas:
+            data["lineas"] = lineas
         
         return data
+    
+    def _extract_invoice_lines(self, text):
+        """
+        Intenta extraer líneas de productos de la factura.
+        Busca patrones comunes en tablas de facturas.
+        """
+        lineas = []
+        
+        # Patrón para líneas de factura típicas:
+        # Cantidad | Descripción | Precio unitario | Total
+        # O: Descripción | Cantidad | Precio | Total
+        
+        # Buscar números seguidos de descripciones y precios
+        # Patrón mejorado para líneas de factura
+        line_patterns = [
+            # Formato: cantidad descripción precio total
+            r'(\d+[.,]?\d*)\s+([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+([\d.,]+)\s*([€$]?)\s+([\d.,]+)\s*([€$]?)',
+            # Formato: descripción cantidad precio
+            r'([A-ZÁÉÍÓÚÑ][^0-9€$]{10,100}?)\s+(\d+[.,]?\d*)\s+([\d.,]+)\s*([€$]?)',
+        ]
+        
+        lines_found = []
+        for pattern in line_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+            for match in matches:
+                # Intentar identificar qué es cada grupo
+                groups = match.groups()
+                if len(groups) >= 3:
+                    linea = {
+                        "descripcion": None,
+                        "cantidad": None,
+                        "precio_unitario": None,
+                        "total": None,
+                    }
+                    
+                    # El primer número suele ser cantidad
+                    try:
+                        cantidad = float(groups[0].replace(',', '.'))
+                        if cantidad > 0 and cantidad < 10000:  # Rango razonable
+                            linea["cantidad"] = cantidad
+                            linea["unidades"] = cantidad
+                    except:
+                        pass
+                    
+                    # Buscar descripción (texto largo)
+                    for i, group in enumerate(groups):
+                        if isinstance(group, str) and len(group) > 10 and not re.match(r'^[\d.,€$]+$', group):
+                            if not linea["descripcion"]:
+                                linea["descripcion"] = group.strip()[:200]
+                    
+                    # Buscar precios (números con decimales)
+                    for i, group in enumerate(groups):
+                        if isinstance(group, str) and re.match(r'^[\d.,]+$', group):
+                            try:
+                                precio = float(group.replace(',', '.'))
+                                if precio > 0:
+                                    if not linea["precio_unitario"]:
+                                        linea["precio_unitario"] = precio
+                                    else:
+                                        linea["total"] = precio
+                            except:
+                                pass
+                    
+                    # Solo agregar si tiene al menos descripción y cantidad
+                    if linea["descripcion"] and linea["cantidad"]:
+                        lines_found.append(linea)
+        
+        # Limitar a máximo 20 líneas para evitar ruido
+        return lines_found[:20]
 
     def fill_expediente_from_invoice(self, expediente, invoice_data):
         """
@@ -346,6 +454,35 @@ class InvoiceOCRService(models.AbstractModel):
             )
             if consignatario:
                 expediente.consignatario = consignatario
+        
+        # Crear líneas de productos si se extrajeron
+        if invoice_data.get("lineas"):
+            # Limpiar líneas existentes si las hay
+            expediente.line_ids.unlink()
+            
+            # Crear nuevas líneas
+            LineModel = self.env["aduana.expediente.line"]
+            for idx, linea_data in enumerate(invoice_data["lineas"], start=1):
+                line_vals = {
+                    "expediente_id": expediente.id,
+                    "item_number": idx,
+                    "descripcion": linea_data.get("descripcion", ""),
+                    "unidades": linea_data.get("unidades") or linea_data.get("cantidad") or 1.0,
+                    "valor_linea": linea_data.get("total") or linea_data.get("precio_unitario") or 0.0,
+                    "pais_origen": expediente.pais_origen or "ES",
+                }
+                # Si hay peso en la descripción, intentar extraerlo
+                desc = linea_data.get("descripcion", "")
+                peso_match = re.search(r'(\d+[.,]?\d*)\s*(kg|KG|Kg|kilogramos?)', desc)
+                if peso_match:
+                    try:
+                        peso = float(peso_match.group(1).replace(',', '.'))
+                        line_vals["peso_bruto"] = peso
+                        line_vals["peso_neto"] = peso * 0.95  # Aproximación
+                    except:
+                        pass
+                
+                LineModel.create(line_vals)
         
         # Guardar datos extraídos como texto para referencia
         expediente.factura_datos_extraidos = json.dumps(invoice_data, indent=2, ensure_ascii=False)

@@ -76,6 +76,28 @@
               <field name="incidencias_pendientes_count" widget="statinfo" string="Pendientes"/>
             </button>
           </div>
+          
+          <!-- FACTURA PDF - FLUJO PRINCIPAL -->
+          <group string="Factura PDF (Punto de Partida)" col="2">
+            <group>
+              <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" 
+                     help="Sube la factura PDF. El sistema extraerá automáticamente todos los datos necesarios."/>
+              <field name="factura_pdf_filename" invisible="1"/>
+              <field name="factura_procesada" readonly="1" widget="boolean_toggle"/>
+              <field name="factura_estado_procesamiento" widget="statusbar" 
+                     statusbar_visible="pendiente,procesando,completado,advertencia,error"
+                     options="{'statusbar_visible_fields': ['pendiente', 'procesando', 'completado', 'advertencia', 'error']}"/>
+            </group>
+            <group>
+              <field name="factura_mensaje_error" widget="text" readonly="1" nolabel="1"
+                     invisible="not factura_mensaje_error or factura_estado_procesamiento in ['completado', 'pendiente']"
+                     placeholder="Los mensajes de error o advertencias aparecerán aquí..."/>
+              <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
+                     invisible="not factura_datos_extraidos"
+                     placeholder="Los datos extraídos de la factura aparecerán aquí después del procesamiento..."/>
+            </group>
+          </group>
+          
           <group>
             <group>
               <field name="name"/>
@@ -171,16 +193,6 @@
               </field>
             </page>
 
-            <page string="Factura PDF">
-              <group string="Factura Comercial">
-                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
-                <field name="factura_pdf_filename" invisible="1"/>
-                <field name="factura_procesada" readonly="1"/>
-                <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
-                       invisible="not factura_datos_extraidos"
-                       placeholder="Los datos extraídos de la factura aparecerán aquí después del procesamiento..."/>
-              </group>
-            </page>
 
             <page string="Totales">
               <group>
