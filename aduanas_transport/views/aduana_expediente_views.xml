@@ -39,7 +39,6 @@
           <button name="action_preview_cc515c" string="Previsualizar DUA" type="object"
                   class="btn btn-secondary"
                   invisible="not id or direction != 'export'"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), '&', ('id', '=', False), ('factura_procesada', '=', False)]}"
                   help="Previsualiza el DUA generado (requiere que el DUA esté generado primero)"/>
           <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
           
