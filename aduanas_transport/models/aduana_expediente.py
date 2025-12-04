@@ -216,6 +216,7 @@ class AduanaExpediente(models.Model):
     ], string="Estado Procesamiento", default="pendiente", readonly=True, help="Estado del procesamiento de la factura")
     factura_mensaje_error = fields.Text(string="Mensaje de Error/Advertencia", readonly=True, help="Mensajes de error o advertencias durante el procesamiento")
     factura_mensaje_html = fields.Html(string="Mensaje de Procesamiento", compute="_compute_factura_mensaje_html", store=False, sanitize=False)
+    factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
     
     @api.depends('factura_estado_procesamiento', 'factura_mensaje_error')
     def _compute_factura_mensaje_html(self):
@@ -226,20 +227,19 @@ class AduanaExpediente(models.Model):
             
             if estado == 'error':
                 # Rojo para errores
-                rec.factura_mensaje_html = f'<div class="alert alert-danger" role="alert" style="margin: 0; padding: 10px; border-radius: 4px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; width: 100%; box-sizing: border-box;"><i class="fa fa-exclamation-circle"></i> {mensaje}</div>' if mensaje else False
+                rec.factura_mensaje_html = f'<div class="alert alert-danger" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-exclamation-circle"></i> {mensaje}</div>' if mensaje else False
             elif estado == 'advertencia':
                 # Amarillo/Naranja para advertencias
-                rec.factura_mensaje_html = f'<div class="alert alert-warning" role="alert" style="margin: 0; padding: 10px; border-radius: 4px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; width: 100%; box-sizing: border-box;"><i class="fa fa-exclamation-triangle"></i> {mensaje}</div>' if mensaje else False
+                rec.factura_mensaje_html = f'<div class="alert alert-warning" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-exclamation-triangle"></i> {mensaje}</div>' if mensaje else False
             elif estado == 'completado':
                 # Verde para éxito
                 if mensaje:
-                    rec.factura_mensaje_html = f'<div class="alert alert-success" role="alert" style="margin: 0; padding: 10px; border-radius: 4px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; width: 100%; box-sizing: border-box;"><i class="fa fa-check-circle"></i> {mensaje}</div>'
+                    rec.factura_mensaje_html = f'<div class="alert alert-success" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-check-circle"></i> {mensaje}</div>'
                 else:
-                    rec.factura_mensaje_html = '<div class="alert alert-success" role="alert" style="margin: 0; padding: 10px; border-radius: 4px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; width: 100%; box-sizing: border-box;"><i class="fa fa-check-circle"></i> Procesamiento completado correctamente</div>'
+                    rec.factura_mensaje_html = '<div class="alert alert-success" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-check-circle"></i> Procesamiento completado correctamente</div>'
             else:
                 # Otros estados (pendiente, procesando) - no mostrar mensaje
                 rec.factura_mensaje_html = False
-    factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
     
     
     # Incidencias

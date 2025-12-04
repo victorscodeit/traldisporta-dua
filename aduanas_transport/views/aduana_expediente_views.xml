@@ -90,11 +90,13 @@
               <field name="factura_estado_procesamiento" widget="statusbar" 
                      statusbar_visible="pendiente,procesando,completado,advertencia,error"
                      options="{'statusbar_visible_fields': ['pendiente', 'procesando', 'completado', 'advertencia', 'error']}"/>
-              <field name="factura_mensaje_html" nolabel="1" readonly="1" 
-                     invisible="not factura_mensaje_html"
-                     widget="html"
-                     style="width: 100%;"/>
             </group>
+          </group>
+          <group colspan="2" invisible="not factura_mensaje_html">
+            <field name="factura_mensaje_html" nolabel="1" readonly="1" 
+                   widget="html"
+                   colspan="2"
+                   style="width: 100%;"/>
           </group>
           
           <!-- INFORMACIÓN GENERAL -->
