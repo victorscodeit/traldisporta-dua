@@ -147,20 +147,41 @@
             </group>
           </group>
           
-          <group string="Observaciones">
-            <field name="observaciones" placeholder="Observaciones adicionales..."/>
-          </group>
-          
           <group string="Estado y Errores" col="2" invisible="[['state','!=','error']]">
             <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
             <field name="last_response_date" readonly="1"/>
           </group>
           
-          <!-- Vista Previa del PDF en una sección separada -->
-          <group string="Vista Previa Factura PDF" invisible="not factura_pdf" colspan="2">
-            <field name="factura_pdf" filename="factura_pdf_filename" widget="pdf_viewer" 
-                   readonly="1" nolabel="1"
-                   options="{'disable_zoom': false, 'disable_scroll': false}"/>
+          <!-- Documentos -->
+          <group string="Documentos" colspan="2">
+            <field name="documento_ids" nolabel="1" 
+                   context="{'default_res_model': 'aduana.expediente', 'default_res_id': id}">
+              <tree>
+                <field name="name"/>
+                <field name="mimetype"/>
+                <field name="file_size"/>
+                <field name="create_date"/>
+                <field name="datas" filename="name" widget="binary"/>
+              </tree>
+              <form>
+                <sheet>
+                  <group>
+                    <field name="name"/>
+                    <field name="mimetype"/>
+                    <field name="file_size"/>
+                    <field name="create_date"/>
+                  </group>
+                  <group string="Archivo">
+                    <field name="datas" filename="name" widget="binary"/>
+                  </group>
+                  <group string="Vista Previa" invisible="not (mimetype and 'pdf' in mimetype.lower())">
+                    <field name="datas" filename="name" widget="pdf_viewer" 
+                           readonly="1" nolabel="1"
+                           options="{'disable_zoom': false, 'disable_scroll': false}"/>
+                  </group>
+                </sheet>
+              </form>
+            </field>
           </group>
 
           <notebook>

@@ -113,6 +113,73 @@ class AduanaExpediente(models.Model):
     factura_pdf_filename = fields.Char(string="Nombre Archivo Factura")
     factura_pdf_url = fields.Char(string="URL Factura PDF", compute="_compute_factura_pdf_url", help="URL para previsualizar el PDF")
     
+    # Documentos relacionados
+    documento_ids = fields.Many2many("ir.attachment", string="Documentos", compute="_compute_documento_ids", store=False)
+    
+    @api.depends('factura_pdf', 'name')
+    def _compute_documento_ids(self):
+        """Obtiene todos los documentos (attachments) relacionados con este expediente"""
+        for rec in self:
+            # No podemos depender de 'id' en @api.depends, pero podemos usarlo en el método
+            if rec.id:
+                attachments = self.env['ir.attachment'].search([
+                    ('res_model', '=', rec._name),
+                    ('res_id', '=', rec.id)
+                ])
+                rec.documento_ids = attachments
+            else:
+                rec.documento_ids = False
+    
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create para asegurar que se creen attachments cuando se sube factura_pdf"""
+        records = super().create(vals_list)
+        for rec, vals in zip(records, vals_list):
+            if vals.get('factura_pdf') and vals.get('factura_pdf_filename'):
+                # Crear attachment para la factura PDF si no existe
+                existing = self.env['ir.attachment'].search([
+                    ('res_model', '=', rec._name),
+                    ('res_id', '=', rec.id),
+                    ('name', '=', vals['factura_pdf_filename'])
+                ], limit=1)
+                if not existing:
+                    self.env['ir.attachment'].create({
+                        'name': vals['factura_pdf_filename'],
+                        'res_model': rec._name,
+                        'res_id': rec.id,
+                        'type': 'binary',
+                        'mimetype': 'application/pdf',
+                        'datas': vals['factura_pdf']
+                    })
+        return records
+    
+    def write(self, vals):
+        """Override write para crear/actualizar attachment cuando se cambia factura_pdf"""
+        result = super().write(vals)
+        if 'factura_pdf' in vals or 'factura_pdf_filename' in vals:
+            for rec in self:
+                if rec.factura_pdf and rec.factura_pdf_filename:
+                    # Buscar attachment existente
+                    existing = self.env['ir.attachment'].search([
+                        ('res_model', '=', rec._name),
+                        ('res_id', '=', rec.id),
+                        ('name', '=', rec.factura_pdf_filename)
+                    ], limit=1)
+                    if existing:
+                        existing.write({'datas': rec.factura_pdf})
+                    else:
+                    self.env['ir.attachment'].create({
+                        'name': rec.factura_pdf_filename,
+                        'res_model': rec._name,
+                        'res_id': rec.id,
+                        'type': 'binary',
+                        'mimetype': 'application/pdf',
+                        'datas': rec.factura_pdf
+                    })
+                # Invalidar el campo computed para que se recalcule
+                rec.invalidate_recordset(['documento_ids'])
+        return result
+    
     @api.depends('factura_pdf')
     def _compute_factura_pdf_url(self):
         """Genera la URL del PDF para previsualización"""
