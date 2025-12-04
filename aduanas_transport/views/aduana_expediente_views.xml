@@ -27,19 +27,19 @@
     <field name="arch" type="xml">
       <form string="Expediente Aduanero">
         <header>
-          <!-- Botones principales en orden: Procesar Factura, Generar DUA, Preview DUA, Consultar bandeja -->
+          <!-- Botones principales en orden: Procesar Factura, Generar DUA, Consultar bandeja -->
           <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
                   class="oe_highlight"
                   invisible="not factura_pdf or factura_procesada"
                   help="Extrae datos de la factura PDF usando IA/OCR"/>
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
-                  invisible="not factura_procesada or direction != 'export'"
+                  invisible="not factura_procesada or direction != 'export' or dua_generado"
                   help="Genera el DUA de exportación (CUSDEC EX1)"/>
-          <button name="action_preview_cc515c" string="Previsualizar DUA" type="object"
-                  class="btn btn-secondary"
-                  invisible="not id or direction != 'export'"
-                  help="Previsualiza el DUA generado (requiere que el DUA esté generado primero)"/>
+          <button name="action_generate_dua" string="Regenerar DUA" type="object"
+                  class="oe_highlight"
+                  invisible="not factura_procesada or direction != 'export' or not dua_generado"
+                  help="Regenera el DUA de exportación (CUSDEC EX1)"/>
           <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
           
           <!-- Botones adicionales de exportación -->
@@ -77,6 +77,9 @@
               <field name="incidencias_pendientes_count" widget="statinfo" string="Pendientes"/>
             </button>
           </div>
+          
+          <!-- Campo computed necesario para los modificadores (invisible) -->
+          <field name="dua_generado" invisible="1"/>
           
           <!-- PROCESAR FACTURA PDF - FLUJO PRINCIPAL -->
           <group string="Procesar factura PDF" col="2">

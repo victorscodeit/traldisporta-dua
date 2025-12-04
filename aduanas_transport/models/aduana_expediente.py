@@ -115,6 +115,18 @@ class AduanaExpediente(models.Model):
     
     # Documentos relacionados
     documento_ids = fields.Many2many("ir.attachment", string="Documentos", compute="_compute_documento_ids", store=False)
+    dua_generado = fields.Boolean(string="DUA Generado", compute="_compute_dua_generado", store=False)
+    
+    @api.depends('name')
+    def _compute_dua_generado(self):
+        """Verifica si el DUA está generado"""
+        for rec in self:
+            # No podemos depender de 'id' en @api.depends, pero podemos usarlo en el método
+            if rec.id:
+                att = rec._get_xml_attachment("DUA_CUSDEC_EX1.xml")
+                rec.dua_generado = bool(att)
+            else:
+                rec.dua_generado = False
     
     @api.depends('factura_pdf', 'name')
     def _compute_documento_ids(self):
@@ -403,7 +415,7 @@ class AduanaExpediente(models.Model):
                 "aduanas_transport.tpl_cusdec_ex1",
                 {"exp": rec}
             )
-            rec._attach_xml(f"{rec.name}_CUSDEC_EX1.xml", xml)
+            rec._attach_xml("DUA_CUSDEC_EX1.xml", xml)
             rec.state = "predeclared"
             rec.error_message = False
         return True
@@ -418,22 +430,22 @@ class AduanaExpediente(models.Model):
             if rec.direction != "export":
                 raise UserError(_("DUA solo aplica a exportación"))
             settings = rec._get_settings()
-            # Buscar el archivo CUSDEC EX1
+            # Buscar el archivo DUA_CUSDEC_EX1.xml
             xmls = self.env["ir.attachment"].search([
                 ("res_model","=",rec._name),
                 ("res_id","=",rec.id),
-                ("name","like","%CUSDEC_EX1.xml")
+                ("name","=","DUA_CUSDEC_EX1.xml")
             ], limit=1)
             if not xmls:
                 rec.action_generate_cc515c()
                 xmls = self.env["ir.attachment"].search([
                     ("res_model","=",rec._name),
                     ("res_id","=",rec.id),
-                    ("name","like","%CUSDEC_EX1.xml")
+                    ("name","=","DUA_CUSDEC_EX1.xml")
                 ], limit=1)
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
             resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), xml_content, service="CUSDEC_EX1")
-            rec._attach_xml(f"{rec.name}_CUSDEC_EX1_response.xml", resp_xml or "")
+            rec._attach_xml("DUA_CUSDEC_EX1_response.xml", resp_xml or "")
             
             # Parsear respuesta mejorada
             parsed = parser.parse_aeat_response(resp_xml, "CUSDEC_EX1")
@@ -444,9 +456,12 @@ class AduanaExpediente(models.Model):
                 rec.state = "accepted"
                 rec.error_message = False
                 if parsed.get("messages"):
-                    rec.message_post(body=_("DUA aceptado. MRN: %s\nMensajes: %s") % (
-                        rec.mrn, "\n".join(parsed["messages"])
-                    ))
+                    rec.with_context(mail_notrack=True).message_post(
+                        body=_("DUA aceptado. MRN: %s\nMensajes: %s") % (
+                            rec.mrn, "\n".join(parsed["messages"])
+                        ),
+                        subtype_xmlid='mail.mt_note'
+                    )
                 # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
@@ -454,7 +469,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al enviar DUA (CUSDEC EX1):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
+                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar DUA (CUSDEC EX1):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
@@ -485,7 +500,10 @@ class AduanaExpediente(models.Model):
             if parsed.get("accepted") or parsed.get("success"):
                 rec.state = "presented"
                 rec.error_message = False
-                rec.message_post(body=_("CC511C presentado correctamente"))
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("CC511C presentado correctamente"),
+                    subtype_xmlid='mail.mt_note'
+                )
                 # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cc511c")
@@ -493,7 +511,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
+                rec.with_context(mail_notrack=True).message_post(body=_("Error al presentar CC511C:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cc511c")
@@ -543,9 +561,12 @@ class AduanaExpediente(models.Model):
                 rec.state = "accepted"
                 rec.error_message = False
                 if parsed.get("messages"):
-                    rec.message_post(body=_("Declaración aceptada. MRN: %s\nMensajes: %s") % (
-                        rec.mrn, "\n".join(parsed["messages"])
-                    ))
+                    rec.with_context(mail_notrack=True).message_post(
+                        body=_("Declaración aceptada. MRN: %s\nMensajes: %s") % (
+                            rec.mrn, "\n".join(parsed["messages"])
+                        ),
+                        subtype_xmlid='mail.mt_note'
+                    )
                 # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
@@ -553,7 +574,7 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
+                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
@@ -586,14 +607,17 @@ class AduanaExpediente(models.Model):
             
             if parsed.get("released") and rec.state not in ("released", "exited", "closed"):
                 rec.state = "released"
-                rec.message_post(body=_("Levante confirmado desde bandeja AEAT"))
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("Levante confirmado desde bandeja AEAT"),
+                    subtype_xmlid='mail.mt_note'
+                )
             
             # Procesar incidencias detectadas
             if parsed.get("incidencias"):
                 rec._procesar_incidencias(parsed["incidencias"], "bandeja")
             
             if parsed.get("errors"):
-                rec.message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype_xmlid='mail.mt_note')
+                rec.with_context(mail_notrack=True).message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype_xmlid='mail.mt_note')
         return True
     
     def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
@@ -629,14 +653,13 @@ class AduanaExpediente(models.Model):
             })
             
             # Notificar en el chatter
-            self.message_post(
+            self.with_context(mail_notrack=True).message_post(
                 body=_("Nueva incidencia detectada: %s\nTipo: %s\nCódigo: %s") % (
                     incidencia.titulo,
                     dict(incidencia._fields["tipo_incidencia"].selection).get(incidencia.tipo_incidencia),
                     incidencia.codigo_incidencia or _("N/A")
                 ),
-                subtype_xmlid='mail.mt_note',
-                partner_ids=[(4, p.id) for p in self.message_partner_ids]
+                subtype_xmlid='mail.mt_note'
             )
             
             # Si es crítica, cambiar estado del expediente
@@ -697,7 +720,7 @@ class AduanaExpediente(models.Model):
         """Genera o recupera el XML del DUA en formato CUSDEC EX1"""
         self.ensure_one()
         # Verificar si ya existe el XML
-        att = self._get_xml_attachment("CUSDEC_EX1.xml")
+        att = self._get_xml_attachment("DUA_CUSDEC_EX1.xml")
         if att:
             return att
         
@@ -710,7 +733,7 @@ class AduanaExpediente(models.Model):
         self.action_generate_cc515c()
         
         # Recuperar el attachment generado
-        att = self._get_xml_attachment("CUSDEC_EX1.xml")
+        att = self._get_xml_attachment("DUA_CUSDEC_EX1.xml")
         if not att:
             raise UserError(_("No se pudo generar el DUA. Verifique que todos los datos estén completos."))
         
@@ -748,7 +771,7 @@ class AduanaExpediente(models.Model):
         """Previsualiza el DUA. Solo funciona si el DUA ya está generado."""
         self.ensure_one()
         # Verificar si el DUA ya está generado
-        att = self._get_xml_attachment("CUSDEC_EX1.xml")
+        att = self._get_xml_attachment("DUA_CUSDEC_EX1.xml")
         if not att:
             raise UserError(_("El DUA no está generado. Por favor, use el botón 'Generar DUA' primero."))
         
@@ -842,7 +865,7 @@ class AduanaExpediente(models.Model):
                 if invoice_data.get("error"):
                     rec.factura_estado_procesamiento = "error"
                     rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
-                    rec.message_post(
+                    rec.with_context(mail_notrack=True).message_post(
                         body=_("Error al procesar factura: %s") % invoice_data.get("error"),
                         subtype_xmlid='mail.mt_note'
                     )
@@ -985,7 +1008,7 @@ class AduanaExpediente(models.Model):
                 if invoice_data.get("metodo_usado"):
                     mensaje_chatter += _("<i>Método de extracción: {0}</i>").format(invoice_data.get("metodo_usado"))
                 
-                rec.message_post(
+                rec.with_context(mail_notrack=True).message_post(
                     body=mensaje_chatter,
                     subtype_xmlid='mail.mt_note'
                 )
@@ -1026,7 +1049,7 @@ class AduanaExpediente(models.Model):
                 error_msg = str(ue)
                 rec.factura_estado_procesamiento = "error"
                 rec.factura_mensaje_error = error_msg
-                rec.message_post(
+                rec.with_context(mail_notrack=True).message_post(
                     body=_("Error al procesar factura: %s") % error_msg,
                     subtype_xmlid='mail.mt_note'
                 )
@@ -1046,7 +1069,7 @@ class AduanaExpediente(models.Model):
                 # Mensaje de error más detallado
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
                 rec.factura_mensaje_error = mensaje_error_detallado
-                rec.message_post(
+                rec.with_context(mail_notrack=True).message_post(
                     body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
                     subtype_xmlid='mail.mt_note'
                 )
@@ -1083,12 +1106,13 @@ class AduanaExpediente(models.Model):
             
             # Generar DUA en formato CUSDEC EX1 (formato oficial)
             rec.action_generate_cc515c()
-            rec.message_post(
+            rec.with_context(mail_notrack=True).message_post(
                 body=_("DUA de exportación (CUSDEC EX1) generado."),
                 subtype_xmlid='mail.mt_note'
             )
             
-            rec.invalidate_recordset()
+            # Invalidar el campo computed para que se recalcule
+            rec.invalidate_recordset(['dua_generado'])
             return {
                 "type": "ir.actions.act_window",
                 "res_model": "aduana.expediente",
