@@ -168,14 +168,14 @@ class AduanaExpediente(models.Model):
                     if existing:
                         existing.write({'datas': rec.factura_pdf})
                     else:
-                    self.env['ir.attachment'].create({
-                        'name': rec.factura_pdf_filename,
-                        'res_model': rec._name,
-                        'res_id': rec.id,
-                        'type': 'binary',
-                        'mimetype': 'application/pdf',
-                        'datas': rec.factura_pdf
-                    })
+                        self.env['ir.attachment'].create({
+                            'name': rec.factura_pdf_filename,
+                            'res_model': rec._name,
+                            'res_id': rec.id,
+                            'type': 'binary',
+                            'mimetype': 'application/pdf',
+                            'datas': rec.factura_pdf
+                        })
                 # Invalidar el campo computed para que se recalcule
                 rec.invalidate_recordset(['documento_ids'])
         return result
