@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- Reporte PDF del DUA -->
+  <record id="report_dua_pdf" model="ir.actions.report">
+    <field name="name">DUA - Documento Único Administrativo</field>
+    <field name="model">aduana.expediente</field>
+    <field name="report_type">qweb-pdf</field>
+    <field name="report_name">aduanas_transport.template_report_dua_pdf</field>
+    <field name="report_file">aduanas_transport.template_report_dua_pdf</field>
+    <field name="print_report_name">DUA_%(object.name)s</field>
+    <field name="binding_model_id" ref="model_aduana_expediente"/>
+    <field name="binding_type">report</field>
+  </record>
+
+  <!-- Template HTML para el reporte PDF del DUA -->
+  <template id="template_report_dua_pdf" name="DUA PDF Report" t-name="aduanas_transport.template_report_dua_pdf">
+    <t t-call="web.html_container">
+      <t t-foreach="docs" t-as="exp">
+        <t t-call="web.basic_layout">
+          <div class="page">
+            <div class="oe_structure"/>
+            
+            <div class="container" style="font-family: Arial, sans-serif; font-size: 10pt; margin: 20px;">
+              <!-- Encabezado -->
+              <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                <h1 style="font-size: 18pt; font-weight: bold; margin-bottom: 5px;">DOCUMENTO ÚNICO ADMINISTRATIVO (DUA)</h1>
+                <h2 style="font-size: 14pt; font-weight: normal;">DECLARACIÓN DE EXPORTACIÓN</h2>
+              </div>
+              
+              <!-- Información General -->
+              <div style="margin: 15px 0;">
+                <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">INFORMACIÓN GENERAL</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="font-weight: bold; width: 200px; padding: 5px;">Número de Declaración:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.name or ''"/></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">Oficina Aduanera:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.oficina or '0801'"/></td>
+                  </tr>
+                  <t t-if="exp.mrn">
+                    <tr>
+                      <td style="font-weight: bold; padding: 5px;">MRN:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.mrn"/></td>
+                    </tr>
+                  </t>
+                  <t t-if="exp.lrn">
+                    <tr>
+                      <td style="font-weight: bold; padding: 5px;">LRN:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.lrn"/></td>
+                    </tr>
+                  </t>
+                </table>
+              </div>
+              
+              <!-- Declarante / Exportador -->
+              <div style="margin: 15px 0;">
+                <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">DECLARANTE / EXPORTADOR</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="font-weight: bold; width: 200px; padding: 5px;">Nombre:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.remitente.name if exp.remitente else ''"/></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">NIF/CIF:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.remitente.vat if exp.remitente else ''"/></td>
+                  </tr>
+                  <t t-if="exp.remitente and exp.remitente.street">
+                    <tr>
+                      <td style="font-weight: bold; padding: 5px;">Dirección:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.remitente.street or ''"/> <t t-esc="exp.remitente.city or ''"/> <t t-esc="exp.remitente.zip or ''"/></td>
+                    </tr>
+                  </t>
+                </table>
+              </div>
+              
+              <!-- Consignatario -->
+              <t t-if="exp.consignatario">
+                <div style="margin: 15px 0;">
+                  <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">CONSIGNATARIO</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="font-weight: bold; width: 200px; padding: 5px;">Nombre:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.consignatario.name or ''"/></td>
+                    </tr>
+                    <tr>
+                      <td style="font-weight: bold; padding: 5px;">NIF/CIF:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.consignatario.vat or ''"/></td>
+                    </tr>
+                  </table>
+                </div>
+              </t>
+              
+              <!-- Información Comercial -->
+              <div style="margin: 15px 0;">
+                <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">INFORMACIÓN COMERCIAL</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="font-weight: bold; width: 200px; padding: 5px;">Número de Factura:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.numero_factura or exp.name or ''"/></td>
+                  </tr>
+                  <t t-if="exp.fecha_prevista">
+                    <tr>
+                      <td style="font-weight: bold; padding: 5px;">Fecha Factura:</td>
+                      <td style="padding: 5px;"><t t-esc="exp.fecha_prevista.strftime('%d/%m/%Y') if exp.fecha_prevista else ''"/></td>
+                    </tr>
+                  </t>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">Valor Factura:</td>
+                    <td style="padding: 5px;"><t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/> <t t-esc="exp.moneda or 'EUR'"/></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">Incoterm:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.incoterm or 'DAP'"/></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">País Origen:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.pais_origen or 'ES'"/></td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 5px;">País Destino:</td>
+                    <td style="padding: 5px;"><t t-esc="exp.pais_destino or 'AD'"/></td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Información de Transporte -->
+              <t t-if="exp.transportista or exp.matricula">
+                <div style="margin: 15px 0;">
+                  <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">INFORMACIÓN DE TRANSPORTE</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <t t-if="exp.transportista">
+                      <tr>
+                        <td style="font-weight: bold; width: 200px; padding: 5px;">Transportista:</td>
+                        <td style="padding: 5px;"><t t-esc="exp.transportista or ''"/></td>
+                      </tr>
+                    </t>
+                    <t t-if="exp.matricula">
+                      <tr>
+                        <td style="font-weight: bold; padding: 5px;">Matrícula:</td>
+                        <td style="padding: 5px;"><t t-esc="exp.matricula or ''"/></td>
+                      </tr>
+                    </t>
+                    <t t-if="exp.referencia_transporte">
+                      <tr>
+                        <td style="font-weight: bold; padding: 5px;">Referencia Transporte:</td>
+                        <td style="padding: 5px;"><t t-esc="exp.referencia_transporte or ''"/></td>
+                      </tr>
+                    </t>
+                  </table>
+                </div>
+              </t>
+              
+              <!-- Mercancías -->
+              <div style="margin: 15px 0;">
+                <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">MERCANCÍAS</h3>
+                <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                  <thead>
+                    <tr style="background-color: #f0f0f0;">
+                      <th style="border: 1px solid #000; padding: 5px; text-align: left;">Item</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: left;">Partida Arancelaria</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: left;">Descripción</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: right;">Cantidad</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: right;">Bultos</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: right;">Peso Bruto (kg)</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: right;">Peso Neto (kg)</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: right;">Valor (<t t-esc="exp.moneda or 'EUR'"/>)</th>
+                      <th style="border: 1px solid #000; padding: 5px; text-align: left;">País Origen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <t t-foreach="exp.line_ids or []" t-as="line" t-foreach-index="l_index">
+                      <tr>
+                        <td style="border: 1px solid #000; padding: 5px;"><t t-esc="line.item_number or (l_index + 1)"/></td>
+                        <td style="border: 1px solid #000; padding: 5px;"><t t-esc="line.partida or '0000000000'"/></td>
+                        <td style="border: 1px solid #000; padding: 5px;"><t t-esc="line.descripcion or ''"/></td>
+                        <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="'%.2f' % (line.unidades or 0.0)"/></td>
+                        <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="line.bultos or 1"/></td>
+                        <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="'%.2f' % (line.peso_bruto or 0.0)"/></td>
+                        <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="'%.2f' % (line.peso_neto or 0.0)"/></td>
+                        <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="'%.2f' % (line.valor_linea or 0.0)"/></td>
+                        <td style="border: 1px solid #000; padding: 5px;"><t t-esc="line.pais_origen or exp.pais_origen or 'ES'"/></td>
+                      </tr>
+                    </t>
+                  </tbody>
+                  <tfoot>
+                    <tr style="font-weight: bold; background-color: #f0f0f0;">
+                      <td colspan="7" style="border: 1px solid #000; padding: 5px; text-align: right;">TOTAL:</td>
+                      <td style="border: 1px solid #000; padding: 5px; text-align: right;"><t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/></td>
+                      <td style="border: 1px solid #000; padding: 5px;"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              
+              <!-- Totales -->
+              <div style="margin: 15px 0;">
+                <h3 style="font-weight: bold; font-size: 11pt; margin-bottom: 8px; border-bottom: 1px solid #000;">TOTALES</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="font-weight: bold; width: 200px; padding: 5px;">Total Valor Factura:</td>
+                    <td style="padding: 5px; font-weight: bold;"><t t-esc="'%.2f' % (exp.valor_factura or 0.0)"/> <t t-esc="exp.moneda or 'EUR'"/></td>
+                  </tr>
+                </table>
+              </div>
+              
+              <div style="margin-top: 30px; text-align: center; font-size: 8pt; color: #666;">
+                <p>Documento generado el <t t-esc="context_timestamp(datetime.datetime.now()).strftime('%d/%m/%Y %H:%M:%S')"/> por <t t-esc="env.user.name or 'Sistema'"/></p>
+              </div>
+            </div>
+            
+            <div class="oe_structure"/>
+          </div>
+        </t>
+      </t>
+    </t>
+  </template>
+</odoo>

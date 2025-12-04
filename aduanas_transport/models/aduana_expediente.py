@@ -400,6 +400,57 @@ class AduanaExpediente(models.Model):
                 "mimetype": mimetype,
                 "datas": base64.b64encode((xml_text or "").encode("utf-8"))
             })
+    
+    def _attach_pdf(self, filename, pdf_data):
+        """Adjunta un PDF como documento al expediente"""
+        for rec in self:
+            # Si pdf_data es bytes, codificarlo en base64
+            if isinstance(pdf_data, bytes):
+                pdf_b64 = base64.b64encode(pdf_data)
+            elif isinstance(pdf_data, str):
+                # Si ya es base64 string, usarlo directamente, si no codificarlo
+                try:
+                    # Intentar decodificar para verificar si ya es base64 válido
+                    base64.b64decode(pdf_data)
+                    pdf_b64 = pdf_data
+                except:
+                    pdf_b64 = base64.b64encode(pdf_data.encode('utf-8'))
+            else:
+                pdf_b64 = base64.b64encode(str(pdf_data).encode('utf-8'))
+            
+            self.env["ir.attachment"].create({
+                "name": filename,
+                "res_model": rec._name,
+                "res_id": rec.id,
+                "type": "binary",
+                "mimetype": "application/pdf",
+                "datas": pdf_b64
+            })
+    
+    def _generate_dua_pdf(self):
+        """Genera el PDF del DUA usando el sistema de reportes de Odoo"""
+        self.ensure_one()
+        try:
+            # Buscar el reporte del DUA por su ID externo
+            report = self.env.ref('aduanas_transport.report_dua_pdf', raise_if_not_found=False)
+            if report:
+                # Usar el reporte para generar el PDF
+                pdf_content, _ = report._render_qweb_pdf(self.ids)
+                return pdf_content
+            else:
+                # Si no existe el reporte, intentar usar el template directamente
+                _logger.warning("No se encontró el reporte DUA, intentando generar desde template")
+                html_content = self.env['ir.ui.view']._render_template(
+                    "aduanas_transport.template_report_dua_pdf",
+                    {"exp": self, "docs": self}
+                )
+                # Convertir HTML a PDF
+                pdf_content = self.env['ir.actions.report']._run_wkhtmltopdf([html_content])
+                return pdf_content
+        except Exception as e:
+            _logger.error("Error generando PDF del DUA: %s", e)
+            # Si falla, retornar None para que no se rompa el proceso
+            return None
 
     # ===== Exportación (AES) =====
     def action_generate_cc515c(self):
@@ -416,6 +467,19 @@ class AduanaExpediente(models.Model):
                 {"exp": rec}
             )
             rec._attach_xml("DUA_CUSDEC_EX1.xml", xml)
+            
+            # Generar también el PDF del DUA oficial imprimible
+            try:
+                pdf_content = rec._generate_dua_pdf()
+                if pdf_content:
+                    rec._attach_pdf(f"DUA_{rec.name}_OFICIAL.pdf", pdf_content)
+                    _logger.info("PDF del DUA generado correctamente para expediente %s", rec.name)
+                else:
+                    _logger.warning("No se pudo generar el PDF del DUA para expediente %s", rec.name)
+            except Exception as pdf_error:
+                _logger.error("Error generando PDF del DUA para expediente %s: %s", rec.name, pdf_error)
+                # No fallar el proceso si el PDF falla, solo loguear el error
+            
             rec.state = "predeclared"
             rec.error_message = False
         return True

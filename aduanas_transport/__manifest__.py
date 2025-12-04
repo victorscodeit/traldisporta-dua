@@ -16,6 +16,7 @@
         "views/aduana_expediente_views.xml",
         "wizards/msoft_import_views.xml",
         "data/ir_cron.xml",
+        "reports/dua_report.xml",
     ],
     "external_dependencies": {
         "python": ["requests"],
