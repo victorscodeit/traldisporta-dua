@@ -1221,43 +1221,46 @@ TEXTO DE LA FACTURA:
         """
         expediente.ensure_one()
         
+        # Preparar valores para actualización masiva sin tracking
+        vals = {}
+        
         # Actualizar número de factura
         if invoice_data.get("numero_factura"):
-            expediente.numero_factura = invoice_data["numero_factura"]
+            vals["numero_factura"] = invoice_data["numero_factura"]
         
         # Actualizar valor de factura
         if invoice_data.get("valor_total"):
-            expediente.valor_factura = invoice_data["valor_total"]
+            vals["valor_factura"] = invoice_data["valor_total"]
         
         # Actualizar moneda
         if invoice_data.get("moneda"):
-            expediente.moneda = invoice_data["moneda"]
+            vals["moneda"] = invoice_data["moneda"]
         
         # Actualizar incoterm
         if invoice_data.get("incoterm"):
-            expediente.incoterm = invoice_data["incoterm"]
+            vals["incoterm"] = invoice_data["incoterm"]
         
         # Actualizar países
         if invoice_data.get("pais_origen"):
-            expediente.pais_origen = invoice_data["pais_origen"]
+            vals["pais_origen"] = invoice_data["pais_origen"]
         if invoice_data.get("pais_destino"):
-            expediente.pais_destino = invoice_data["pais_destino"]
+            vals["pais_destino"] = invoice_data["pais_destino"]
         
         # Actualizar campos de transporte
         if invoice_data.get("transportista"):
-            expediente.transportista = invoice_data["transportista"]
+            vals["transportista"] = invoice_data["transportista"]
         
         if invoice_data.get("matricula"):
-            expediente.matricula = invoice_data["matricula"]
+            vals["matricula"] = invoice_data["matricula"]
         
         if invoice_data.get("referencia_transporte"):
-            expediente.referencia_transporte = invoice_data["referencia_transporte"]
+            vals["referencia_transporte"] = invoice_data["referencia_transporte"]
         
         if invoice_data.get("remolque"):
-            expediente.remolque = invoice_data["remolque"]
+            vals["remolque"] = invoice_data["remolque"]
         
         if invoice_data.get("codigo_transporte"):
-            expediente.codigo_transporte = invoice_data["codigo_transporte"]
+            vals["codigo_transporte"] = invoice_data["codigo_transporte"]
         
         # Buscar o crear remitente
         if invoice_data.get("remitente_nif") or invoice_data.get("remitente_nombre"):
@@ -1267,7 +1270,7 @@ TEXTO DE LA FACTURA:
                 street=invoice_data.get("remitente_direccion")
             )
             if remitente:
-                expediente.remitente = remitente
+                vals["remitente"] = remitente.id
         
         # Buscar o crear consignatario
         if invoice_data.get("consignatario_nif") or invoice_data.get("consignatario_nombre"):
@@ -1277,7 +1280,11 @@ TEXTO DE LA FACTURA:
                 street=invoice_data.get("consignatario_direccion")
             )
             if consignatario:
-                expediente.consignatario = consignatario
+                vals["consignatario"] = consignatario.id
+        
+        # Actualizar todos los campos de una vez sin tracking
+        if vals:
+            expediente.with_context(mail_notrack=True, tracking_disable=True).write(vals)
         
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):
@@ -1353,9 +1360,11 @@ TEXTO DE LA FACTURA:
                 
                 LineModel.create(line_vals)
         
-        # Guardar datos extraídos como texto para referencia técnica
-        expediente.factura_datos_extraidos = json.dumps(invoice_data, indent=2, ensure_ascii=False)
-        expediente.factura_procesada = True
+        # Guardar datos extraídos como texto para referencia técnica (sin tracking)
+        expediente.with_context(mail_notrack=True, tracking_disable=True).write({
+            'factura_datos_extraidos': json.dumps(invoice_data, indent=2, ensure_ascii=False),
+            'factura_procesada': True
+        })
         
         # Agregar información técnica al chatter
         metodo_usado = invoice_data.get("metodo_usado", "Desconocido")
@@ -1381,7 +1390,7 @@ TEXTO DE LA FACTURA:
             json.dumps(invoice_data, indent=2, ensure_ascii=False)
         )
         
-        expediente.message_post(
+        expediente.with_context(mail_notrack=True).message_post(
             body=mensaje_tecnico,
             subtype_xmlid='mail.mt_note',
             author_id=False,  # Sistema

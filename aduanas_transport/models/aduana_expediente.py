@@ -837,9 +837,19 @@ class AduanaExpediente(models.Model):
                 rec.factura_mensaje_error = _("No hay factura PDF adjunta para procesar")
                 raise UserError(_("No hay factura PDF adjunta para procesar"))
             
-            # Marcar como procesando
-            rec.factura_estado_procesamiento = "procesando"
-            rec.factura_mensaje_error = False
+            # Desactivar notificaciones de email durante todo el proceso
+            ctx_no_mail = dict(self.env.context)
+            ctx_no_mail.update({
+                'mail_notrack': True,
+                'mail_create_nolog': True,
+                'mail_create_nosubscribe': True,
+                'tracking_disable': True,
+                'mail_notify_force_send': False,
+            })
+            
+            # Marcar como procesando (sin tracking)
+            rec.with_context(**ctx_no_mail).factura_estado_procesamiento = "procesando"
+            rec.with_context(**ctx_no_mail).factura_mensaje_error = False
             
             # Obtener servicio OCR
             ocr_service = self.env["aduanas.invoice.ocr.service"]
@@ -903,16 +913,21 @@ class AduanaExpediente(models.Model):
                 else:
                     datos_extraidos.append(_("Líneas extraídas: %d") % len(invoice_data.get("lineas", [])))
                 
-                # Rellenar expediente con datos extraídos
+                # Rellenar expediente con datos extraídos (sin notificaciones)
+                rec = rec.with_context(**ctx_no_mail)
                 ocr_service.fill_expediente_from_invoice(rec, invoice_data)
                 
-                # Determinar estado final
+                # Determinar estado final (sin tracking)
                 if advertencias:
-                    rec.factura_estado_procesamiento = "advertencia"
-                    rec.factura_mensaje_error = "\n".join([_("ADVERTENCIAS:")] + advertencias)
+                    rec.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'advertencia',
+                        'factura_mensaje_error': "\n".join([_("ADVERTENCIAS:")] + advertencias)
+                    })
                 else:
-                    rec.factura_estado_procesamiento = "completado"
-                    rec.factura_mensaje_error = False
+                    rec.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'completado',
+                        'factura_mensaje_error': False
+                    })
                 
                 # Crear mensaje detallado para el chatter con todos los datos extraídos
                 mensaje_chatter = _("<b>✅ Factura procesada correctamente</b><br/><br/>")

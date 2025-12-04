@@ -184,10 +184,24 @@
                   <group string="Archivo">
                     <field name="datas" filename="name" widget="binary"/>
                   </group>
-                  <group string="Vista Previa" colspan="2" invisible="not (mimetype and 'pdf' in mimetype.lower())">
+                  <!-- Campo invisible para determinar si es XML -->
+                  <field name="is_xml" invisible="1"/>
+                  <!-- Vista Previa PDF -->
+                  <group string="Vista Previa PDF" colspan="2" invisible="not (mimetype and 'pdf' in mimetype.lower())">
                     <field name="datas" filename="name" widget="pdf_viewer" 
                            readonly="1" nolabel="1" colspan="2"
                            options="{'disable_zoom': false, 'disable_scroll': false}"/>
+                  </group>
+                  <!-- Vista Previa XML -->
+                  <group string="Vista Previa XML" colspan="2" invisible="not is_xml">
+                    <button name="action_preview_xml" string="Abrir XML en nueva pestaña" 
+                            type="object" 
+                            class="btn-primary"
+                            icon="fa-external-link"/>
+                    <field name="xml_content_text" nolabel="1" readonly="1" 
+                           widget="text" colspan="2"
+                           placeholder="Cargando contenido XML..."
+                           options="{'wrap': false}"/>
                   </group>
                 </sheet>
               </form>
