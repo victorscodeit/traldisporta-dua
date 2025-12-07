@@ -957,6 +957,11 @@ class AduanaExpediente(models.Model):
                 'factura_estado_procesamiento': 'procesando',
                 'factura_mensaje_error': False
             })
+            # Forzar guardado en base de datos y commit para que se vea inmediatamente en la UI
+            rec.flush_recordset(['factura_estado_procesamiento', 'factura_mensaje_error'])
+            # Commit de la transacción para que el cambio se vea inmediatamente en la UI
+            self.env.cr.commit()
+            rec.invalidate_recordset(['factura_estado_procesamiento', 'factura_mensaje_error'])
             
             if not rec.factura_pdf:
                 rec.factura_estado_procesamiento = "error"
@@ -1041,7 +1046,7 @@ class AduanaExpediente(models.Model):
                     mapeo = invoice_data["_incoterm_mapeado"]
                     advertencias.append(_("Incoterm '%s' mapeado a '%s' (formato estándar)") % (mapeo["original"], mapeo["mapeado"]))
                 if invoice_data.get("_incoterm_invalido"):
-                    advertencias.append(_("Incoterm '%s' no es válido, se usó 'DAP' por defecto") % invoice_data["_incoterm_invalido"])
+                    advertencias.append(_("Incoterm '%s' no es válido y no se pudo asignar. Revise manualmente.") % invoice_data["_incoterm_invalido"])
                 
                 if not invoice_data.get("lineas"):
                     advertencias.append(_("No se pudieron extraer líneas de productos. Deberás agregarlas manualmente."))

@@ -713,22 +713,33 @@ TEXTO DE LA FACTURA:
                     elif pais_origen == "AD" and pais_destino == "ES":
                         data["direction"] = "import"
                 
-                # Validar incoterm
+                # Validar incoterm - SIEMPRE mapear CIF, FOB, CFR antes de guardar
                 if data.get("incoterm"):
-                    incoterm = data["incoterm"].upper()
-                    incoterm_map = {
-                        "FOB": "FCA",
-                        "CIF": "CIP",
-                        "CFR": "CPT",
-                    }
-                    valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
-                    
-                    if incoterm in incoterm_map:
-                        data["incoterm"] = incoterm_map[incoterm]
-                    elif incoterm not in valid_incoterms:
-                        data["incoterm"] = "DAP"  # Valor por defecto
-                    else:
-                        data["incoterm"] = incoterm
+                    try:
+                        incoterm = str(data["incoterm"]).upper().strip() if data["incoterm"] else None
+                        if incoterm:
+                            incoterm_map = {
+                                "FOB": "FCA",
+                                "CIF": "CIP",
+                                "CFR": "CPT",
+                            }
+                            valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+                            
+                            # PRIMERO aplicar mapeo si es necesario
+                            if incoterm in incoterm_map:
+                                data["incoterm"] = incoterm_map[incoterm]
+                            # LUEGO validar
+                            elif incoterm not in valid_incoterms:
+                                # Si no es válido y no se puede mapear, poner None para que no se escriba
+                                _logger.warning("Incoterm '%s' no es válido y no se puede mapear. No se asignará.", incoterm)
+                                data["incoterm"] = None
+                            else:
+                                data["incoterm"] = incoterm
+                        else:
+                            data["incoterm"] = None
+                    except (AttributeError, TypeError) as e:
+                        _logger.warning("Error procesando incoterm '%s': %s", data.get("incoterm"), e)
+                        data["incoterm"] = None
                 
                 # Normalizar valores numéricos
                 if data.get("valor_total"):
@@ -1291,36 +1302,47 @@ TEXTO DE LA FACTURA:
             elif pais_origen == "AD" and pais_destino == "ES":
                 vals["direction"] = "import"
         
-        # Actualizar incoterm (validar y mapear valores)
+        # Actualizar incoterm (validar y mapear valores) - SIEMPRE validar antes de escribir
+        # NUNCA escribir un incoterm inválido, solo advertencias
         incoterm_original = invoice_data.get("incoterm")
         if incoterm_original:
-            incoterm = str(incoterm_original).upper().strip()
-            # Mapeo de incoterms antiguos a los válidos
-            incoterm_map = {
-                "FOB": "FCA",
-                "CIF": "CIP",
-                "CFR": "CPT",
-            }
-            # Valores válidos
-            valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
-            
-            # Aplicar mapeo si es necesario
-            incoterm_mapeado = incoterm_map.get(incoterm, incoterm)
-            
-            # Validar que sea un valor válido
-            if incoterm_mapeado in valid_incoterms:
-                vals["incoterm"] = incoterm_mapeado
-                # Si se mapeó, guardar información para el resumen
-                if incoterm != incoterm_mapeado:
-                    invoice_data["_incoterm_mapeado"] = {
-                        "original": incoterm,
-                        "mapeado": incoterm_mapeado
+            try:
+                # Convertir a string y normalizar
+                incoterm = str(incoterm_original).upper().strip() if incoterm_original else None
+                if incoterm:
+                    # Mapeo de incoterms antiguos a los válidos
+                    incoterm_map = {
+                        "FOB": "FCA",
+                        "CIF": "CIP",
+                        "CFR": "CPT",
                     }
-            else:
-                # Si no es válido, usar valor por defecto y registrar advertencia
-                _logger.warning("Incoterm '%s' no es válido, usando DAP por defecto", incoterm_original)
-                vals["incoterm"] = "DAP"  # Valor por defecto
+                    # Valores válidos
+                    valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+                    
+                    # Aplicar mapeo si es necesario
+                    incoterm_mapeado = incoterm_map.get(incoterm, incoterm)
+                    
+                    # Validar que sea un valor válido ANTES de agregar a vals
+                    if incoterm_mapeado in valid_incoterms:
+                        vals["incoterm"] = incoterm_mapeado
+                        # Si se mapeó, guardar información para el resumen
+                        if incoterm != incoterm_mapeado:
+                            invoice_data["_incoterm_mapeado"] = {
+                                "original": incoterm_original,
+                                "mapeado": incoterm_mapeado
+                            }
+                    else:
+                        # Si no es válido, NO escribir nada, solo registrar advertencia
+                        _logger.warning("Incoterm '%s' no es válido y no se puede mapear. No se asignará. Se mostrará advertencia.", incoterm_original)
+                        invoice_data["_incoterm_invalido"] = incoterm_original
+                        # NO agregar a vals, el proceso continúa sin incoterm
+                else:
+                    # Si incoterm está vacío o es None, no asignar
+                    _logger.warning("Incoterm vacío o None, no se asignará")
+            except Exception as e:
+                _logger.error("Error procesando incoterm '%s': %s. No se asignará incoterm.", incoterm_original, e)
                 invoice_data["_incoterm_invalido"] = incoterm_original
+                # NO agregar a vals en caso de error, el proceso continúa
         
         # Actualizar países
         if invoice_data.get("pais_origen"):
@@ -1364,9 +1386,51 @@ TEXTO DE LA FACTURA:
             if consignatario:
                 vals["consignatario"] = consignatario.id
         
+        # Validación final de incoterm antes de escribir (seguridad adicional)
+        # Si hay problema, no escribir incoterm y solo registrar advertencia
+        if "incoterm" in vals:
+            incoterm_val = vals["incoterm"]
+            valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+            if incoterm_val not in valid_incoterms:
+                # Mapeo de emergencia
+                incoterm_map_emergency = {
+                    "FOB": "FCA",
+                    "CIF": "CIP",
+                    "CFR": "CPT",
+                }
+                incoterm_upper = str(incoterm_val).upper().strip() if incoterm_val else None
+                if incoterm_upper and incoterm_upper in incoterm_map_emergency:
+                    vals["incoterm"] = incoterm_map_emergency[incoterm_upper]
+                    invoice_data["_incoterm_mapeado"] = {
+                        "original": incoterm_val,
+                        "mapeado": incoterm_map_emergency[incoterm_upper]
+                    }
+                    _logger.warning("Incoterm '%s' mapeado en validación final a '%s'", incoterm_val, vals["incoterm"])
+                else:
+                    # Si no se puede mapear, no escribir incoterm y registrar advertencia
+                    _logger.warning("Incoterm inválido '%s' detectado, no se asignará. Se mostrará advertencia en resumen.", incoterm_val)
+                    del vals["incoterm"]  # Eliminar del diccionario para no escribir valor inválido
+                    invoice_data["_incoterm_invalido"] = incoterm_val
+        
         # Actualizar todos los campos de una vez sin tracking
+        # Si hay error con algún campo (ej: incoterm), intentar sin ese campo
         if vals:
-            expediente.with_context(mail_notrack=True, tracking_disable=True).write(vals)
+            try:
+                expediente.with_context(mail_notrack=True, tracking_disable=True).write(vals)
+            except ValueError as ve:
+                # Si hay un error de validación (ej: incoterm inválido), intentar sin ese campo
+                error_str = str(ve)
+                if "incoterm" in error_str.lower():
+                    _logger.warning("Error al escribir incoterm: %s. Eliminando incoterm del diccionario y reintentando.", error_str)
+                    if "incoterm" in vals:
+                        incoterm_problematico = vals.pop("incoterm")
+                        invoice_data["_incoterm_invalido"] = incoterm_problematico
+                    # Reintentar sin el incoterm
+                    if vals:
+                        expediente.with_context(mail_notrack=True, tracking_disable=True).write(vals)
+                else:
+                    # Si es otro error, re-lanzar
+                    raise
         
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):
