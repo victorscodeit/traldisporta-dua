@@ -1291,9 +1291,36 @@ TEXTO DE LA FACTURA:
             elif pais_origen == "AD" and pais_destino == "ES":
                 vals["direction"] = "import"
         
-        # Actualizar incoterm
-        if invoice_data.get("incoterm"):
-            vals["incoterm"] = invoice_data["incoterm"]
+        # Actualizar incoterm (validar y mapear valores)
+        incoterm_original = invoice_data.get("incoterm")
+        if incoterm_original:
+            incoterm = str(incoterm_original).upper().strip()
+            # Mapeo de incoterms antiguos a los válidos
+            incoterm_map = {
+                "FOB": "FCA",
+                "CIF": "CIP",
+                "CFR": "CPT",
+            }
+            # Valores válidos
+            valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+            
+            # Aplicar mapeo si es necesario
+            incoterm_mapeado = incoterm_map.get(incoterm, incoterm)
+            
+            # Validar que sea un valor válido
+            if incoterm_mapeado in valid_incoterms:
+                vals["incoterm"] = incoterm_mapeado
+                # Si se mapeó, guardar información para el resumen
+                if incoterm != incoterm_mapeado:
+                    invoice_data["_incoterm_mapeado"] = {
+                        "original": incoterm,
+                        "mapeado": incoterm_mapeado
+                    }
+            else:
+                # Si no es válido, usar valor por defecto y registrar advertencia
+                _logger.warning("Incoterm '%s' no es válido, usando DAP por defecto", incoterm_original)
+                vals["incoterm"] = "DAP"  # Valor por defecto
+                invoice_data["_incoterm_invalido"] = incoterm_original
         
         # Actualizar países
         if invoice_data.get("pais_origen"):

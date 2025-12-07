@@ -939,11 +939,6 @@ class AduanaExpediente(models.Model):
         Procesa la factura PDF adjunta, extrae datos con OCR/IA y rellena la expedición.
         """
         for rec in self:
-            if not rec.factura_pdf:
-                rec.factura_estado_procesamiento = "error"
-                rec.factura_mensaje_error = _("No hay factura PDF adjunta para procesar")
-                raise UserError(_("No hay factura PDF adjunta para procesar"))
-            
             # Desactivar notificaciones de email durante todo el proceso
             ctx_no_mail = dict(self.env.context)
             ctx_no_mail.update({
@@ -956,9 +951,17 @@ class AduanaExpediente(models.Model):
                 'default_message_type': 'notification',
             })
             
-            # Marcar como procesando (sin tracking)
-            rec.with_context(**ctx_no_mail).factura_estado_procesamiento = "procesando"
-            rec.with_context(**ctx_no_mail).factura_mensaje_error = False
+            # Marcar como procesando INMEDIATAMENTE (sin tracking)
+            # Usar write para forzar el guardado inmediato
+            rec.with_context(**ctx_no_mail).write({
+                'factura_estado_procesamiento': 'procesando',
+                'factura_mensaje_error': False
+            })
+            
+            if not rec.factura_pdf:
+                rec.factura_estado_procesamiento = "error"
+                rec.factura_mensaje_error = _("No hay factura PDF adjunta para procesar")
+                raise UserError(_("No hay factura PDF adjunta para procesar"))
             
             # Obtener servicio OCR
             ocr_service = self.env["aduanas.invoice.ocr.service"]
@@ -1026,6 +1029,19 @@ class AduanaExpediente(models.Model):
                     advertencias.append(_("No se pudo extraer el número de factura."))
                 else:
                     datos_extraidos.append(_("Nº Factura: %s") % invoice_data.get("numero_factura"))
+                
+                # Advertencias sobre CIF/NIF faltantes
+                if not invoice_data.get("remitente_nif"):
+                    advertencias.append(_("No se pudo extraer el CIF/NIF del remitente."))
+                if not invoice_data.get("consignatario_nif"):
+                    advertencias.append(_("No se pudo extraer el CIF/NIF del consignatario."))
+                
+                # Advertencias sobre incoterm
+                if invoice_data.get("_incoterm_mapeado"):
+                    mapeo = invoice_data["_incoterm_mapeado"]
+                    advertencias.append(_("Incoterm '%s' mapeado a '%s' (formato estándar)") % (mapeo["original"], mapeo["mapeado"]))
+                if invoice_data.get("_incoterm_invalido"):
+                    advertencias.append(_("Incoterm '%s' no es válido, se usó 'DAP' por defecto") % invoice_data["_incoterm_invalido"])
                 
                 if not invoice_data.get("lineas"):
                     advertencias.append(_("No se pudieron extraer líneas de productos. Deberás agregarlas manualmente."))
