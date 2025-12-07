@@ -1575,11 +1575,30 @@ TEXTO DE LA FACTURA:
             json.dumps(invoice_data, indent=2, ensure_ascii=False)
         )
         
-        expediente.with_context(mail_notrack=True).message_post(
-            body=mensaje_tecnico,
-            subtype_xmlid='mail.mt_note',
-            author_id=False,  # Sistema
-        )
+        # Crear mensaje técnico sin intentar enviar correos
+        # Crear mensaje técnico sin intentar enviar correos
+        # Si hay error de correo, ignorarlo y continuar
+        try:
+            expediente.with_context(
+                mail_notrack=True,
+                mail_create_nolog=True,
+                mail_create_nosubscribe=True,
+                mail_notify_force_send=False,
+                mail_auto_delete=False,
+                tracking_disable=True,
+                mail_notify=False,  # Desactivar notificaciones
+                default_message_type='notification',
+            ).sudo().message_post(
+                body=mensaje_tecnico,
+                subtype_xmlid='mail.mt_note',
+                message_type='notification',
+                author_id=False,  # Sistema
+                email_from=False,  # No intentar enviar correo
+            )
+        except Exception as msg_error:
+            # Si hay error al crear mensaje (ej: configuración de correo), solo loguear
+            _logger.warning("No se pudo crear mensaje técnico en chatter (error de correo ignorado): %s", msg_error)
+            # El proceso continúa normalmente aunque no se pueda crear el mensaje
         
         return True
 

@@ -993,19 +993,26 @@ class AduanaExpediente(models.Model):
                     rec.factura_estado_procesamiento = "error"
                     rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
                     # Crear mensaje de error sin intentar enviar correos
-                    rec.with_context(
-                        mail_notrack=True,
-                        mail_create_nolog=True,
-                        mail_create_nosubscribe=True,
-                        mail_notify_force_send=False,
-                        mail_auto_delete=False,
-                        tracking_disable=True,
-                    ).sudo().message_post(
-                        body=_("Error al procesar factura: %s") % invoice_data.get("error"),
-                        subtype_xmlid='mail.mt_note',
-                        message_type='notification',
-                        author_id=False,
-                    )
+                    # Si hay error de correo, ignorarlo y continuar
+                    try:
+                        rec.with_context(
+                            mail_notrack=True,
+                            mail_create_nolog=True,
+                            mail_create_nosubscribe=True,
+                            mail_notify_force_send=False,
+                            mail_auto_delete=False,
+                            tracking_disable=True,
+                            mail_notify=False,
+                            default_message_type='notification',
+                        ).sudo().message_post(
+                            body=_("Error al procesar factura: %s") % invoice_data.get("error"),
+                            subtype_xmlid='mail.mt_note',
+                            message_type='notification',
+                            author_id=False,
+                            email_from=False,
+                        )
+                    except Exception as msg_error:
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
                     raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
                 
                 # Validar datos mínimos extraídos
@@ -1164,19 +1171,28 @@ class AduanaExpediente(models.Model):
                         mensaje_chatter += f"• {adv}<br/>"
                 
                 # Crear mensaje en el chatter sin intentar enviar correos
-                rec.with_context(
-                    mail_notrack=True,
-                    mail_create_nolog=True,
-                    mail_create_nosubscribe=True,
-                    mail_notify_force_send=False,
-                    mail_auto_delete=False,
-                    tracking_disable=True,
-                ).sudo().message_post(
-                    body=mensaje_chatter,
-                    subtype_xmlid='mail.mt_note',
-                    message_type='notification',
-                    author_id=False,  # Sistema, no usuario
-                )
+                # Usar sudo() y desactivar completamente el sistema de correo
+                try:
+                    rec.with_context(
+                        mail_notrack=True,
+                        mail_create_nolog=True,
+                        mail_create_nosubscribe=True,
+                        mail_notify_force_send=False,
+                        mail_auto_delete=False,
+                        tracking_disable=True,
+                        mail_notify=False,  # Desactivar notificaciones
+                        default_message_type='notification',
+                    ).sudo().message_post(
+                        body=mensaje_chatter,
+                        subtype_xmlid='mail.mt_note',
+                        message_type='notification',
+                        author_id=False,  # Sistema, no usuario
+                        email_from=False,  # No intentar enviar correo
+                    )
+                except Exception as msg_error:
+                    # Si hay error al crear mensaje (ej: configuración de correo), solo loguear
+                    _logger.warning("No se pudo crear mensaje en chatter (error de correo ignorado): %s", msg_error)
+                    # El proceso continúa normalmente aunque no se pueda crear el mensaje
                 
                 # Marcar factura como procesada
                 rec.factura_procesada = True
@@ -1215,19 +1231,26 @@ class AduanaExpediente(models.Model):
                 rec.factura_estado_procesamiento = "error"
                 rec.factura_mensaje_error = error_msg
                 # Crear mensaje de error sin intentar enviar correos
-                rec.with_context(
-                    mail_notrack=True,
-                    mail_create_nolog=True,
-                    mail_create_nosubscribe=True,
-                    mail_notify_force_send=False,
-                    mail_auto_delete=False,
-                    tracking_disable=True,
-                ).sudo().message_post(
-                    body=_("Error al procesar factura: %s") % error_msg,
-                    subtype_xmlid='mail.mt_note',
-                    message_type='notification',
-                    author_id=False,
-                )
+                # Si hay error de correo, ignorarlo y continuar
+                try:
+                    rec.with_context(
+                        mail_notrack=True,
+                        mail_create_nolog=True,
+                        mail_create_nosubscribe=True,
+                        mail_notify_force_send=False,
+                        mail_auto_delete=False,
+                        tracking_disable=True,
+                        mail_notify=False,
+                        default_message_type='notification',
+                    ).sudo().message_post(
+                        body=_("Error al procesar factura: %s") % error_msg,
+                        subtype_xmlid='mail.mt_note',
+                        message_type='notification',
+                        author_id=False,
+                        email_from=False,
+                    )
+                except Exception as msg_error:
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario
@@ -1245,19 +1268,26 @@ class AduanaExpediente(models.Model):
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
                 rec.factura_mensaje_error = mensaje_error_detallado
                 # Crear mensaje de error sin intentar enviar correos
-                rec.with_context(
-                    mail_notrack=True,
-                    mail_create_nolog=True,
-                    mail_create_nosubscribe=True,
-                    mail_notify_force_send=False,
-                    mail_auto_delete=False,
-                    tracking_disable=True,
-                ).sudo().message_post(
-                    body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
-                    subtype_xmlid='mail.mt_note',
-                    message_type='notification',
-                    author_id=False,
-                )
+                # Si hay error de correo, ignorarlo y continuar
+                try:
+                    rec.with_context(
+                        mail_notrack=True,
+                        mail_create_nolog=True,
+                        mail_create_nosubscribe=True,
+                        mail_notify_force_send=False,
+                        mail_auto_delete=False,
+                        tracking_disable=True,
+                        mail_notify=False,
+                        default_message_type='notification',
+                    ).sudo().message_post(
+                        body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
+                        subtype_xmlid='mail.mt_note',
+                        message_type='notification',
+                        author_id=False,
+                        email_from=False,
+                    )
+                except Exception as msg_error:
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario
