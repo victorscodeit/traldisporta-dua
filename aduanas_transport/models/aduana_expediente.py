@@ -17,7 +17,27 @@ class AduanaExpedienteLine(models.Model):
     peso_neto = fields.Float()
     valor_linea = fields.Float()
     descuento = fields.Float(string="Descuento (%)", help="Porcentaje de descuento aplicado a la línea")
+    precio_unitario = fields.Float(string="Precio Unitario", compute="_compute_precio_unitario", store=True, readonly=True)
+    subtotal = fields.Float(string="Subtotal", compute="_compute_subtotal", store=True, readonly=True)
     pais_origen = fields.Char(default="ES")
+    
+    @api.depends('valor_linea', 'descuento')
+    def _compute_precio_unitario(self):
+        for line in self:
+            if line.valor_linea:
+                factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
+                line.precio_unitario = line.valor_linea * factor_descuento
+            else:
+                line.precio_unitario = 0.0
+    
+    @api.depends('valor_linea', 'unidades', 'descuento')
+    def _compute_subtotal(self):
+        for line in self:
+            if line.valor_linea and line.unidades:
+                factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
+                line.subtotal = line.valor_linea * line.unidades * factor_descuento
+            else:
+                line.subtotal = 0.0
 
 class AduanaExpediente(models.Model):
     _name = "aduana.expediente"
@@ -994,98 +1014,98 @@ class AduanaExpediente(models.Model):
                     })
                 
                 # Crear mensaje detallado para el chatter con todos los datos extraídos
-                mensaje_chatter = _("<b>✅ Factura procesada correctamente</b><br/><br/>")
+                mensaje_chatter = _("✅ Factura procesada correctamente<br/><br/>")
                 
                 # Resumen de datos extraídos
-                mensaje_chatter += _("<b>📋 Resumen de datos extraídos:</b><br/>")
-                mensaje_chatter += "<ul>"
+                mensaje_chatter += _("📋 Resumen de datos extraídos:<br/><br/>")
                 for dato in datos_extraidos:
-                    mensaje_chatter += f"<li>{dato}</li>"
-                mensaje_chatter += "</ul><br/>"
+                    mensaje_chatter += f"{dato}<br/>"
+                mensaje_chatter += "<br/>"
                 
-                # Detalles de remitente y consignatario
+                # Detalles de remitente
                 if invoice_data.get("remitente_nombre") or invoice_data.get("remitente_nif"):
-                    mensaje_chatter += _("<b>📤 Remitente:</b><br/>")
+                    mensaje_chatter += _("📤 Remitente:<br/><br/>")
                     if invoice_data.get("remitente_nombre"):
-                        mensaje_chatter += f"• Nombre: {invoice_data.get('remitente_nombre')}<br/>"
+                        mensaje_chatter += f"Nombre: {invoice_data.get('remitente_nombre')}<br/>"
                     if invoice_data.get("remitente_nif"):
-                        mensaje_chatter += f"• NIF: {invoice_data.get('remitente_nif')}<br/>"
+                        mensaje_chatter += f"NIF: {invoice_data.get('remitente_nif')}<br/>"
                     if invoice_data.get("remitente_direccion"):
-                        mensaje_chatter += f"• Dirección: {invoice_data.get('remitente_direccion')}<br/>"
+                        mensaje_chatter += f"Dirección: {invoice_data.get('remitente_direccion')}<br/>"
                     mensaje_chatter += "<br/>"
                 
+                # Detalles de consignatario
                 if invoice_data.get("consignatario_nombre") or invoice_data.get("consignatario_nif"):
-                    mensaje_chatter += _("<b>📥 Consignatario:</b><br/>")
+                    mensaje_chatter += _("📥 Consignatario:<br/><br/>")
                     if invoice_data.get("consignatario_nombre"):
-                        mensaje_chatter += f"• Nombre: {invoice_data.get('consignatario_nombre')}<br/>"
+                        mensaje_chatter += f"Nombre: {invoice_data.get('consignatario_nombre')}<br/>"
                     if invoice_data.get("consignatario_nif"):
-                        mensaje_chatter += f"• NIF: {invoice_data.get('consignatario_nif')}<br/>"
+                        mensaje_chatter += f"NIF: {invoice_data.get('consignatario_nif')}<br/>"
                     if invoice_data.get("consignatario_direccion"):
-                        mensaje_chatter += f"• Dirección: {invoice_data.get('consignatario_direccion')}<br/>"
+                        mensaje_chatter += f"Dirección: {invoice_data.get('consignatario_direccion')}<br/>"
                     mensaje_chatter += "<br/>"
                 
                 # Información de factura
-                mensaje_chatter += _("<b>🧾 Información de factura:</b><br/>")
+                mensaje_chatter += _("🧾 Información de factura:<br/><br/>")
                 if invoice_data.get("numero_factura"):
-                    mensaje_chatter += f"• Nº Factura: {invoice_data.get('numero_factura')}<br/>"
+                    mensaje_chatter += f"Nº Factura: {invoice_data.get('numero_factura')}<br/>"
                 if invoice_data.get("fecha_factura"):
-                    mensaje_chatter += f"• Fecha: {invoice_data.get('fecha_factura')}<br/>"
+                    mensaje_chatter += f"Fecha: {invoice_data.get('fecha_factura')}<br/>"
                 if invoice_data.get("valor_total"):
-                    mensaje_chatter += f"• Valor Total: {invoice_data.get('valor_total')} {invoice_data.get('moneda', 'EUR')}<br/>"
+                    mensaje_chatter += f"Valor Total: {invoice_data.get('valor_total')} {invoice_data.get('moneda', 'EUR')}<br/>"
                 if invoice_data.get("incoterm"):
-                    mensaje_chatter += f"• Incoterm: {invoice_data.get('incoterm')}<br/>"
+                    mensaje_chatter += f"Incoterm: {invoice_data.get('incoterm')}<br/>"
                 mensaje_chatter += "<br/>"
                 
                 # Información de transporte
-                if invoice_data.get("transportista") or invoice_data.get("matricula"):
-                    mensaje_chatter += _("<b>🚚 Información de transporte:</b><br/>")
+                if invoice_data.get("transportista") or invoice_data.get("matricula") or invoice_data.get("codigo_transporte"):
+                    mensaje_chatter += _("🚚 Información de transporte:<br/><br/>")
                     if invoice_data.get("transportista"):
-                        mensaje_chatter += f"• Transportista: {invoice_data.get('transportista')}<br/>"
+                        mensaje_chatter += f"Transportista: {invoice_data.get('transportista')}<br/>"
                     if invoice_data.get("matricula"):
-                        mensaje_chatter += f"• Matrícula: {invoice_data.get('matricula')}<br/>"
-                    if invoice_data.get("referencia_transporte"):
-                        mensaje_chatter += f"• Referencia: {invoice_data.get('referencia_transporte')}<br/>"
-                    if invoice_data.get("remolque"):
-                        mensaje_chatter += f"• Remolque: {invoice_data.get('remolque')}<br/>"
+                        mensaje_chatter += f"Matrícula: {invoice_data.get('matricula')}<br/>"
                     if invoice_data.get("codigo_transporte"):
-                        mensaje_chatter += f"• Código: {invoice_data.get('codigo_transporte')}<br/>"
+                        mensaje_chatter += f"Código: {invoice_data.get('codigo_transporte')}<br/>"
+                    if invoice_data.get("referencia_transporte"):
+                        mensaje_chatter += f"Referencia: {invoice_data.get('referencia_transporte')}<br/>"
+                    if invoice_data.get("remolque"):
+                        mensaje_chatter += f"Remolque: {invoice_data.get('remolque')}<br/>"
                     mensaje_chatter += "<br/>"
                 
                 # Líneas de productos
                 if invoice_data.get("lineas"):
-                    mensaje_chatter += _("<b>📦 Líneas de productos extraídas ({0}):</b><br/>").format(len(invoice_data.get("lineas", [])))
-                    mensaje_chatter += "<ul>"
-                    for idx, linea in enumerate(invoice_data.get("lineas", [])[:10], 1):  # Mostrar máximo 10 líneas
-                        mensaje_chatter += f"<li><b>Línea {idx}:</b> "
+                    num_lineas = len(invoice_data.get("lineas", []))
+                    mensaje_chatter += _("📦 Líneas de productos extraídas ({0}):<br/><br/>").format(num_lineas)
+                    for idx, linea in enumerate(invoice_data.get("lineas", []), 1):
+                        mensaje_chatter += f"Línea {idx}: "
                         if linea.get("articulo"):
                             mensaje_chatter += f"Art. {linea.get('articulo')} - "
                         if linea.get("descripcion"):
-                            mensaje_chatter += f"{linea.get('descripcion')[:50]}"
-                            if len(linea.get("descripcion", "")) > 50:
-                                mensaje_chatter += "..."
-                        if linea.get("cantidad"):
-                            mensaje_chatter += f" | Cantidad: {linea.get('cantidad')}"
-                        if linea.get("partida"):
-                            mensaje_chatter += f" | H.S.: {linea.get('partida')}"
+                            descripcion = linea.get('descripcion')
+                            mensaje_chatter += descripcion
+                        if linea.get("cantidad") or linea.get("unidades"):
+                            cantidad = linea.get("cantidad") or linea.get("unidades")
+                            mensaje_chatter += f" | Cantidad: {cantidad}"
                         if linea.get("total"):
                             mensaje_chatter += f" | Total: {linea.get('total')} {invoice_data.get('moneda', 'EUR')}"
-                        mensaje_chatter += "</li>"
-                    mensaje_chatter += "</ul>"
-                    if len(invoice_data.get("lineas", [])) > 10:
-                        mensaje_chatter += _("<i>(Mostrando las primeras 10 líneas de {0} totales)</i><br/>").format(len(invoice_data.get("lineas", [])))
+                        elif linea.get("precio_unitario") and (linea.get("cantidad") or linea.get("unidades")):
+                            # Calcular total si no está disponible
+                            precio = linea.get("precio_unitario")
+                            cantidad = linea.get("cantidad") or linea.get("unidades") or 1.0
+                            total = precio * cantidad
+                            mensaje_chatter += f" | Total: {total} {invoice_data.get('moneda', 'EUR')}"
+                        mensaje_chatter += "<br/>"
                     mensaje_chatter += "<br/>"
-                
-                # Advertencias si las hay
-                if advertencias:
-                    mensaje_chatter += _("<b>⚠️ Advertencias:</b><br/>")
-                    mensaje_chatter += "<ul>"
-                    for adv in advertencias:
-                        mensaje_chatter += f"<li>{adv}</li>"
-                    mensaje_chatter += "</ul><br/>"
                 
                 # Método usado
                 if invoice_data.get("metodo_usado"):
-                    mensaje_chatter += _("<i>Método de extracción: {0}</i>").format(invoice_data.get("metodo_usado"))
+                    mensaje_chatter += f"Método de extracción: {invoice_data.get('metodo_usado')}<br/>"
+                
+                # Advertencias si las hay
+                if advertencias:
+                    mensaje_chatter += "<br/>"
+                    mensaje_chatter += _("⚠️ Advertencias:<br/>")
+                    for adv in advertencias:
+                        mensaje_chatter += f"• {adv}<br/>"
                 
                 rec.with_context(mail_notrack=True).message_post(
                     body=mensaje_chatter,

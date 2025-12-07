@@ -10,6 +10,17 @@
     <field name="active">False</field>
   </record>
 
+  <record id="ir_cron_procesar_facturas_pendientes" model="ir.cron">
+    <field name="name">Aduanas: Procesar Facturas Pendientes en Background</field>
+    <field name="model_id" ref="model_aduana_factura_carga"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_procesar_facturas_pendientes(limit=5)</field>
+    <field name="interval_type">minutes</field>
+    <field name="interval_number">2</field>
+    <field name="numbercall">-1</field>
+    <field name="active">False</field>
+  </record>
+
   <!-- Template CUSDEC EX1 - Formato oficial DUA para exportación -->
   <template id="tpl_cusdec_ex1" name="CUSDEC EX1 XML (DUA Exportación)" t-name="aduanas_transport.tpl_cusdec_ex1">
     <CUSDEC xmlns="http://www.eurocustoms.eu/EX1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.eurocustoms.eu/EX1 CUSDEC_EX1.xsd">

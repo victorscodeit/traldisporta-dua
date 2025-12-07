@@ -14,6 +14,7 @@
         "views/aduana_incidencia_views.xml",
         "views/res_config_settings_views.xml",
         "views/aduana_expediente_views.xml",
+        "views/factura_carga_views.xml",
         "wizards/msoft_import_views.xml",
         "data/ir_cron.xml",
         "reports/dua_report.xml",
@@ -24,7 +25,12 @@
     "external_dependencies_optional": {
         "python": ["pdfplumber", "PyPDF2", "openai", "PyMuPDF"],
     },
-    "assets": {},
+    "assets": {
+        "web.assets_backend": [
+            "aduanas_transport/static/src/js/multi_file_upload_action.js",
+            "aduanas_transport/static/src/xml/multi_file_upload_action.xml",
+        ],
+    },
     "application": True,
     "installable": True,
 }

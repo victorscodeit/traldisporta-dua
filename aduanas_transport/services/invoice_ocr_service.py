@@ -576,6 +576,7 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
   "incoterm": "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP" o null (si encuentras CIF, FOB, CFR, mapea a CIP, FCA, CPT respectivamente),
   "pais_origen": "código ISO de 2 letras (ES, AD, FR, etc.) o null",
   "pais_destino": "código ISO de 2 letras o null",
+  "direction": "export" o "import" o null (export = España → Andorra, import = Andorra → España),
   "transportista": "nombre del transportista o null",
   "matricula": "matrícula del vehículo o null",
   "referencia_transporte": "referencia o número de transporte o null",
@@ -603,18 +604,22 @@ INSTRUCCIONES IMPORTANTES:
 2. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
 3. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto
 4. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD
-5. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
-6. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
-7. Para transporte, busca:
+5. Para direction (sentido), determina basándote en los países:
+   - Si pais_origen = "ES" y pais_destino = "AD" → direction = "export" (España → Andorra, Exportación)
+   - Si pais_origen = "AD" y pais_destino = "ES" → direction = "import" (Andorra → España, Importación)
+   - Si no puedes determinarlo con certeza, usa null
+6. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
+7. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
+8. Para transporte, busca:
    - Transportista: nombre de la empresa transportista
    - Matrícula: número de matrícula del vehículo (formato como 5728-KXF)
    - Referencia Transporte: número de referencia del transporte o albarán
    - Remolque: matrícula del remolque si aparece
    - Código Transporte: código alfanumérico del transporte (como TXT, TX5X)
-8. Para descuentos, busca porcentajes de descuento asociados a cada línea o descuento general. Si hay "Descuento Principal 64,00%" o similar, inclúyelo en las líneas correspondientes.
-8. Si un campo no se encuentra, usa null (no uses cadenas vacías)
-9. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
-10. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
+9. Para descuentos, busca porcentajes de descuento asociados a cada línea o descuento general. Si hay "Descuento Principal 64,00%" o similar, inclúyelo en las líneas correspondientes.
+10. Si un campo no se encuentra, usa null (no uses cadenas vacías)
+11. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
+12. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
 
 TEXTO DE LA FACTURA:
 """ + text[:15000]  # Limitar a 15000 caracteres para evitar exceder límites
@@ -682,6 +687,30 @@ TEXTO DE LA FACTURA:
                 # Asegurar que lineas es una lista
                 if "lineas" in data and not isinstance(data["lineas"], list):
                     data["lineas"] = []
+                
+                # Validar y normalizar direction (sentido)
+                if data.get("direction"):
+                    direction = data["direction"].lower()
+                    if direction not in ["export", "import"]:
+                        # Intentar determinar basándose en países
+                        pais_origen = data.get("pais_origen", "").upper()
+                        pais_destino = data.get("pais_destino", "").upper()
+                        if pais_origen == "ES" and pais_destino == "AD":
+                            data["direction"] = "export"
+                        elif pais_origen == "AD" and pais_destino == "ES":
+                            data["direction"] = "import"
+                        else:
+                            data["direction"] = None
+                    else:
+                        data["direction"] = direction
+                else:
+                    # Si no hay direction pero hay países, intentar determinarlo
+                    pais_origen = data.get("pais_origen", "").upper()
+                    pais_destino = data.get("pais_destino", "").upper()
+                    if pais_origen == "ES" and pais_destino == "AD":
+                        data["direction"] = "export"
+                    elif pais_origen == "AD" and pais_destino == "ES":
+                        data["direction"] = "import"
                 
                 # Validar incoterm
                 if data.get("incoterm"):
@@ -843,6 +872,7 @@ TEXTO DE LA FACTURA:
             "incoterm": None,
             "pais_origen": None,
             "pais_destino": None,
+            "direction": None,
         }
         
         # Buscar número de factura
@@ -1019,6 +1049,16 @@ TEXTO DE LA FACTURA:
                         data["pais_origen"] = paises_validos[0] if len(paises_validos) > 0 else "ES"
                     if not data["pais_destino"]:
                         data["pais_destino"] = paises_validos[1] if len(paises_validos) > 1 else "AD"
+        
+        # Determinar direction (sentido) basándose en países
+        pais_origen = data.get("pais_origen", "").upper()
+        pais_destino = data.get("pais_destino", "").upper()
+        if pais_origen == "ES" and pais_destino == "AD":
+            data["direction"] = "export"
+        elif pais_origen == "AD" and pais_destino == "ES":
+            data["direction"] = "import"
+        else:
+            data["direction"] = None
         
         # Intentar extraer líneas de productos
         # Buscar patrones comunes de tablas de factura
@@ -1236,6 +1276,20 @@ TEXTO DE LA FACTURA:
         if invoice_data.get("moneda"):
             vals["moneda"] = invoice_data["moneda"]
         
+        # Actualizar direction (sentido) - PRIORITARIO
+        if invoice_data.get("direction"):
+            direction = invoice_data.get("direction").lower()
+            if direction in ["export", "import"]:
+                vals["direction"] = direction
+        else:
+            # Si no hay direction explícito, intentar determinarlo por países
+            pais_origen = invoice_data.get("pais_origen", "").upper()
+            pais_destino = invoice_data.get("pais_destino", "").upper()
+            if pais_origen == "ES" and pais_destino == "AD":
+                vals["direction"] = "export"
+            elif pais_origen == "AD" and pais_destino == "ES":
+                vals["direction"] = "import"
+        
         # Actualizar incoterm
         if invoice_data.get("incoterm"):
             vals["incoterm"] = invoice_data["incoterm"]
@@ -1294,12 +1348,28 @@ TEXTO DE LA FACTURA:
             # Crear nuevas líneas
             LineModel = self.env["aduana.expediente.line"]
             for idx, linea_data in enumerate(invoice_data["lineas"], start=1):
+                # Calcular unidades
+                unidades = linea_data.get("unidades") or linea_data.get("cantidad") or 1.0
+                
+                # Determinar precio unitario (valor_linea debe ser el precio unitario sin descuento)
+                precio_unitario_ia = linea_data.get("precio_unitario")
+                total_ia = linea_data.get("total")
+                
+                if precio_unitario_ia:
+                    # Si la IA extrajo precio_unitario, usarlo directamente
+                    valor_linea = precio_unitario_ia
+                elif total_ia and unidades and unidades > 0:
+                    # Si solo hay total, calcular precio unitario
+                    valor_linea = total_ia / unidades
+                else:
+                    valor_linea = 0.0
+                
                 line_vals = {
                     "expediente_id": expediente.id,
                     "item_number": idx,
                     "descripcion": linea_data.get("descripcion", ""),
-                    "unidades": linea_data.get("unidades") or linea_data.get("cantidad") or 1.0,
-                    "valor_linea": linea_data.get("total") or linea_data.get("precio_unitario") or 0.0,
+                    "unidades": unidades,
+                    "valor_linea": valor_linea,
                     "pais_origen": expediente.pais_origen or "ES",
                 }
                 

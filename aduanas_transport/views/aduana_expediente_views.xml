@@ -15,7 +15,7 @@
         <field name="oficina"/>
         <field name="mrn"/>
         <field name="state" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
-        <field name="fecha_prevista"/>
+        <field name="create_date"/>
       </tree>
     </field>
   </record>
@@ -221,6 +221,8 @@
                   <field name="peso_neto"/>
                   <field name="descuento"/>
                   <field name="valor_linea"/>
+                  <field name="precio_unitario"/>
+                  <field name="subtotal"/>
                   <field name="pais_origen"/>
                 </tree>
               </field>
@@ -366,7 +368,7 @@
 
   <!-- Menú -->
   <menuitem id="menu_aduanas_root" name="Aduanas"/>
-  <menuitem id="menu_aduanas_expedientes" name="Expedientes"
-            parent="menu_aduanas_root" action="action_aduana_expediente"/>
+  <menuitem id="menu_aduanas_expedientes" name="Expediciones"
+            parent="menu_aduanas_root" action="action_aduana_expediente" sequence="10"/>
 
 </odoo>

@@ -1,2 +1,2 @@
-from . import msoft_import
+# Wizards removed - using JavaScript widget for multi-file upload instead
 

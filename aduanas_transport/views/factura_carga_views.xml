@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- Vista de lista para Carga Masiva -->
+  <record id="view_carga_masiva_tree" model="ir.ui.view">
+    <field name="name">aduana.carga.masiva.tree</field>
+    <field name="model">aduana.carga.masiva</field>
+    <field name="arch" type="xml">
+      <tree string="Cargas Masivas" decoration-success="state == 'completado'" decoration-warning="state == 'parcial'" decoration-danger="state == 'error'" decoration-info="state == 'procesando'">
+        <field name="name"/>
+        <field name="state" widget="badge" decoration-success="state == 'completado'" decoration-warning="state == 'parcial'" decoration-danger="state == 'error'" decoration-info="state == 'procesando'"/>
+        <field name="total_facturas"/>
+        <field name="completadas"/>
+        <field name="con_error"/>
+        <field name="fecha_inicio"/>
+        <field name="fecha_fin"/>
+      </tree>
+    </field>
+  </record>
+
+  <!-- Vista de formulario para Carga Masiva -->
+  <record id="view_carga_masiva_form" model="ir.ui.view">
+    <field name="name">aduana.carga.masiva.form</field>
+    <field name="model">aduana.carga.masiva</field>
+    <field name="arch" type="xml">
+      <form string="Carga Masiva de Facturas">
+        <header>
+          <button name="action_iniciar_procesamiento" string="Iniciar Procesamiento" type="object"
+                  class="oe_highlight"
+                  invisible="state != 'draft'"
+                  help="Inicia el procesamiento de todas las facturas pendientes"/>
+          <button name="action_ver_expedientes" string="Ver Expedientes Creados" type="object"
+                  invisible="completadas == 0"
+                  help="Abre la lista de expedientes creados desde esta carga"/>
+          <field name="state" widget="statusbar"
+                 statusbar_visible="draft,procesando,completado,parcial,error"/>
+        </header>
+        <sheet>
+          <div class="oe_button_box" name="button_box">
+            <button name="action_ver_expedientes" type="object" class="oe_stat_button" invisible="completadas == 0">
+              <field name="completadas" widget="statinfo" string="Expediciones Creadas"/>
+            </button>
+            <button name="action_ver_expedientes" type="object" class="oe_stat_button" invisible="con_error == 0">
+              <field name="con_error" widget="statinfo" string="Errores"/>
+            </button>
+          </div>
+          
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="total_facturas" readonly="1"/>
+            </group>
+            <group>
+              <field name="fecha_inicio" readonly="1"/>
+              <field name="fecha_fin" readonly="1"/>
+            </group>
+          </group>
+          
+          <group string="Estadísticas">
+            <group>
+              <field name="pendientes" readonly="1"/>
+              <field name="procesando" readonly="1"/>
+            </group>
+            <group>
+              <field name="completadas" readonly="1"/>
+              <field name="con_error" readonly="1"/>
+            </group>
+          </group>
+          
+          <notebook>
+            <page string="Facturas">
+              <div style="padding: 10px; margin-bottom: 15px; border-bottom: 1px solid #ddd; background-color: #f9f9f9;" invisible="not id">
+                <button type="object" name="action_subir_facturas_multiple_wizard" 
+                        string="Seleccionar Múltiples Facturas PDF" 
+                        class="btn-primary"
+                        icon="fa-upload"
+                        invisible="not id"
+                        help="Abre un diálogo para seleccionar múltiples archivos PDF y subirlos de una vez"/>
+                <p style="margin-top: 8px; color: #666; font-size: 12px;" invisible="not id">
+                  <i class="fa fa-info-circle"/> Selecciona múltiples archivos PDF de una vez. Todos se crearán automáticamente en la lista de abajo.
+                </p>
+              </div>
+              <div style="padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; background-color: #fff3cd;" invisible="id">
+                <p style="margin: 0; color: #856404;">
+                  <i class="fa fa-info-circle"/> Guarda el registro primero para poder subir múltiples facturas PDF.
+                </p>
+              </div>
+              <field name="factura_ids" nolabel="1" context="{'default_carga_masiva_id': id}">
+                <tree string="Facturas" create="1" delete="1" editable="bottom">
+                  <field name="name"/>
+                  <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1"/>
+                  <field name="factura_pdf_filename" invisible="1"/>
+                  <field name="state" widget="badge" decoration-success="state == 'completado'" decoration-danger="state == 'error'" decoration-info="state == 'procesando'"/>
+                  <field name="expediente_id" string="Expediente"/>
+                  <field name="fecha_procesamiento"/>
+                  <button name="action_procesar_factura" string="Procesar" type="object"
+                          invisible="state != 'pendiente'"
+                          icon="fa-play"/>
+                  <button name="action_ver_expediente" string="Ver Expediente" type="object"
+                          invisible="not expediente_id"
+                          icon="fa-external-link"/>
+                </tree>
+                <form>
+                  <sheet>
+                    <group>
+                      <group>
+                        <field name="name"/>
+                        <field name="factura_pdf_filename"/>
+                        <field name="state"/>
+                      </group>
+                      <group>
+                        <field name="expediente_id"/>
+                        <field name="fecha_procesamiento"/>
+                      </group>
+                    </group>
+                    <group string="Factura">
+                      <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
+                    </group>
+                    <group string="Mensaje" invisible="not mensaje">
+                      <field name="mensaje" nolabel="1" readonly="1"/>
+                    </group>
+                    <group string="Datos Extraídos" invisible="not datos_extraidos">
+                      <field name="datos_extraidos" nolabel="1" readonly="1"/>
+                    </group>
+                  </sheet>
+                </form>
+              </field>
+            </page>
+          </notebook>
+        </sheet>
+        <chatter/>
+      </form>
+    </field>
+  </record>
+
+  <!-- Vista de búsqueda para Carga Masiva -->
+  <record id="view_carga_masiva_search" model="ir.ui.view">
+    <field name="name">aduana.carga.masiva.search</field>
+    <field name="model">aduana.carga.masiva</field>
+    <field name="arch" type="xml">
+      <search string="Cargas Masivas">
+        <field name="name"/>
+        <field name="state"/>
+        <filter string="Borrador" name="draft" domain="[('state', '=', 'draft')]"/>
+        <filter string="Procesando" name="procesando" domain="[('state', '=', 'procesando')]"/>
+        <filter string="Completadas" name="completadas" domain="[('state', '=', 'completado')]"/>
+        <filter string="Con Errores" name="error" domain="[('state', 'in', ('error', 'parcial'))]"/>
+        <group expand="0" string="Agrupar por">
+          <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
+          <filter string="Fecha Inicio" name="group_by_fecha" context="{'group_by': 'fecha_inicio'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <!-- Acción para Carga Masiva -->
+  <record id="action_carga_masiva" model="ir.actions.act_window">
+    <field name="name">Subir Facturas</field>
+    <field name="res_model">aduana.carga.masiva</field>
+    <field name="view_mode">tree,form</field>
+    <field name="search_view_id" ref="view_carga_masiva_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        No hay cargas masivas registradas
+      </p>
+      <p>
+        Crea una nueva carga masiva para subir múltiples facturas PDF y generar expediciones automáticamente.
+      </p>
+    </field>
+  </record>
+
+  <!-- Vista de formulario para Factura Carga (individual) -->
+  <record id="view_factura_carga_form" model="ir.ui.view">
+    <field name="name">aduana.factura.carga.form</field>
+    <field name="model">aduana.factura.carga</field>
+    <field name="arch" type="xml">
+      <form string="Factura">
+        <header>
+          <button name="action_procesar_factura" string="Procesar Factura" type="object"
+                  class="oe_highlight"
+                  invisible="state != 'pendiente'"
+                  help="Procesa esta factura y crea una expedición"/>
+          <button name="action_ver_expediente" string="Ver Expediente" type="object"
+                  invisible="not expediente_id"
+                  help="Abre la expedición creada para esta factura"/>
+          <field name="state" widget="statusbar"
+                 statusbar_visible="pendiente,procesando,completado,error"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="factura_pdf_filename"/>
+              <field name="expediente_id"/>
+            </group>
+            <group>
+              <field name="state"/>
+              <field name="fecha_procesamiento"/>
+            </group>
+          </group>
+          <group string="Factura PDF">
+            <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
+          </group>
+          <group string="Mensaje" invisible="not mensaje">
+            <field name="mensaje" nolabel="1" readonly="1"/>
+          </group>
+          <group string="Datos Extraídos" invisible="not datos_extraidos">
+            <field name="datos_extraidos" nolabel="1" readonly="1"/>
+          </group>
+        </sheet>
+        <chatter/>
+      </form>
+    </field>
+  </record>
+
+  <!-- Menú: Subir Facturas (antes de Expediciones) -->
+  <menuitem id="menu_aduanas_subir_facturas" name="Subir Facturas"
+            parent="menu_aduanas_root" action="action_carga_masiva" sequence="5"/>
+
+</odoo>
+
