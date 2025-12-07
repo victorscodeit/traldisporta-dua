@@ -23,42 +23,34 @@ class AduanaExpedienteLine(models.Model):
     
     @api.model_create_multi
     def create(self, vals_list):
-        """Calcular precio_unitario y subtotal automáticamente si no están en los valores (solo si no vienen de la IA)"""
+        """Calcular precio_unitario automáticamente si no está en los valores (valor_linea es el total)"""
         for vals in vals_list:
-            # Solo calcular precio_unitario si no viene de la IA (no está en vals o es None/0)
+            # Calcular precio_unitario desde valor_linea (total) / unidades
+            # Solo si no viene de la IA (no está en vals o es None/0)
             if 'precio_unitario' not in vals or vals.get('precio_unitario') is None or vals.get('precio_unitario') == 0:
-                if vals.get('valor_linea'):
+                if vals.get('valor_linea') and vals.get('unidades') and vals.get('unidades') > 0:
+                    # valor_linea es el total, calcular precio unitario
                     descuento = vals.get('descuento', 0) or 0
                     factor_descuento = 1.0 - (descuento / 100.0) if descuento else 1.0
-                    vals['precio_unitario'] = vals.get('valor_linea', 0) * factor_descuento
-            
-            # Solo calcular subtotal si no viene de la IA (no está en vals o es None/0)
-            if 'subtotal' not in vals or vals.get('subtotal') is None or vals.get('subtotal') == 0:
-                if vals.get('valor_linea') and vals.get('unidades'):
-                    descuento = vals.get('descuento', 0) or 0
-                    factor_descuento = 1.0 - (descuento / 100.0) if descuento else 1.0
-                    vals['subtotal'] = vals.get('valor_linea', 0) * vals.get('unidades', 0) * factor_descuento
+                    # Precio unitario = (total / unidades) * factor_descuento
+                    # Pero si ya aplicamos descuento en el total, solo dividir
+                    precio_unitario_sin_descuento = vals.get('valor_linea', 0) / vals.get('unidades', 1)
+                    vals['precio_unitario'] = precio_unitario_sin_descuento * factor_descuento
         return super().create(vals_list)
     
     def write(self, vals):
-        """Recalcular precio_unitario y subtotal si cambian valor_linea, unidades o descuento"""
+        """Recalcular precio_unitario si cambian valor_linea, unidades o descuento"""
         result = super().write(vals)
         
-        # Si se modifican campos base y no se está escribiendo precio_unitario/subtotal directamente
+        # Si se modifican campos base y no se está escribiendo precio_unitario directamente
         if any(field in vals for field in ['valor_linea', 'unidades', 'descuento']):
-            if 'precio_unitario' not in vals and 'subtotal' not in vals:
+            if 'precio_unitario' not in vals:
                 for line in self:
-                    # Recalcular precio_unitario si no tiene valor o si cambió valor_linea/descuento
-                    if 'valor_linea' in vals or 'descuento' in vals:
-                        if line.valor_linea:
-                            factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
-                            line.precio_unitario = line.valor_linea * factor_descuento
-                    
-                    # Recalcular subtotal si no tiene valor o si cambió valor_linea/unidades/descuento
-                    if any(f in vals for f in ['valor_linea', 'unidades', 'descuento']):
-                        if line.valor_linea and line.unidades:
-                            factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
-                            line.subtotal = line.valor_linea * line.unidades * factor_descuento
+                    # Recalcular precio_unitario desde valor_linea (total) / unidades
+                    if line.valor_linea and line.unidades and line.unidades > 0:
+                        factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
+                        precio_unitario_sin_descuento = line.valor_linea / line.unidades
+                        line.precio_unitario = precio_unitario_sin_descuento * factor_descuento
         
         return result
 
@@ -992,27 +984,22 @@ class AduanaExpediente(models.Model):
                 if invoice_data.get("error"):
                     rec.factura_estado_procesamiento = "error"
                     rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
-                    # Crear mensaje de error sin intentar enviar correos
-                    # Si hay error de correo, ignorarlo y continuar
+                    # Crear mensaje de error directamente en mail.message sin validaciones de correo
                     try:
-                        rec.with_context(
-                            mail_notrack=True,
-                            mail_create_nolog=True,
-                            mail_create_nosubscribe=True,
-                            mail_notify_force_send=False,
-                            mail_auto_delete=False,
-                            tracking_disable=True,
-                            mail_notify=False,
-                            default_message_type='notification',
-                        ).sudo().message_post(
-                            body=_("Error al procesar factura: %s") % invoice_data.get("error"),
-                            subtype_xmlid='mail.mt_note',
-                            message_type='notification',
-                            author_id=False,
-                            email_from=False,
-                        )
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
+                            'body': _("Error al procesar factura: %s") % invoice_data.get("error"),
+                            'author_id': False,
+                            'email_from': False,
+                        })
                     except Exception as msg_error:
-                        _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                     raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
                 
                 # Validar datos mínimos extraídos
@@ -1170,28 +1157,26 @@ class AduanaExpediente(models.Model):
                     for adv in advertencias:
                         mensaje_chatter += f"• {adv}<br/>"
                 
-                # Crear mensaje en el chatter sin intentar enviar correos
-                # Usar sudo() y desactivar completamente el sistema de correo
+                # Crear mensaje en el chatter directamente en mail.message sin pasar por el sistema de correo
                 try:
-                    rec.with_context(
-                        mail_notrack=True,
-                        mail_create_nolog=True,
-                        mail_create_nosubscribe=True,
-                        mail_notify_force_send=False,
-                        mail_auto_delete=False,
-                        tracking_disable=True,
-                        mail_notify=False,  # Desactivar notificaciones
-                        default_message_type='notification',
-                    ).sudo().message_post(
-                        body=mensaje_chatter,
-                        subtype_xmlid='mail.mt_note',
-                        message_type='notification',
-                        author_id=False,  # Sistema, no usuario
-                        email_from=False,  # No intentar enviar correo
-                    )
+                    # Obtener el subtipo de mensaje
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    
+                    # Crear mensaje directamente en mail.message sin validaciones de correo
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
+                        'body': mensaje_chatter,
+                        'author_id': False,  # Sistema, no usuario
+                        'email_from': False,  # No intentar enviar correo
+                    })
                 except Exception as msg_error:
-                    # Si hay error al crear mensaje (ej: configuración de correo), solo loguear
-                    _logger.warning("No se pudo crear mensaje en chatter (error de correo ignorado): %s", msg_error)
+                    # Si hay error al crear mensaje, solo loguear y continuar
+                    _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
                     # El proceso continúa normalmente aunque no se pueda crear el mensaje
                 
                 # Marcar factura como procesada
@@ -1230,27 +1215,22 @@ class AduanaExpediente(models.Model):
                 error_msg = str(ue)
                 rec.factura_estado_procesamiento = "error"
                 rec.factura_mensaje_error = error_msg
-                # Crear mensaje de error sin intentar enviar correos
-                # Si hay error de correo, ignorarlo y continuar
+                # Crear mensaje de error directamente en mail.message sin validaciones de correo
                 try:
-                    rec.with_context(
-                        mail_notrack=True,
-                        mail_create_nolog=True,
-                        mail_create_nosubscribe=True,
-                        mail_notify_force_send=False,
-                        mail_auto_delete=False,
-                        tracking_disable=True,
-                        mail_notify=False,
-                        default_message_type='notification',
-                    ).sudo().message_post(
-                        body=_("Error al procesar factura: %s") % error_msg,
-                        subtype_xmlid='mail.mt_note',
-                        message_type='notification',
-                        author_id=False,
-                        email_from=False,
-                    )
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
+                        'body': _("Error al procesar factura: %s") % error_msg,
+                        'author_id': False,
+                        'email_from': False,
+                    })
                 except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario
@@ -1267,27 +1247,22 @@ class AduanaExpediente(models.Model):
                 # Mensaje de error más detallado
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
                 rec.factura_mensaje_error = mensaje_error_detallado
-                # Crear mensaje de error sin intentar enviar correos
-                # Si hay error de correo, ignorarlo y continuar
+                # Crear mensaje de error directamente en mail.message sin validaciones de correo
                 try:
-                    rec.with_context(
-                        mail_notrack=True,
-                        mail_create_nolog=True,
-                        mail_create_nosubscribe=True,
-                        mail_notify_force_send=False,
-                        mail_auto_delete=False,
-                        tracking_disable=True,
-                        mail_notify=False,
-                        default_message_type='notification',
-                    ).sudo().message_post(
-                        body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
-                        subtype_xmlid='mail.mt_note',
-                        message_type='notification',
-                        author_id=False,
-                        email_from=False,
-                    )
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
+                        'body': _("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
+                        'author_id': False,
+                        'email_from': False,
+                    })
                 except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error de correo ignorado): %s", msg_error)
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
                 # Devolver acción que recarga el formulario

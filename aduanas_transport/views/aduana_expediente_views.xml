@@ -221,7 +221,6 @@
                   <field name="peso_neto"/>
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
-                  <field name="subtotal"/>
                   <field name="valor_linea"/>
                   <field name="pais_origen"/>
                 </tree>

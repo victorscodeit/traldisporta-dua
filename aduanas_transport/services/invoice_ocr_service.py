@@ -1443,17 +1443,19 @@ TEXTO DE LA FACTURA:
                 # Calcular unidades
                 unidades = linea_data.get("unidades") or linea_data.get("cantidad") or 1.0
                 
-                # Determinar precio unitario (valor_linea debe ser el precio unitario sin descuento)
-                precio_unitario_ia = linea_data.get("precio_unitario")
+                # Determinar valor_linea (debe ser el TOTAL de la línea, no el precio unitario)
                 total_ia = linea_data.get("total")
-                subtotal_ia = linea_data.get("subtotal")  # Capturar subtotal de la IA
+                subtotal_ia = linea_data.get("subtotal")
+                precio_unitario_ia = linea_data.get("precio_unitario")
                 
-                if precio_unitario_ia:
-                    # Si la IA extrajo precio_unitario, usarlo directamente
-                    valor_linea = precio_unitario_ia
-                elif total_ia and unidades and unidades > 0:
-                    # Si solo hay total, calcular precio unitario
-                    valor_linea = total_ia / unidades
+                # Prioridad: total > subtotal > (precio_unitario * unidades)
+                if total_ia:
+                    valor_linea = total_ia
+                elif subtotal_ia:
+                    valor_linea = subtotal_ia
+                elif precio_unitario_ia and unidades and unidades > 0:
+                    # Si solo hay precio_unitario, calcular total
+                    valor_linea = precio_unitario_ia * unidades
                 else:
                     valor_linea = 0.0
                 
@@ -1462,7 +1464,7 @@ TEXTO DE LA FACTURA:
                     "item_number": idx,
                     "descripcion": linea_data.get("descripcion", ""),
                     "unidades": unidades,
-                    "valor_linea": valor_linea,
+                    "valor_linea": valor_linea,  # Total de la línea
                     "pais_origen": expediente.pais_origen or "ES",
                 }
                 
@@ -1476,17 +1478,9 @@ TEXTO DE LA FACTURA:
                         line_vals["precio_unitario"] = precio_unitario_ia
                     except:
                         pass
-                
-                # Capturar subtotal de la IA si está disponible
-                if subtotal_ia:
-                    try:
-                        if isinstance(subtotal_ia, str):
-                            subtotal_ia = float(subtotal_ia.replace('.', '').replace(',', '.'))
-                        else:
-                            subtotal_ia = float(subtotal_ia)
-                        line_vals["subtotal"] = subtotal_ia
-                    except:
-                        pass
+                elif valor_linea and unidades and unidades > 0:
+                    # Si no hay precio_unitario de la IA, calcularlo desde el total
+                    line_vals["precio_unitario"] = valor_linea / unidades
                 
                 # Agregar descuento si está disponible
                 if linea_data.get("descuento"):
@@ -1576,28 +1570,26 @@ TEXTO DE LA FACTURA:
         )
         
         # Crear mensaje técnico sin intentar enviar correos
-        # Crear mensaje técnico sin intentar enviar correos
-        # Si hay error de correo, ignorarlo y continuar
+        # Crear mensaje técnico directamente en mail.message sin pasar por el sistema de correo
         try:
-            expediente.with_context(
-                mail_notrack=True,
-                mail_create_nolog=True,
-                mail_create_nosubscribe=True,
-                mail_notify_force_send=False,
-                mail_auto_delete=False,
-                tracking_disable=True,
-                mail_notify=False,  # Desactivar notificaciones
-                default_message_type='notification',
-            ).sudo().message_post(
-                body=mensaje_tecnico,
-                subtype_xmlid='mail.mt_note',
-                message_type='notification',
-                author_id=False,  # Sistema
-                email_from=False,  # No intentar enviar correo
-            )
+            # Obtener el subtipo de mensaje
+            subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+            if not subtype:
+                subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+            
+            # Crear mensaje directamente en mail.message sin validaciones de correo
+            self.env['mail.message'].sudo().create({
+                'model': 'aduana.expediente',
+                'res_id': expediente.id,
+                'message_type': 'notification',
+                'subtype_id': subtype.id if subtype else False,
+                'body': mensaje_tecnico,
+                'author_id': False,  # Sistema
+                'email_from': False,  # No intentar enviar correo
+            })
         except Exception as msg_error:
-            # Si hay error al crear mensaje (ej: configuración de correo), solo loguear
-            _logger.warning("No se pudo crear mensaje técnico en chatter (error de correo ignorado): %s", msg_error)
+            # Si hay error al crear mensaje, solo loguear y continuar
+            _logger.warning("No se pudo crear mensaje técnico en chatter (error ignorado): %s", msg_error)
             # El proceso continúa normalmente aunque no se pueda crear el mensaje
         
         return True
