@@ -30,6 +30,12 @@ class IrAttachment(models.Model):
         store=False
     )
     
+    tipo_documento = fields.Char(
+        string="Tipo",
+        compute="_compute_tipo_documento",
+        store=False
+    )
+    
     @api.depends('mimetype', 'name')
     def _compute_is_xml(self):
         """Determina si el archivo es XML"""
@@ -38,6 +44,27 @@ class IrAttachment(models.Model):
                 (record.mimetype and 'xml' in record.mimetype.lower()) or
                 (record.name and record.name.lower().endswith('.xml'))
             )
+    
+    @api.depends('mimetype', 'name')
+    def _compute_tipo_documento(self):
+        """Calcula el tipo de documento simplificado (PDF o XML)"""
+        for record in self:
+            if record.mimetype:
+                if 'pdf' in record.mimetype.lower():
+                    record.tipo_documento = 'PDF'
+                elif 'xml' in record.mimetype.lower():
+                    record.tipo_documento = 'XML'
+                else:
+                    record.tipo_documento = ''
+            elif record.name:
+                if record.name.lower().endswith('.pdf'):
+                    record.tipo_documento = 'PDF'
+                elif record.name.lower().endswith('.xml'):
+                    record.tipo_documento = 'XML'
+                else:
+                    record.tipo_documento = ''
+            else:
+                record.tipo_documento = ''
     
     @api.depends('mimetype', 'name')
     def _compute_xml_preview_url(self):

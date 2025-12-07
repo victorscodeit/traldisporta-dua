@@ -16,28 +16,51 @@ class AduanaExpedienteLine(models.Model):
     peso_bruto = fields.Float()
     peso_neto = fields.Float()
     valor_linea = fields.Float()
+    precio_unitario = fields.Float(string="Precio Unitario")
     descuento = fields.Float(string="Descuento (%)", help="Porcentaje de descuento aplicado a la línea")
-    precio_unitario = fields.Float(string="Precio Unitario", compute="_compute_precio_unitario", store=True, readonly=True)
-    subtotal = fields.Float(string="Subtotal", compute="_compute_subtotal", store=True, readonly=True)
+    subtotal = fields.Float(string="Subtotal")
     pais_origen = fields.Char(default="ES")
     
-    @api.depends('valor_linea', 'descuento')
-    def _compute_precio_unitario(self):
-        for line in self:
-            if line.valor_linea:
-                factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
-                line.precio_unitario = line.valor_linea * factor_descuento
-            else:
-                line.precio_unitario = 0.0
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Calcular precio_unitario y subtotal automáticamente si no están en los valores (solo si no vienen de la IA)"""
+        for vals in vals_list:
+            # Solo calcular precio_unitario si no viene de la IA (no está en vals o es None/0)
+            if 'precio_unitario' not in vals or vals.get('precio_unitario') is None or vals.get('precio_unitario') == 0:
+                if vals.get('valor_linea'):
+                    descuento = vals.get('descuento', 0) or 0
+                    factor_descuento = 1.0 - (descuento / 100.0) if descuento else 1.0
+                    vals['precio_unitario'] = vals.get('valor_linea', 0) * factor_descuento
+            
+            # Solo calcular subtotal si no viene de la IA (no está en vals o es None/0)
+            if 'subtotal' not in vals or vals.get('subtotal') is None or vals.get('subtotal') == 0:
+                if vals.get('valor_linea') and vals.get('unidades'):
+                    descuento = vals.get('descuento', 0) or 0
+                    factor_descuento = 1.0 - (descuento / 100.0) if descuento else 1.0
+                    vals['subtotal'] = vals.get('valor_linea', 0) * vals.get('unidades', 0) * factor_descuento
+        return super().create(vals_list)
     
-    @api.depends('valor_linea', 'unidades', 'descuento')
-    def _compute_subtotal(self):
-        for line in self:
-            if line.valor_linea and line.unidades:
-                factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
-                line.subtotal = line.valor_linea * line.unidades * factor_descuento
-            else:
-                line.subtotal = 0.0
+    def write(self, vals):
+        """Recalcular precio_unitario y subtotal si cambian valor_linea, unidades o descuento"""
+        result = super().write(vals)
+        
+        # Si se modifican campos base y no se está escribiendo precio_unitario/subtotal directamente
+        if any(field in vals for field in ['valor_linea', 'unidades', 'descuento']):
+            if 'precio_unitario' not in vals and 'subtotal' not in vals:
+                for line in self:
+                    # Recalcular precio_unitario si no tiene valor o si cambió valor_linea/descuento
+                    if 'valor_linea' in vals or 'descuento' in vals:
+                        if line.valor_linea:
+                            factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
+                            line.precio_unitario = line.valor_linea * factor_descuento
+                    
+                    # Recalcular subtotal si no tiene valor o si cambió valor_linea/unidades/descuento
+                    if any(f in vals for f in ['valor_linea', 'unidades', 'descuento']):
+                        if line.valor_linea and line.unidades:
+                            factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
+                            line.subtotal = line.valor_linea * line.unidades * factor_descuento
+        
+        return result
 
 class AduanaExpediente(models.Model):
     _name = "aduana.expediente"
@@ -929,6 +952,8 @@ class AduanaExpediente(models.Model):
                 'mail_create_nosubscribe': True,
                 'tracking_disable': True,
                 'mail_notify_force_send': False,
+                'mail_auto_delete': False,
+                'default_message_type': 'notification',
             })
             
             # Marcar como procesando (sin tracking)
@@ -959,9 +984,19 @@ class AduanaExpediente(models.Model):
                 if invoice_data.get("error"):
                     rec.factura_estado_procesamiento = "error"
                     rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
-                    rec.with_context(mail_notrack=True).message_post(
+                    # Crear mensaje de error sin intentar enviar correos
+                    rec.with_context(
+                        mail_notrack=True,
+                        mail_create_nolog=True,
+                        mail_create_nosubscribe=True,
+                        mail_notify_force_send=False,
+                        mail_auto_delete=False,
+                        tracking_disable=True,
+                    ).sudo().message_post(
                         body=_("Error al procesar factura: %s") % invoice_data.get("error"),
-                        subtype_xmlid='mail.mt_note'
+                        subtype_xmlid='mail.mt_note',
+                        message_type='notification',
+                        author_id=False,
                     )
                     raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
                 
@@ -1107,9 +1142,19 @@ class AduanaExpediente(models.Model):
                     for adv in advertencias:
                         mensaje_chatter += f"• {adv}<br/>"
                 
-                rec.with_context(mail_notrack=True).message_post(
+                # Crear mensaje en el chatter sin intentar enviar correos
+                rec.with_context(
+                    mail_notrack=True,
+                    mail_create_nolog=True,
+                    mail_create_nosubscribe=True,
+                    mail_notify_force_send=False,
+                    mail_auto_delete=False,
+                    tracking_disable=True,
+                ).sudo().message_post(
                     body=mensaje_chatter,
-                    subtype_xmlid='mail.mt_note'
+                    subtype_xmlid='mail.mt_note',
+                    message_type='notification',
+                    author_id=False,  # Sistema, no usuario
                 )
                 
                 # Marcar factura como procesada
@@ -1148,9 +1193,19 @@ class AduanaExpediente(models.Model):
                 error_msg = str(ue)
                 rec.factura_estado_procesamiento = "error"
                 rec.factura_mensaje_error = error_msg
-                rec.with_context(mail_notrack=True).message_post(
+                # Crear mensaje de error sin intentar enviar correos
+                rec.with_context(
+                    mail_notrack=True,
+                    mail_create_nolog=True,
+                    mail_create_nosubscribe=True,
+                    mail_notify_force_send=False,
+                    mail_auto_delete=False,
+                    tracking_disable=True,
+                ).sudo().message_post(
                     body=_("Error al procesar factura: %s") % error_msg,
-                    subtype_xmlid='mail.mt_note'
+                    subtype_xmlid='mail.mt_note',
+                    message_type='notification',
+                    author_id=False,
                 )
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
@@ -1168,9 +1223,19 @@ class AduanaExpediente(models.Model):
                 # Mensaje de error más detallado
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
                 rec.factura_mensaje_error = mensaje_error_detallado
-                rec.with_context(mail_notrack=True).message_post(
+                # Crear mensaje de error sin intentar enviar correos
+                rec.with_context(
+                    mail_notrack=True,
+                    mail_create_nolog=True,
+                    mail_create_nosubscribe=True,
+                    mail_notify_force_send=False,
+                    mail_auto_delete=False,
+                    tracking_disable=True,
+                ).sudo().message_post(
                     body=_("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
-                    subtype_xmlid='mail.mt_note'
+                    subtype_xmlid='mail.mt_note',
+                    message_type='notification',
+                    author_id=False,
                 )
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()

@@ -590,6 +590,7 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
       "unidades": número decimal (igual que cantidad),
       "precio_unitario": número decimal o null,
       "total": número decimal o null,
+      "subtotal": número decimal o null (subtotal de la línea con descuento aplicado),
       "descuento": número decimal (porcentaje de descuento) o null,
       "partida": "código H.S. (8-10 dígitos) o null",
       "bultos": número entero o null,
@@ -762,7 +763,7 @@ TEXTO DE LA FACTURA:
                             pass
                     
                     # Normalizar precios
-                    for campo_precio in ["precio_unitario", "total"]:
+                    for campo_precio in ["precio_unitario", "total", "subtotal"]:
                         if linea.get(campo_precio):
                             try:
                                 if isinstance(linea[campo_precio], str):
@@ -1354,6 +1355,7 @@ TEXTO DE LA FACTURA:
                 # Determinar precio unitario (valor_linea debe ser el precio unitario sin descuento)
                 precio_unitario_ia = linea_data.get("precio_unitario")
                 total_ia = linea_data.get("total")
+                subtotal_ia = linea_data.get("subtotal")  # Capturar subtotal de la IA
                 
                 if precio_unitario_ia:
                     # Si la IA extrajo precio_unitario, usarlo directamente
@@ -1372,6 +1374,28 @@ TEXTO DE LA FACTURA:
                     "valor_linea": valor_linea,
                     "pais_origen": expediente.pais_origen or "ES",
                 }
+                
+                # Capturar precio_unitario de la IA si está disponible
+                if precio_unitario_ia:
+                    try:
+                        if isinstance(precio_unitario_ia, str):
+                            precio_unitario_ia = float(precio_unitario_ia.replace('.', '').replace(',', '.'))
+                        else:
+                            precio_unitario_ia = float(precio_unitario_ia)
+                        line_vals["precio_unitario"] = precio_unitario_ia
+                    except:
+                        pass
+                
+                # Capturar subtotal de la IA si está disponible
+                if subtotal_ia:
+                    try:
+                        if isinstance(subtotal_ia, str):
+                            subtotal_ia = float(subtotal_ia.replace('.', '').replace(',', '.'))
+                        else:
+                            subtotal_ia = float(subtotal_ia)
+                        line_vals["subtotal"] = subtotal_ia
+                    except:
+                        pass
                 
                 # Agregar descuento si está disponible
                 if linea_data.get("descuento"):
