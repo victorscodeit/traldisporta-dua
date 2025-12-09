@@ -71,7 +71,7 @@
               <div style="padding: 10px; margin-bottom: 15px; border-bottom: 1px solid #ddd; background-color: #f9f9f9;" invisible="not id">
                 <button type="object" name="action_subir_facturas_multiple_wizard" 
                         string="Seleccionar Múltiples Facturas PDF" 
-                        class="btn-primary"
+                        class="oe_highlight"
                         icon="fa-upload"
                         invisible="not id"
                         help="Abre un diálogo para seleccionar múltiples archivos PDF y subirlos de una vez"/>

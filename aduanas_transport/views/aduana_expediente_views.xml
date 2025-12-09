@@ -51,7 +51,6 @@
           <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
                   invisible="[['direction','!=','export']]"/>
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
-                  class="btn btn-light"
                   invisible="1"/>
 
           <!-- Botones de importación -->
@@ -61,7 +60,6 @@
           <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
                   invisible="[['direction','!=','import']]"/>
           <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
-                  class="btn btn-secondary"
                   invisible="not id or direction != 'import'"/>
 
           <field name="state" widget="statusbar"
@@ -196,7 +194,7 @@
                   <group string="Vista Previa XML" colspan="2" invisible="not is_xml">
                     <button name="action_preview_xml" string="Abrir XML en nueva pestaña" 
                             type="object" 
-                            class="btn-primary"
+                            class="oe_highlight"
                             icon="fa-external-link"/>
                     <field name="xml_content_text" nolabel="1" readonly="1" 
                            widget="text" colspan="2"

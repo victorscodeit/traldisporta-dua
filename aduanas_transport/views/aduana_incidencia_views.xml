@@ -33,7 +33,7 @@
                   class="oe_highlight" invisible="[['state','in',['resuelta','cerrada','rechazada']]]"/>
           <button name="action_marcar_cerrada" string="Cerrar" type="object"
                   invisible="[['state','in',['cerrada','rechazada']]]"/>
-          <button name="action_ver_expediente" string="Ver Expediente" type="object" class="btn-secondary"/>
+          <button name="action_ver_expediente" string="Ver Expediente" type="object"/>
           <field name="state" widget="statusbar" statusbar_visible="pendiente,en_revision,resuelta,cerrada,rechazada"/>
         </header>
         <sheet>
@@ -134,8 +134,7 @@
   </record>
 
   <!-- Menú -->
-  <menuitem id="menu_aduanas_incidencias" name="Incidencias"
-            parent="menu_aduanas_root" action="action_aduana_incidencia" sequence="20"/>
+  <menuitem id="menu_aduanas_incidencias" name="Incidencias" parent="menu_aduanas_root" action="action_aduana_incidencia" sequence="20"/>
 
 
 </odoo>

@@ -2,7 +2,7 @@
 {
     "name": "Aduanas Transporte España ↔ Andorra (Unificado)",
     "summary": "Expedientes aduaneros de Exportación (AES) e Importación (DUA) con AEAT. Origen de datos MSoft. Bandeja AEAT.",
-    "version": "17.0.1.0.0",
+    "version": "16.0.1.0.0",
     "category": "Operations/Logistics",
     "author": "Indomit / Traldisporta",
     "license": "LGPL-3",
