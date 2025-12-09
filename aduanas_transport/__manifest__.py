@@ -11,9 +11,9 @@
     "data": [
         "security/ir.model.access.csv",
         "data/ir_sequence.xml",
-        "views/aduana_incidencia_views.xml",
         "views/res_config_settings_views.xml",
         "views/aduana_expediente_views.xml",
+        "views/aduana_incidencia_views.xml",
         "views/factura_carga_views.xml",
         "wizards/msoft_import_views.xml",
         "data/ir_cron.xml",
