@@ -74,29 +74,77 @@ class InvoiceOCRService(models.AbstractModel):
         # Obtener API key de configuración si no se proporciona
         if not api_key:
             api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.openai_api_key')
+            if api_key:
+                _logger.info("API key obtenida de configuración (longitud: %d caracteres)", len(api_key) if api_key else 0)
+            else:
+                _logger.warning("No se encontró API key de OpenAI en configuración")
         
         resultado = None
         metodo_usado = None
         
         # PRIORIDAD: Intentar OpenAI GPT-4o Vision primero (si hay API key)
         if api_key:
+            _logger.info("API key disponible. Iniciando procesamiento con GPT-4o Vision...")
             try:
                 _logger.info("Enviando PDF a OpenAI GPT-4o Vision con splitting por páginas...")
                 resultado = self._extract_with_openai_vision(api_key, pdf_bytes)
                 metodo_usado = "OpenAI GPT-4o Vision"
                 _logger.info("OpenAI GPT-4o Vision procesó el PDF exitosamente")
             except Exception as e:
-                _logger.warning("Error con OpenAI GPT-4o Vision: %s. Intentando OCR alternativo...", e)
-                try:
-                    resultado = self._extract_with_fallback_ocr(pdf_bytes)
-                    metodo_usado = "OCR Alternativo (fallback)"
-                except Exception as e2:
-                    _logger.exception("Error también con OCR alternativo: %s", e2)
-                    return {
-                        "error": _("Error al procesar PDF:\n- OpenAI GPT-4o Vision: %s\n- OCR Alternativo: %s") % (str(e), str(e2)),
-                        "texto_extraido": "",
-                        "metodo_usado": "Error en ambos"
-                    }
+                error_gpt = str(e)
+                _logger.warning("Error con OpenAI GPT-4o Vision: %s. Intentando OCR alternativo...", error_gpt)
+                
+                # Si el error es que no se pudo extraer texto, puede ser una imagen escaneada
+                # En ese caso, el OCR alternativo tampoco funcionará, así que mejor informar claramente
+                if "No se pudo extraer texto" in error_gpt or "ninguna página" in error_gpt.lower():
+                    _logger.warning("GPT Vision no pudo extraer texto. El PDF puede ser una imagen escaneada de baja calidad o tener problemas.")
+                    # Intentar OCR alternativo de todas formas por si acaso
+                    try:
+                        resultado = self._extract_with_fallback_ocr(pdf_bytes)
+                        texto_extraido = resultado.get("texto_extraido", "").strip() if resultado else ""
+                        if not texto_extraido or len(texto_extraido) < 10:
+                            # OCR alternativo tampoco funcionó, es definitivamente una imagen escaneada
+                            return {
+                                "error": _("El PDF parece ser una imagen escaneada y no se pudo extraer texto.\n\n"
+                                          "Error GPT Vision: %s\n\n"
+                                          "Sugerencias:\n"
+                                          "- Verifica que la API key de OpenAI sea válida\n"
+                                          "- Asegúrate de que el PDF tenga buena calidad\n"
+                                          "- Verifica tu conexión a internet\n"
+                                          "- Revisa los logs del servidor para más detalles") % error_gpt,
+                                "texto_extraido": "",
+                                "metodo_usado": "Error - PDF escaneado"
+                            }
+                        else:
+                            metodo_usado = "OCR Alternativo (fallback - GPT Vision falló)"
+                    except Exception as e2:
+                        _logger.exception("Error también con OCR alternativo: %s", e2)
+                        return {
+                            "error": _("No se pudo extraer texto del PDF (parece ser una imagen escaneada).\n\n"
+                                      "Error GPT Vision: %s\n"
+                                      "Error OCR Alternativo: %s\n\n"
+                                      "Sugerencias:\n"
+                                      "- Verifica que la API key de OpenAI sea válida\n"
+                                      "- El PDF puede estar corrupto o ser de muy baja calidad\n"
+                                      "- Revisa los logs del servidor para más detalles") % (error_gpt, str(e2)),
+                            "texto_extraido": "",
+                            "metodo_usado": "Error en ambos"
+                        }
+                else:
+                    # Otro tipo de error (API, conexión, etc.), intentar OCR alternativo
+                    try:
+                        resultado = self._extract_with_fallback_ocr(pdf_bytes)
+                        metodo_usado = "OCR Alternativo (fallback)"
+                    except Exception as e2:
+                        _logger.exception("Error también con OCR alternativo: %s", e2)
+                        return {
+                            "error": _("Error al procesar PDF:\n\n"
+                                      "GPT Vision: %s\n"
+                                      "OCR Alternativo: %s\n\n"
+                                      "Revisa los logs del servidor para más detalles.") % (error_gpt, str(e2)),
+                            "texto_extraido": "",
+                            "metodo_usado": "Error en ambos"
+                        }
         else:
             # Si no hay API key, usar OCR alternativo
             _logger.info("No hay API key de OpenAI configurada, usando OCR alternativo...")
@@ -160,6 +208,7 @@ class InvoiceOCRService(models.AbstractModel):
             
             # Procesar cada página con GPT-4o Vision
             all_texts = []
+            errores_paginas = []
             for page_num in range(num_pages):
                 _logger.info("Procesando página %d/%d con GPT-4o Vision...", page_num + 1, num_pages)
                 
@@ -174,44 +223,63 @@ class InvoiceOCRService(models.AbstractModel):
                     img_base64 = base64.b64encode(img_bytes).decode('utf-8')
                     
                     # Llamar a OpenAI Vision API con prompt específico para contexto legal/administrativo
-                    response = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "Eres un asistente de procesamiento documental para una empresa de logística y aduanas.\n\n"
-                                                "El documento proporcionado es una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
-                                                "La extracción que vas a hacer es para un proceso legal obligatorio.\n\n"
-                                                "No devuelvas la imagen completa ni reproduzcas el documento.\n"
-                                                "Simplemente transcribe el texto visible, incluyendo: números de factura, fechas, direcciones, detalles de mercancía, bultos y totales.\n\n"
-                                                "La extracción es estrictamente con fines administrativos y está permitida.\n"
-                                                "Devuelve únicamente el texto, sin notas adicionales."
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/png;base64,{img_base64}"
+                    _logger.debug("Enviando página %d a OpenAI (tamaño imagen: %d bytes base64)", page_num + 1, len(img_base64))
+                    try:
+                        response = client.chat.completions.create(
+                            model="gpt-4o",
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "Eres un asistente de procesamiento documental para una empresa de logística y aduanas.\n\n"
+                                                    "El documento proporcionado es una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
+                                                    "La extracción que vas a hacer es para un proceso legal obligatorio.\n\n"
+                                                    "No devuelvas la imagen completa ni reproduzcas el documento.\n"
+                                                    "Simplemente transcribe el texto visible, incluyendo: números de factura, fechas, direcciones, detalles de mercancía, bultos y totales.\n\n"
+                                                    "La extracción es estrictamente con fines administrativos y está permitida.\n"
+                                                    "Devuelve únicamente el texto, sin notas adicionales."
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:image/png;base64,{img_base64}"
+                                            }
                                         }
-                                    }
-                                ]
-                            }
-                        ],
-                        max_tokens=4096
-                    )
+                                    ]
+                                }
+                            ],
+                            max_tokens=4096,
+                            timeout=60.0  # Timeout de 60 segundos por página
+                        )
+                        _logger.debug("Respuesta recibida de OpenAI para página %d", page_num + 1)
+                    except Exception as api_call_error:
+                        _logger.error("Error en la llamada a OpenAI API para página %d: %s (tipo: %s)", 
+                                    page_num + 1, api_call_error, type(api_call_error).__name__)
+                        raise  # Re-lanzar para que se capture en el except exterior
+                    
+                    # Verificar que la respuesta tenga contenido
+                    if not response or not response.choices or len(response.choices) == 0:
+                        _logger.error("Página %d: OpenAI no devolvió ninguna respuesta", page_num + 1)
+                        errores_paginas.append(f"Página {page_num + 1}: OpenAI no devolvió respuesta")
+                        continue
                     
                     page_text = response.choices[0].message.content
-                    if page_text:
+                    if page_text and page_text.strip():
                         all_texts.append(page_text)
                         _logger.info("Texto extraído de página %d: %d caracteres", page_num + 1, len(page_text))
+                    else:
+                        _logger.warning("Página %d: GPT Vision respondió pero el contenido está vacío o es None. Respuesta: %s", page_num + 1, response.choices[0].message if response.choices else "Sin respuesta")
+                        errores_paginas.append(f"Página {page_num + 1}: Respuesta vacía de GPT Vision")
                     
                     # Limpiar memoria
                     pix = None
                     
                 except Exception as api_error:
+                    error_msg = str(api_error)
                     _logger.error("Error al procesar página %d con OpenAI: %s", page_num + 1, api_error)
+                    errores_paginas.append(f"Página {page_num + 1}: {error_msg}")
                     # Continuar con las siguientes páginas
                     continue
             
@@ -219,7 +287,14 @@ class InvoiceOCRService(models.AbstractModel):
             pdf_document.close()
             
             if not all_texts:
-                raise Exception(_("No se pudo extraer texto de ninguna página del PDF"))
+                # Construir mensaje de error más informativo
+                if errores_paginas:
+                    error_detalle = "\n".join(errores_paginas[:3])  # Mostrar solo los primeros 3 errores
+                    if len(errores_paginas) > 3:
+                        error_detalle += f"\n... y {len(errores_paginas) - 3} error(es) más"
+                    raise Exception(_("No se pudo extraer texto de ninguna página del PDF.\n\nErrores encontrados:\n%s\n\nPosibles causas:\n- Problemas de conexión con OpenAI API\n- La API key no es válida o ha expirado\n- El PDF está corrupto o protegido\n- Límites de rate limit de OpenAI alcanzados") % error_detalle)
+                else:
+                    raise Exception(_("No se pudo extraer texto de ninguna página del PDF. El PDF puede estar vacío, ser solo imágenes sin texto, o estar corrupto."))
             
             # Combinar texto de todas las páginas
             full_text = "\n\n".join(all_texts)

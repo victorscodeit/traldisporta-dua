@@ -31,6 +31,13 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="aduanas_transport.openai_api_key",
         help="API Key de OpenAI para usar GPT-4o Vision. Obtener en: https://platform.openai.com/api-keys. "
              "Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).")
+    
+    # Campo opcional para compatibilidad con otros módulos (ej: unsplash)
+    # Este campo se define aquí para evitar errores cuando otros módulos lo referencian
+    unsplash_access_key = fields.Char(
+        string="Unsplash Access Key",
+        config_parameter="unsplash.access_key",
+        help="API Key de Unsplash (definido para compatibilidad con otros módulos)")
 
     @api.model
     def get_values(self):

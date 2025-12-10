@@ -11,7 +11,7 @@
     "data": [
         "security/ir.model.access.csv",
         "data/ir_sequence.xml",
-        "views/res_config_settings_views.xml",
+        "views/aduanas_config_views.xml",
         "views/aduana_expediente_views.xml",
         "views/aduana_incidencia_views.xml",
         "views/factura_carga_views.xml",

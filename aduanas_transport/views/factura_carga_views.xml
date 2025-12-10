@@ -26,20 +26,20 @@
         <header>
           <button name="action_iniciar_procesamiento" string="Iniciar Procesamiento" type="object"
                   class="oe_highlight"
-                  invisible="state != 'draft'"
+                  attrs="{'invisible': [('state', '!=', 'draft')]}"
                   help="Inicia el procesamiento de todas las facturas pendientes"/>
           <button name="action_ver_expedientes" string="Ver Expedientes Creados" type="object"
-                  invisible="completadas == 0"
+                  attrs="{'invisible': [('completadas', '=', 0)]}"
                   help="Abre la lista de expedientes creados desde esta carga"/>
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,procesando,completado,parcial,error"/>
         </header>
         <sheet>
           <div class="oe_button_box" name="button_box">
-            <button name="action_ver_expedientes" type="object" class="oe_stat_button" invisible="completadas == 0">
+            <button name="action_ver_expedientes" type="object" class="oe_stat_button" attrs="{'invisible': [('completadas', '=', 0)]}">
               <field name="completadas" widget="statinfo" string="Expediciones Creadas"/>
             </button>
-            <button name="action_ver_expedientes" type="object" class="oe_stat_button" invisible="con_error == 0">
+            <button name="action_ver_expedientes" type="object" class="oe_stat_button" attrs="{'invisible': [('con_error', '=', 0)]}">
               <field name="con_error" widget="statinfo" string="Errores"/>
             </button>
           </div>
@@ -68,18 +68,18 @@
           
           <notebook>
             <page string="Facturas">
-              <div style="padding: 10px; margin-bottom: 15px; border-bottom: 1px solid #ddd; background-color: #f9f9f9;" invisible="not id">
+              <div style="padding: 10px; margin-bottom: 15px; border-bottom: 1px solid #ddd; background-color: #f9f9f9;" attrs="{'invisible': [('id', '=', False)]}">
                 <button type="object" name="action_subir_facturas_multiple_wizard" 
                         string="Seleccionar Múltiples Facturas PDF" 
                         class="oe_highlight"
                         icon="fa-upload"
-                        invisible="not id"
+                        attrs="{'invisible': [('id', '=', False)]}"
                         help="Abre un diálogo para seleccionar múltiples archivos PDF y subirlos de una vez"/>
-                <p style="margin-top: 8px; color: #666; font-size: 12px;" invisible="not id">
+                <p style="margin-top: 8px; color: #666; font-size: 12px;" attrs="{'invisible': [('id', '=', False)]}">
                   <i class="fa fa-info-circle"/> Selecciona múltiples archivos PDF de una vez. Todos se crearán automáticamente en la lista de abajo.
                 </p>
               </div>
-              <div style="padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; background-color: #fff3cd;" invisible="id">
+              <div style="padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; background-color: #fff3cd;" attrs="{'invisible': [('id', '!=', False)]}">
                 <p style="margin: 0; color: #856404;">
                   <i class="fa fa-info-circle"/> Guarda el registro primero para poder subir múltiples facturas PDF.
                 </p>
@@ -93,10 +93,10 @@
                   <field name="expediente_id" string="Expediente"/>
                   <field name="fecha_procesamiento"/>
                   <button name="action_procesar_factura" string="Procesar" type="object"
-                          invisible="state != 'pendiente'"
+                          attrs="{'invisible': [('state', '!=', 'pendiente')]}"
                           icon="fa-play"/>
                   <button name="action_ver_expediente" string="Ver Expediente" type="object"
-                          invisible="not expediente_id"
+                          attrs="{'invisible': [('expediente_id', '=', False)]}"
                           icon="fa-external-link"/>
                 </tree>
                 <form>
@@ -115,10 +115,10 @@
                     <group string="Factura">
                       <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
                     </group>
-                    <group string="Mensaje" invisible="not mensaje">
+                    <group string="Mensaje" attrs="{'invisible': [('mensaje', '=', False)]}">
                       <field name="mensaje" nolabel="1" readonly="1"/>
                     </group>
-                    <group string="Datos Extraídos" invisible="not datos_extraidos">
+                    <group string="Datos Extraídos" attrs="{'invisible': [('datos_extraidos', '=', False)]}">
                       <field name="datos_extraidos" nolabel="1" readonly="1"/>
                     </group>
                   </sheet>
@@ -177,10 +177,10 @@
         <header>
           <button name="action_procesar_factura" string="Procesar Factura" type="object"
                   class="oe_highlight"
-                  invisible="state != 'pendiente'"
+                  attrs="{'invisible': [('state', '!=', 'pendiente')]}"
                   help="Procesa esta factura y crea una expedición"/>
           <button name="action_ver_expediente" string="Ver Expediente" type="object"
-                  invisible="not expediente_id"
+                  attrs="{'invisible': [('expediente_id', '=', False)]}"
                   help="Abre la expedición creada para esta factura"/>
           <field name="state" widget="statusbar"
                  statusbar_visible="pendiente,procesando,completado,error"/>
@@ -200,10 +200,10 @@
           <group string="Factura PDF">
             <field name="factura_pdf" filename="factura_pdf_filename" widget="binary"/>
           </group>
-          <group string="Mensaje" invisible="not mensaje">
+          <group string="Mensaje" attrs="{'invisible': [('mensaje', '=', False)]}">
             <field name="mensaje" nolabel="1" readonly="1"/>
           </group>
-          <group string="Datos Extraídos" invisible="not datos_extraidos">
+          <group string="Datos Extraídos" attrs="{'invisible': [('datos_extraidos', '=', False)]}">
             <field name="datos_extraidos" nolabel="1" readonly="1"/>
           </group>
         </sheet>

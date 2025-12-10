@@ -30,6 +30,12 @@ class IrAttachment(models.Model):
         store=False
     )
     
+    is_pdf = fields.Boolean(
+        string="Es PDF",
+        compute="_compute_is_pdf",
+        store=False
+    )
+    
     tipo_documento = fields.Char(
         string="Tipo",
         compute="_compute_tipo_documento",
@@ -43,6 +49,15 @@ class IrAttachment(models.Model):
             record.is_xml = (
                 (record.mimetype and 'xml' in record.mimetype.lower()) or
                 (record.name and record.name.lower().endswith('.xml'))
+            )
+    
+    @api.depends('mimetype', 'name')
+    def _compute_is_pdf(self):
+        """Determina si el archivo es PDF"""
+        for record in self:
+            record.is_pdf = (
+                (record.mimetype and 'pdf' in record.mimetype.lower()) or
+                (record.name and record.name.lower().endswith('.pdf'))
             )
     
     @api.depends('mimetype', 'name')

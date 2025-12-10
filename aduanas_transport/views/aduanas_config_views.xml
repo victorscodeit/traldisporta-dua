@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <!-- Vista de formulario para Configuración de Aduanas -->
+  <record id="view_aduanas_config_form" model="ir.ui.view">
+    <field name="name">aduanas.config.form</field>
+    <field name="model">res.config.settings</field>
+    <field name="arch" type="xml">
+      <form string="Configuración Aduanas">
+        <header>
+          <button string="Aplicar" name="execute" type="object" class="oe_highlight"/>
+          <button string="Cancelar" special="cancel"/>
+        </header>
+        <sheet>
+          <div class="oe_title">
+            <h1>
+              <span>Configuración Aduanas AEAT</span>
+            </h1>
+          </div>
+          
+          <group string="Endpoints AEAT">
+            <group string="Exportación (AES)">
+              <field name="aeat_endpoint_cc515c" placeholder="https://..."/>
+              <field name="aeat_endpoint_cc511c" placeholder="https://..."/>
+            </group>
+            <group string="Importación (DUA)">
+              <field name="aeat_endpoint_imp_decl" placeholder="https://..."/>
+            </group>
+            <group string="Bandeja AEAT">
+              <field name="aeat_endpoint_bandeja" placeholder="https://..."/>
+            </group>
+          </group>
+
+          <group string="Certificado Digital">
+            <group>
+              <field name="cert_attachment_id" widget="many2one"/>
+              <field name="cert_password" password="True" placeholder="Contraseña del certificado"/>
+            </group>
+          </group>
+
+          <group string="Conexión MSoft">
+            <group>
+              <field name="msoft_dsn" placeholder="DSN o Host de SQL Server"/>
+              <field name="msoft_db" placeholder="Nombre de la base de datos"/>
+            </group>
+            <group>
+              <field name="msoft_user" placeholder="Usuario"/>
+              <field name="msoft_pass" password="True" placeholder="Contraseña"/>
+            </group>
+          </group>
+
+          <group string="Procesamiento de Facturas PDF (IA/OCR)">
+            <group>
+              <field name="openai_api_key" password="True" placeholder="sk-..."/>
+              <div class="text-muted" style="margin-top: 8px;">
+                <strong>OpenAI API Key</strong> para usar GPT-4o Vision con splitting por páginas.
+                Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
+                <br/>
+                <a href="https://platform.openai.com/api-keys" target="_blank">Obtener API Key de OpenAI</a>
+              </div>
+            </group>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <!-- Acción para abrir la configuración -->
+  <record id="action_aduanas_config" model="ir.actions.act_window">
+    <field name="name">Configuración</field>
+    <field name="res_model">res.config.settings</field>
+    <field name="view_mode">form</field>
+    <field name="target">current</field>
+    <field name="view_id" ref="view_aduanas_config_form"/>
+    <field name="context">{'module': 'aduanas_transport'}</field>
+  </record>
+
+  <!-- Menú Configuración dentro de Aduanas -->
+  <menuitem id="menu_aduanas_configuracion" name="Configuración"
+            parent="menu_aduanas_root" action="action_aduanas_config" sequence="30"/>
+
+</odoo>
+

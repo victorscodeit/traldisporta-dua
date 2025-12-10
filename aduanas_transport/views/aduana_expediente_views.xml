@@ -30,37 +30,37 @@
           <!-- Botones principales en orden: Procesar Factura, Generar DUA, Consultar bandeja -->
           <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
                   class="oe_highlight"
-                  invisible="not factura_pdf or factura_procesada"
+                  attrs="{'invisible': ['|', ('factura_pdf', '=', False), ('factura_procesada', '=', True)]}"
                   help="Extrae datos de la factura PDF usando IA/OCR"/>
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
-                  invisible="not factura_procesada or direction != 'export' or dua_generado"
+                  attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
                   help="Genera el DUA de exportación (CUSDEC EX1)"/>
           <button name="action_generate_dua" string="Regenerar DUA" type="object"
                   class="oe_highlight"
-                  invisible="not factura_procesada or direction != 'export' or not dua_generado"
+                  attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', False)]}"
                   help="Regenera el DUA de exportación (CUSDEC EX1)"/>
           <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
           
           <!-- Botones adicionales de exportación -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
                   class="oe_highlight"
-                  invisible="direction != 'export'"/>
+                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
           <button name="action_send_cc515c" string="(Export) Enviar CC515C" type="object"
-                  invisible="direction != 'export'"/>
+                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
           <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
-                  invisible="direction != 'export'"/>
+                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
                   invisible="1"/>
 
           <!-- Botones de importación -->
           <button name="action_generate_imp_decl" string="(Import) Generar Declaración" type="object"
                   class="oe_highlight"
-                  invisible="direction != 'import'"/>
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"/>
           <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
-                  invisible="direction != 'import'"/>
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"/>
           <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
-                  invisible="not id or direction != 'import'"/>
+                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
 
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
@@ -93,7 +93,7 @@
                      options="{'statusbar_visible_fields': ['pendiente', 'procesando', 'completado', 'advertencia', 'error']}"/>
             </group>
           </group>
-          <group colspan="2" invisible="not factura_mensaje_html">
+          <group colspan="2" attrs="{'invisible': [('factura_mensaje_html', '=', False)]}">
             <field name="factura_mensaje_html" nolabel="1" readonly="1" 
                    widget="html"
                    colspan="2"
@@ -140,7 +140,7 @@
             </group>
           </group>
           
-          <group string="Referencias MSoft" col="2" invisible="not msoft_codigo">
+          <group string="Referencias MSoft" col="2" attrs="{'invisible': [('msoft_codigo', '=', False)]}">
             <group>
               <field name="msoft_codigo" readonly="1"/>
               <field name="msoft_recepcion_num" readonly="1"/>
@@ -155,7 +155,7 @@
             </group>
           </group>
           
-          <group string="Estado y Errores" col="2" invisible="state != 'error'">
+          <group string="Estado y Errores" col="2" attrs="{'invisible': [('state', '!=', 'error')]}">
             <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
             <field name="last_response_date" readonly="1"/>
           </group>
@@ -182,16 +182,17 @@
                   <group string="Archivo">
                     <field name="datas" filename="name" widget="binary"/>
                   </group>
-                  <!-- Campo invisible para determinar si es XML -->
+                  <!-- Campos invisibles para determinar tipo de archivo -->
                   <field name="is_xml" invisible="1"/>
+                  <field name="is_pdf" invisible="1"/>
                   <!-- Vista Previa PDF -->
-                  <group string="Vista Previa PDF" colspan="2" invisible="not (mimetype and 'pdf' in mimetype.lower())">
+                  <group string="Vista Previa PDF" colspan="2" attrs="{'invisible': [('is_pdf', '=', False)]}">
                     <field name="datas" filename="name" widget="pdf_viewer" 
                            readonly="1" nolabel="1" colspan="2"
                            options="{'disable_zoom': false, 'disable_scroll': false}"/>
                   </group>
                   <!-- Vista Previa XML -->
-                  <group string="Vista Previa XML" colspan="2" invisible="not is_xml">
+                  <group string="Vista Previa XML" colspan="2" attrs="{'invisible': [('is_xml', '=', False)]}">
                     <button name="action_preview_xml" string="Abrir XML en nueva pestaña" 
                             type="object" 
                             class="oe_highlight"
@@ -224,7 +225,7 @@
                 </tree>
               </field>
             </page>
-            <page string="Datos Técnicos Factura" name="datos_tecnicos" invisible="not factura_datos_extraidos">
+            <page string="Datos Técnicos Factura" name="datos_tecnicos" attrs="{'invisible': [('factura_datos_extraidos', '=', False)]}">
               <group string="Información Técnica de Extracción">
                 <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
                        placeholder="Los datos técnicos extraídos de la factura aparecerán aquí..."/>
