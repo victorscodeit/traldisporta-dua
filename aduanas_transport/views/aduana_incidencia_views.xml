@@ -30,9 +30,9 @@
       <form string="Incidencia Aduanera">
         <header>
           <button name="action_marcar_resuelta" string="Marcar como Resuelta" type="object"
-                  class="oe_highlight" invisible="[['state','in',['resuelta','cerrada','rechazada']]]"/>
+                  class="oe_highlight" invisible="state in ('resuelta', 'cerrada', 'rechazada')"/>
           <button name="action_marcar_cerrada" string="Cerrar" type="object"
-                  invisible="[['state','in',['cerrada','rechazada']]]"/>
+                  invisible="state in ('cerrada', 'rechazada')"/>
           <button name="action_ver_expediente" string="Ver Expediente" type="object"/>
           <field name="state" widget="statusbar" statusbar_visible="pendiente,en_revision,resuelta,cerrada,rechazada"/>
         </header>
@@ -70,7 +70,7 @@
             <field name="mensaje_aeat" readonly="1" nolabel="1" widget="text"/>
           </group>
           
-          <group string="Resolución" invisible="[['state','in',['pendiente','en_revision']]]">
+          <group string="Resolución" invisible="state in ('pendiente', 'en_revision')">
             <field name="resolucion" placeholder="Descripción de cómo se resolvió..." nolabel="1"/>
             <field name="accion_tomada" placeholder="Acciones realizadas para resolver..." nolabel="1"/>
           </group>

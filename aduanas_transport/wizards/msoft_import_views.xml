@@ -10,8 +10,8 @@
           <group>
             <group string="Modo de Importación">
               <field name="import_mode"/>
-              <field name="fecha_desde" invisible="[['import_mode','!=','incremental']]"/>
-              <field name="fecha_hasta" invisible="[['import_mode','!=','incremental']]"/>
+              <field name="fecha_desde" attrs="{'invisible': [('import_mode', '!=', 'incremental')]}"/>
+              <field name="fecha_hasta" attrs="{'invisible': [('import_mode', '!=', 'incremental')]}"/>
             </group>
             <group string="Opciones">
               <field name="crear_partners"/>
@@ -27,8 +27,8 @@
           </group>
         </sheet>
         <footer>
-          <button string="Importar" name="action_import_expedientes" type="object" class="btn-primary"/>
-          <button string="Cancelar" class="btn-secondary" special="cancel"/>
+          <button string="Importar" name="action_import_expedientes" type="object" class="oe_highlight"/>
+          <button string="Cancelar" special="cancel"/>
         </footer>
       </form>
     </field>

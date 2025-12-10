@@ -45,20 +45,20 @@
           <!-- Botones adicionales de exportación -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
                   class="oe_highlight"
-                  invisible="[['direction','!=','export']]"/>
+                  invisible="direction != 'export'"/>
           <button name="action_send_cc515c" string="(Export) Enviar CC515C" type="object"
-                  invisible="[['direction','!=','export']]"/>
+                  invisible="direction != 'export'"/>
           <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
-                  invisible="[['direction','!=','export']]"/>
+                  invisible="direction != 'export'"/>
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
                   invisible="1"/>
 
           <!-- Botones de importación -->
           <button name="action_generate_imp_decl" string="(Import) Generar Declaración" type="object"
                   class="oe_highlight"
-                  invisible="[['direction','!=','import']]"/>
+                  invisible="direction != 'import'"/>
           <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
-                  invisible="[['direction','!=','import']]"/>
+                  invisible="direction != 'import'"/>
           <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
                   invisible="not id or direction != 'import'"/>
 
@@ -155,7 +155,7 @@
             </group>
           </group>
           
-          <group string="Estado y Errores" col="2" invisible="[['state','!=','error']]">
+          <group string="Estado y Errores" col="2" invisible="state != 'error'">
             <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
             <field name="last_response_date" readonly="1"/>
           </group>
