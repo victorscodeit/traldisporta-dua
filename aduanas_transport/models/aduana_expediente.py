@@ -60,7 +60,7 @@ class AduanaExpediente(models.Model):
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "create_date desc"
 
-    name = fields.Char(string="Referencia", required=True, copy=False, default=lambda self: _("Nuevo"))
+    name = fields.Char(string="Referencia", required=True, copy=False, readonly=True, default=lambda self: _("Nuevo"))
     direction = fields.Selection([
         ("export", "España → Andorra (Exportación)"),
         ("import", "Andorra → España (Importación)"),
@@ -180,6 +180,15 @@ class AduanaExpediente(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         """Override create para asegurar que se creen attachments cuando se sube factura_pdf"""
+        # Generar secuencia automáticamente si no se proporciona name o es "Nuevo"
+        for vals in vals_list:
+            if not vals.get('name') or vals.get('name') == _("Nuevo"):
+                vals['name'] = self.env['ir.sequence'].next_by_code('aduana.expediente') or _("Nuevo")
+            # Si se sube una factura, cambiar el estado a "pendiente", si no, mantener "sin_factura"
+            if vals.get('factura_pdf') and not vals.get('factura_estado_procesamiento'):
+                vals['factura_estado_procesamiento'] = 'pendiente'
+            elif not vals.get('factura_pdf') and not vals.get('factura_estado_procesamiento'):
+                vals['factura_estado_procesamiento'] = 'sin_factura'
         records = super().create(vals_list)
         for rec, vals in zip(records, vals_list):
             if vals.get('factura_pdf') and vals.get('factura_pdf_filename'):
@@ -202,6 +211,15 @@ class AduanaExpediente(models.Model):
     
     def write(self, vals):
         """Override write para crear/actualizar attachment cuando se cambia factura_pdf"""
+        # Si se sube una factura y el estado es "sin_factura", cambiar a "pendiente"
+        if 'factura_pdf' in vals and vals.get('factura_pdf'):
+            for rec in self:
+                if rec.factura_estado_procesamiento == 'sin_factura':
+                    vals['factura_estado_procesamiento'] = 'pendiente'
+        # Si se elimina la factura, volver a "sin_factura"
+        elif 'factura_pdf' in vals and not vals.get('factura_pdf'):
+            vals['factura_estado_procesamiento'] = 'sin_factura'
+        
         result = super().write(vals)
         if 'factura_pdf' in vals or 'factura_pdf_filename' in vals:
             for rec in self:
@@ -255,12 +273,13 @@ class AduanaExpediente(models.Model):
                 record.factura_pdf_url = False
     factura_procesada = fields.Boolean(string="Factura Procesada", default=False, help="Indica si la factura ha sido procesada con IA")
     factura_estado_procesamiento = fields.Selection([
+        ("sin_factura", "Sin Factura"),
         ("pendiente", "Pendiente de Procesar"),
         ("procesando", "Procesando..."),
         ("completado", "Completado"),
         ("error", "Error en Procesamiento"),
         ("advertencia", "Completado con Advertencias"),
-    ], string="Estado Procesamiento", default="pendiente", readonly=True, help="Estado del procesamiento de la factura")
+    ], string="Estado Procesamiento", default="sin_factura", readonly=True, help="Estado del procesamiento de la factura")
     factura_mensaje_error = fields.Text(string="Mensaje de Error/Advertencia", readonly=True, help="Mensajes de error o advertencias durante el procesamiento")
     factura_mensaje_html = fields.Html(string="Mensaje de Procesamiento", compute="_compute_factura_mensaje_html", store=False, sanitize=False)
     factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")

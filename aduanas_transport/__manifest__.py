@@ -15,6 +15,7 @@
         "views/aduana_expediente_views.xml",
         "views/aduana_incidencia_views.xml",
         "views/factura_carga_views.xml",
+        "wizards/subir_facturas_wizard_views.xml",
         "wizards/msoft_import_views.xml",
         "data/ir_cron.xml",
         "reports/dua_report.xml",

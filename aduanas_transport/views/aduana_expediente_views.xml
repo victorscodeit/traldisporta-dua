@@ -6,15 +6,13 @@
     <field name="name">aduana.expediente.tree</field>
     <field name="model">aduana.expediente</field>
     <field name="arch" type="xml">
-      <tree string="Expedientes Aduaneros" default_order="create_date desc">
-        <header>
-          <button name="%(aduanas_transport.action_carga_masiva)d" string="Subir Facturas" type="action" class="oe_highlight" icon="fa-upload"/>
-        </header>
+      <tree string="Expedientes Aduaneros" default_order="create_date desc" create="1">
         <field name="name" string="Código/Referencia"/>
         <field name="factura_estado_procesamiento" widget="badge" 
                decoration-success="factura_estado_procesamiento == 'completado'" 
                decoration-warning="factura_estado_procesamiento == 'advertencia'" 
                decoration-info="factura_estado_procesamiento == 'procesando'" 
+               decoration-muted="factura_estado_procesamiento == 'sin_factura'"
                decoration-danger="factura_estado_procesamiento == 'error'"
                string="Estado Factura"/>
         <field name="matricula"/>
@@ -364,6 +362,14 @@
     </field>
   </record>
 
+  <!-- Acción para Subir Facturas (desde Expediciones) -->
+  <record id="action_subir_facturas_desde_expedientes" model="ir.actions.act_window">
+    <field name="name">Subir Facturas</field>
+    <field name="res_model">aduana.carga.masiva</field>
+    <field name="view_mode">tree,form</field>
+    <field name="target">current</field>
+  </record>
+
   <!-- Acción -->
   <record id="action_aduana_expediente" model="ir.actions.act_window">
     <field name="name">Expedientes Aduaneros</field>
@@ -371,6 +377,14 @@
     <field name="view_mode">tree,kanban,form</field>
     <field name="context">{'search_default_pending': 1, 'search_default_group_by_matricula': 1}</field>
     <field name="search_view_id" ref="view_aduana_expediente_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        No hay expedientes registrados
+      </p>
+      <p>
+        Crea un nuevo expediente o usa el botón "Subir Facturas" para crear múltiples expedientes desde facturas PDF.
+      </p>
+    </field>
   </record>
 
   <!-- Menú -->

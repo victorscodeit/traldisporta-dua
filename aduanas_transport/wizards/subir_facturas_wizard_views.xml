@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <!-- Vista del wizard para subir múltiples facturas -->
+  <record id="view_subir_facturas_wizard_form" model="ir.ui.view">
+    <field name="name">aduanas.subir.facturas.wizard.form</field>
+    <field name="model">aduanas.subir.facturas.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Subir Facturas PDF">
+        <sheet>
+          <group>
+            <field name="factura_ids" nolabel="1">
+              <tree editable="bottom" create="1" delete="1">
+                <field name="name" required="1"/>
+                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1"/>
+                <field name="factura_pdf_filename" invisible="1"/>
+              </tree>
+            </field>
+          </group>
+        </sheet>
+        <footer>
+          <button string="Crear Expediciones" name="action_crear_expediciones" type="object" class="oe_highlight"/>
+          <button string="Cancelar" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <!-- Acción para abrir el wizard -->
+  <record id="action_subir_facturas_wizard" model="ir.actions.act_window">
+    <field name="name">Subir Facturas PDF</field>
+    <field name="res_model">aduanas.subir.facturas.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="target">new</field>
+    <field name="view_id" ref="view_subir_facturas_wizard_form"/>
+  </record>
+
+</odoo>
+
