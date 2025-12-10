@@ -7,8 +7,17 @@
     <field name="model">aduana.expediente</field>
     <field name="arch" type="xml">
       <tree string="Expedientes Aduaneros" default_order="create_date desc">
+        <header>
+          <button name="%(aduanas_transport.action_carga_masiva)d" string="Subir Facturas" type="action" class="oe_highlight" icon="fa-upload"/>
+        </header>
+        <field name="name" string="Código/Referencia"/>
+        <field name="factura_estado_procesamiento" widget="badge" 
+               decoration-success="factura_estado_procesamiento == 'completado'" 
+               decoration-warning="factura_estado_procesamiento == 'advertencia'" 
+               decoration-info="factura_estado_procesamiento == 'procesando'" 
+               decoration-danger="factura_estado_procesamiento == 'error'"
+               string="Estado Factura"/>
         <field name="matricula"/>
-        <field name="name"/>
         <field name="direction"/>
         <field name="remitente"/>
         <field name="consignatario"/>
@@ -40,16 +49,16 @@
                   class="oe_highlight"
                   attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', False)]}"
                   help="Regenera el DUA de exportación (CUSDEC EX1)"/>
-          <button name="action_poll_bandeja" string="Consultar Bandeja" type="object"/>
+          <button name="action_poll_bandeja" string="Consultar Bandeja" type="object" invisible="1"/>
           
           <!-- Botones adicionales de exportación -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+                  invisible="1"/>
           <button name="action_send_cc515c" string="(Export) Enviar CC515C" type="object"
-                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+                  invisible="1"/>
           <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
-                  attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+                  invisible="1"/>
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
                   invisible="1"/>
 

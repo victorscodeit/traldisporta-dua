@@ -71,13 +71,15 @@ class InvoiceOCRService(models.AbstractModel):
                 "metodo_usado": "Error de procesamiento"
             }
         
-        # Obtener API key de configuración si no se proporciona
+        # Obtener API key de configuración del módulo si no se proporciona
         if not api_key:
-            api_key = self.env['ir.config_parameter'].sudo().get_param('aduanas_transport.openai_api_key')
+            # Leer desde la configuración del módulo usando el método helper
+            config_settings = self.env['res.config.settings']
+            api_key = config_settings.get_openai_api_key()
             if api_key:
-                _logger.info("API key obtenida de configuración (longitud: %d caracteres)", len(api_key) if api_key else 0)
+                _logger.info("API key obtenida de configuración del módulo Aduanas (longitud: %d caracteres)", len(api_key) if api_key else 0)
             else:
-                _logger.warning("No se encontró API key de OpenAI en configuración")
+                _logger.warning("No se encontró API key de OpenAI en la configuración del módulo Aduanas. Verifica en Aduanas > Configuración")
         
         resultado = None
         metodo_usado = None

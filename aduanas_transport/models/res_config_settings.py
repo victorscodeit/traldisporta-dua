@@ -59,3 +59,11 @@ class ResConfigSettings(models.TransientModel):
         super().set_values()
         icp = self.env["ir.config_parameter"].sudo()
         icp.set_param("aduanas_transport.cert_attachment_id", self.cert_attachment_id.id or 0)
+    
+    @api.model
+    def get_openai_api_key(self):
+        """
+        Método helper para obtener la API key de OpenAI desde la configuración del módulo.
+        """
+        icp = self.env["ir.config_parameter"].sudo()
+        return icp.get_param("aduanas_transport.openai_api_key") or False
