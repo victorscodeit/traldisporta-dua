@@ -113,6 +113,9 @@ class AduanaExpediente(models.Model):
 
     # Líneas
     line_ids = fields.One2many("aduana.expediente.line", "expediente_id", string="Líneas")
+    
+    # Documentos requeridos por partida arancelaria (TARIC)
+    documento_requerido_ids = fields.One2many("aduana.expediente.documento.requerido", "expediente_id", string="Documentos Requeridos")
 
     # Países
     pais_origen = fields.Char(default="ES")
@@ -1530,3 +1533,185 @@ class AduanaExpediente(models.Model):
                 "view_mode": "form",
                 "target": "current",
             }
+    
+    def action_consultar_taric_manual(self):
+        """Consulta TARIC para todas las partidas del expediente"""
+        self.ensure_one()
+        documento_model = self.env["aduana.expediente.documento.requerido"]
+        # Llamar directamente a la lógica sin pasar por ensure_one
+        return documento_model._consultar_taric_para_expediente(self)
+
+
+class AduanaExpedienteDocumentoRequerido(models.Model):
+    _name = "aduana.expediente.documento.requerido"
+    _description = "Documento requerido por partida arancelaria (TARIC)"
+    _order = "partida_arancelaria, mandatory desc, name"
+    
+    expediente_id = fields.Many2one("aduana.expediente", string="Expediente", required=True, ondelete="cascade", index=True)
+    partida_arancelaria = fields.Char(string="Partida Arancelaria", required=True, index=True, help="Código de la partida arancelaria (8-10 dígitos)")
+    codigo_documento = fields.Char(string="Código Documento", help="Código del documento según TARIC")
+    name = fields.Char(string="Nombre del Documento", required=True, help="Nombre o descripción del documento requerido")
+    description = fields.Text(string="Descripción", help="Descripción detallada del documento")
+    mandatory = fields.Boolean(string="Obligatorio", default=True, help="Indica si el documento es obligatorio o opcional")
+    documento_subido = fields.Binary(string="Documento Subido", help="Archivo del documento subido")
+    documento_filename = fields.Char(string="Nombre Archivo", help="Nombre del archivo subido")
+    fecha_subida = fields.Datetime(string="Fecha Subida", readonly=True, help="Fecha en que se subió el documento")
+    subido_por = fields.Many2one("res.users", string="Subido por", readonly=True, help="Usuario que subió el documento")
+    estado = fields.Selection([
+        ("pendiente", "Pendiente"),
+        ("subido", "Subido"),
+        ("verificado", "Verificado"),
+    ], string="Estado", default="pendiente", help="Estado del documento")
+    notas = fields.Text(string="Notas", help="Notas adicionales sobre el documento")
+    
+    @api.model
+    def create(self, vals):
+        """Al crear, registrar usuario y fecha si se sube documento"""
+        if vals.get('documento_subido') and not vals.get('fecha_subida'):
+            vals['fecha_subida'] = fields.Datetime.now()
+            if not vals.get('subido_por'):
+                vals['subido_por'] = self.env.user.id
+            if vals.get('estado') == 'pendiente':
+                vals['estado'] = 'subido'
+        return super().create(vals)
+    
+    def write(self, vals):
+        """Al actualizar, registrar usuario y fecha si se sube documento"""
+        if vals.get('documento_subido'):
+            vals['fecha_subida'] = fields.Datetime.now()
+            if not vals.get('subido_por'):
+                vals['subido_por'] = self.env.user.id
+            if vals.get('estado') == 'pendiente' or not vals.get('estado'):
+                vals['estado'] = 'subido'
+        return super().write(vals)
+    
+    def action_consultar_taric(self):
+        """Consulta la API TARIC para obtener documentos requeridos de todas las partidas del expediente"""
+        # Si hay un recordset, usar el primero; si no, obtener del contexto
+        if self:
+            self.ensure_one()
+            expediente = self.expediente_id
+        else:
+            # Obtener del contexto
+            expediente_id = self.env.context.get('default_expediente_id')
+            if not expediente_id:
+                raise UserError(_("No se especificó el expediente para consultar TARIC."))
+            expediente = self.env["aduana.expediente"].browse(expediente_id)
+            if not expediente.exists():
+                raise UserError(_("El expediente especificado no existe."))
+        
+        # Llamar al método auxiliar
+        return self._consultar_taric_para_expediente(expediente)
+    
+    @api.model
+    def _consultar_taric_para_expediente(self, expediente):
+        """Método auxiliar para consultar TARIC para un expediente específico"""
+        
+        if not expediente.line_ids:
+            raise UserError(_("No hay líneas de productos en el expediente para consultar documentos."))
+        
+        taric_service = self.env["aduanas.taric.service"]
+        documentos_creados = 0
+        documentos_actualizados = 0
+        errores_taric = []
+        
+        # Obtener todas las partidas únicas del expediente
+        partidas_unicas = expediente.line_ids.filtered(lambda l: l.partida and len(str(l.partida).strip()) >= 8).mapped('partida')
+        partidas_unicas = list(set(partidas_unicas))
+        
+        if not partidas_unicas:
+            raise UserError(_("No hay partidas arancelarias válidas (mínimo 8 dígitos) en las líneas del expediente."))
+        
+        for partida in partidas_unicas:
+            # Limpiar partida (solo números)
+            partida_limpia = ''.join(filter(str.isdigit, str(partida)))[:10]
+            if len(partida_limpia) < 8:
+                continue
+            
+            # Consultar TARIC
+            try:
+                documentos_taric = taric_service.get_required_documents(
+                    goods_code=partida_limpia,
+                    country_code=expediente.pais_destino or ("AD" if expediente.direction == "export" else "ES"),
+                    direction=expediente.direction
+                )
+            except Exception as e:
+                _logger.warning("Error consultando TARIC para partida %s: %s", partida_limpia, e)
+                errores_taric.append(f"Partida {partida_limpia}: {str(e)}")
+                documentos_taric = []
+            
+            if documentos_taric:
+                # Crear o actualizar documentos requeridos
+                for doc_info in documentos_taric:
+                    # Buscar si ya existe un documento con el mismo código y partida
+                    existing = self.search([
+                        ('expediente_id', '=', expediente.id),
+                        ('partida_arancelaria', '=', partida_limpia),
+                        ('codigo_documento', '=', doc_info.get('code', ''))
+                    ], limit=1)
+                    
+                    if existing:
+                        # Actualizar existente
+                        existing.write({
+                            'name': doc_info.get('name', ''),
+                            'description': doc_info.get('description', ''),
+                            'mandatory': doc_info.get('mandatory', True),
+                        })
+                        documentos_actualizados += 1
+                    else:
+                        # Crear nuevo
+                        self.create({
+                            'expediente_id': expediente.id,
+                            'partida_arancelaria': partida_limpia,
+                            'codigo_documento': doc_info.get('code', ''),
+                            'name': doc_info.get('name', _("Documento requerido para partida %s") % partida_limpia),
+                            'description': doc_info.get('description', ''),
+                            'mandatory': doc_info.get('mandatory', True),
+                            'estado': 'pendiente',
+                        })
+                        documentos_creados += 1
+            else:
+                # Si TARIC no devuelve documentos, crear uno genérico para que el usuario pueda añadir manualmente
+                existing = self.search([
+                    ('expediente_id', '=', expediente.id),
+                    ('partida_arancelaria', '=', partida_limpia),
+                    ('codigo_documento', '=', False)
+                ], limit=1)
+                
+                if not existing:
+                    self.create({
+                        'expediente_id': expediente.id,
+                        'partida_arancelaria': partida_limpia,
+                        'name': _("Documentos requeridos para partida %s") % partida_limpia,
+                        'description': _("Consulta TARIC no devolvió documentos específicos. Añade los documentos necesarios manualmente."),
+                        'mandatory': True,
+                        'estado': 'pendiente',
+                    })
+                    documentos_creados += 1
+        
+        # Construir mensaje con resultados
+        if errores_taric:
+            mensaje = _("Consulta TARIC completada con advertencias:\n- %d documentos creados\n- %d actualizados\n\nErrores:\n%s") % (
+                documentos_creados, 
+                documentos_actualizados,
+                "\n".join(errores_taric[:5])  # Mostrar máximo 5 errores
+            )
+            tipo_notificacion = 'warning'
+        else:
+            mensaje = _("Consulta TARIC completada: %d documentos creados, %d actualizados.") % (documentos_creados, documentos_actualizados)
+            tipo_notificacion = 'success'
+        
+        # Si no se crearon documentos y hubo errores, sugerir añadir manualmente
+        if documentos_creados == 0 and documentos_actualizados == 0 and errores_taric:
+            mensaje += _("\n\nNota: El servicio TARIC no está disponible. Puedes añadir los documentos requeridos manualmente.")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Consulta TARIC'),
+                'message': mensaje,
+                'type': tipo_notificacion,
+                'sticky': len(errores_taric) > 0,  # Hacer sticky si hay errores
+            }
+        }

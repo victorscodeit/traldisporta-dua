@@ -16,3 +16,7 @@ pdfplumber>=0.10.0
 # Dependencias base (ya deberían estar en Odoo)
 requests>=2.25.0
 
+# SOAP client para consultar API TARIC
+zeep>=4.2.0
+urllib3>=1.26.0
+
