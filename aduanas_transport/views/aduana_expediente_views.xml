@@ -228,7 +228,12 @@
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
                   <field name="valor_linea"/>
-                  <field name="verificacion_estado"/>
+                  <field name="verificacion_estado" widget="badge"
+                         decoration-success="verificacion_estado == 'correcto'"
+                         decoration-info="verificacion_estado == 'verificado'"
+                         decoration-warning="verificacion_estado == 'sugerido'"
+                         decoration-muted="verificacion_estado == 'pendiente'"
+                         decoration-danger="verificacion_estado == 'corregido'"/>
                   <field name="verificacion_detalle"/>
                   <field name="pais_origen"/>
                 </tree>
@@ -244,7 +249,7 @@
                         help="Consulta la API TARIC de la UE para obtener los documentos requeridos por cada partida arancelaria del expediente"/>
               </group>
               <field name="documento_requerido_ids">
-                <tree editable="bottom">
+                <tree editable="bottom" create="0" delete="0">
                   <field name="partida_arancelaria" readonly="1"/>
                   <field name="codigo_documento" readonly="1"/>
                   <field name="name" readonly="1"/>
@@ -257,8 +262,14 @@
                   <field name="documento_filename" invisible="1"/>
                   <field name="fecha_subida" readonly="1"/>
                   <field name="subido_por" readonly="1"/>
-                  <field name="description" readonly="1"/>
+                  <field name="description" invisible="1"/>
                   <field name="notas"/>
+                  <button name="action_view_documento_detalle" 
+                          string="Ver Detalles" 
+                          type="object"
+                          class="oe_link"
+                          icon="fa-eye"
+                          title="Ver información completa y previsualización del documento"/>
                 </tree>
                 <form>
                   <sheet>
@@ -436,6 +447,77 @@
       <p>
         Crea un nuevo expediente o usa el botón "Subir Facturas" para crear múltiples expedientes desde facturas PDF.
       </p>
+    </field>
+  </record>
+
+  <!-- Vista Popup para Detalle de Documento Requerido -->
+  <record id="view_aduana_expediente_documento_requerido_popup" model="ir.ui.view">
+    <field name="name">aduana.expediente.documento.requerido.popup</field>
+    <field name="model">aduana.expediente.documento.requerido</field>
+    <field name="arch" type="xml">
+      <form string="Detalle del Documento Requerido">
+        <sheet>
+          <group>
+            <group>
+              <field name="expediente_id" readonly="1"/>
+              <field name="partida_arancelaria" readonly="1"/>
+              <field name="codigo_documento" readonly="1"/>
+              <field name="name" readonly="1"/>
+              <field name="mandatory" readonly="1"/>
+              <field name="estado" readonly="1"/>
+            </group>
+            <group>
+              <field name="fecha_subida" readonly="1"/>
+              <field name="subido_por" readonly="1"/>
+              <field name="documento_filename" readonly="1"/>
+            </group>
+          </group>
+          
+          <group string="Descripción Completa" colspan="2">
+            <field name="description" readonly="1" nolabel="1" widget="text" 
+                   placeholder="No hay descripción disponible"
+                   colspan="2"/>
+          </group>
+          
+          <group string="Notas" colspan="2" attrs="{'invisible': [('notas', '=', False)]}">
+            <field name="notas" readonly="1" nolabel="1" widget="text" colspan="2"/>
+          </group>
+          
+          <!-- Campos invisibles para determinar tipo de archivo -->
+          <field name="is_pdf" invisible="1"/>
+          <field name="is_image" invisible="1"/>
+          
+          <!-- Vista Previa PDF -->
+          <group string="Vista Previa del Documento" colspan="2" 
+                 attrs="{'invisible': [('documento_subido', '=', False)]}">
+            <group colspan="2" attrs="{'invisible': [('is_pdf', '=', False)]}">
+              <field name="documento_subido" filename="documento_filename" 
+                     widget="pdf_viewer" 
+                     readonly="1" nolabel="1" colspan="2"
+                     options="{'disable_zoom': false, 'disable_scroll': false}"/>
+            </group>
+            <group colspan="2" attrs="{'invisible': [('is_image', '=', False)]}">
+              <field name="documento_subido" filename="documento_filename" 
+                     widget="image" 
+                     readonly="1" nolabel="1" colspan="2"
+                     options="{'preview_image': true}"/>
+            </group>
+            <group colspan="2" attrs="{'invisible': ['|', ('is_pdf', '=', True), ('is_image', '=', True)]}">
+              <div class="alert alert-info" role="alert" colspan="2">
+                <p>El documento está subido pero no se puede previsualizar en este formato.</p>
+                <p><strong>Nombre del archivo:</strong> <field name="documento_filename" readonly="1" nolabel="1"/></p>
+              </div>
+            </group>
+          </group>
+          
+          <group string="Documento no subido" colspan="2" 
+                 attrs="{'invisible': [('documento_subido', '!=', False)]}">
+            <div class="alert alert-warning" role="alert">
+              <p>Este documento aún no ha sido subido.</p>
+            </div>
+          </group>
+        </sheet>
+      </form>
     </field>
   </record>
 

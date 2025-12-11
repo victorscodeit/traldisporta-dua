@@ -1564,6 +1564,40 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
     ], string="Estado", default="pendiente", help="Estado del documento")
     notas = fields.Text(string="Notas", help="Notas adicionales sobre el documento")
     
+    # Campos computed para previsualización
+    is_pdf = fields.Boolean(string="Es PDF", compute="_compute_is_pdf", store=False)
+    is_image = fields.Boolean(string="Es Imagen", compute="_compute_is_image", store=False)
+    
+    @api.depends('documento_filename')
+    def _compute_is_pdf(self):
+        """Determina si el documento subido es un PDF"""
+        for rec in self:
+            rec.is_pdf = rec.documento_filename and rec.documento_filename.lower().endswith('.pdf')
+    
+    @api.depends('documento_filename')
+    def _compute_is_image(self):
+        """Determina si el documento subido es una imagen"""
+        for rec in self:
+            if rec.documento_filename:
+                ext = rec.documento_filename.lower()
+                rec.is_image = ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+            else:
+                rec.is_image = False
+    
+    def action_view_documento_detalle(self):
+        """Abre un popup con toda la información del documento y previsualización"""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Detalle del Documento Requerido'),
+            'res_model': 'aduana.expediente.documento.requerido',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'view_id': self.env.ref('aduanas_transport.view_aduana_expediente_documento_requerido_popup').id,
+            'target': 'new',
+            'context': {'form_view_initial_mode': 'readonly'},
+        }
+    
     @api.model
     def create(self, vals):
         """Al crear, registrar usuario y fecha si se sube documento"""
