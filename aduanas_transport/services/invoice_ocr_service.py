@@ -236,12 +236,19 @@ class InvoiceOCRService(models.AbstractModel):
                                         {
                                             "type": "text",
                                             "text": "Eres un asistente de procesamiento documental para una empresa de logística y aduanas.\n\n"
-                                                    "El documento proporcionado es una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
+                                                    "El documento proporcionado es una PÁGINA de una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
                                                     "La extracción que vas a hacer es para un proceso legal obligatorio.\n\n"
+                                                    "IMPORTANTE: Esta es una de varias páginas de la factura. Debes transcribir TODO el texto visible de esta página, incluyendo:\n"
+                                                    "- Números de factura, fechas, direcciones\n"
+                                                    "- TODAS las líneas de productos/artículos (descripción, cantidad, precio, total)\n"
+                                                    "- Totales, subtotales, descuentos\n"
+                                                    "- Información de transporte, matrículas, referencias\n"
+                                                    "- Cualquier otro texto visible en la página\n\n"
+                                                    "No omitas ninguna línea de producto ni información relevante.\n"
                                                     "No devuelvas la imagen completa ni reproduzcas el documento.\n"
-                                                    "Simplemente transcribe el texto visible, incluyendo: números de factura, fechas, direcciones, detalles de mercancía, bultos y totales.\n\n"
+                                                    "Simplemente transcribe TODO el texto visible de esta página.\n\n"
                                                     "La extracción es estrictamente con fines administrativos y está permitida.\n"
-                                                    "Devuelve únicamente el texto, sin notas adicionales."
+                                                    "Devuelve únicamente el texto transcrito, sin notas adicionales ni explicaciones."
                                         },
                                         {
                                             "type": "image_url",
@@ -252,7 +259,7 @@ class InvoiceOCRService(models.AbstractModel):
                                     ]
                                 }
                             ],
-                            max_tokens=4096,
+                            max_tokens=8000,  # Aumentado para páginas con muchas líneas
                             timeout=60.0  # Timeout de 60 segundos por página
                         )
                         _logger.debug("Respuesta recibida de OpenAI para página %d", page_num + 1)
@@ -651,7 +658,22 @@ class InvoiceOCRService(models.AbstractModel):
             })
         suma_lineas = sum([l.get("valor_linea") or 0 for l in lineas_payload])
         
-        prompt = """Eres un auditor aduanero experto. Valida la coherencia de una factura ya extraída.
+        # Obtener contexto adicional del expediente para mejor sugerencia de partidas
+        contexto_expediente = {
+            "pais_origen": expediente.pais_origen or "ES",
+            "pais_destino": expediente.pais_destino or "AD",
+            "direction": expediente.direction or "export",
+            "incoterm": expediente.incoterm or "",
+        }
+        if expediente.remitente:
+            contexto_expediente["remitente_nombre"] = expediente.remitente.name or ""
+        if expediente.consignatario:
+            contexto_expediente["consignatario_nombre"] = expediente.consignatario.name or ""
+        
+        prompt = """Eres un experto en clasificación arancelaria y auditoría aduanera. Tu tarea es validar y sugerir códigos HS (Sistema Armonizado) para las líneas de una factura comercial.
+
+IMPORTANTE: Cuando el estado sea "sugerido", SIEMPRE debes proporcionar un código HS válido de 8-10 dígitos en partida_validada. NUNCA devuelvas null cuando el estado es "sugerido".
+
 Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
 {
   "totales": {
@@ -663,31 +685,51 @@ Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
     {
       "index": número de línea (1..n según orden recibido),
       "estado": "correcto" | "corregido" | "sugerido",
-      "partida_validada": "código HS de 8-10 dígitos o null",
+      "partida_validada": "código HS de 8-10 dígitos (OBLIGATORIO si estado es 'sugerido' o 'corregido')",
       "detalle": "explica por qué es correcta o la corrección/sugerencia"
     }
   ],
   "resumen": "2-3 frases en español con hallazgos clave (totales y partidas)"
 }
-Reglas:
-- Usa estado "correcto" si la partida parece válida y coherente con la descripción.
-- Usa estado "corregido" solo si propones una partida mejor y estás razonablemente seguro; coloca esa partida en partida_validada.
-- Usa estado "sugerido" si no hay partida o la actual parece dudosa; sugiere la mejor partida posible en partida_validada si puedes.
-- Si faltan datos para validar, indícalo en detalle pero mantén el esquema.
-"""
+
+REGLAS DE CLASIFICACIÓN:
+- Usa estado "correcto" si la partida existe, es válida (8-10 dígitos) y es coherente con la descripción del producto.
+- Usa estado "corregido" si la partida actual existe pero es incorrecta; debes proporcionar la partida correcta en partida_validada.
+- Usa estado "sugerido" si NO hay partida o la actual es claramente incorrecta. EN ESTE CASO, SIEMPRE debes sugerir una partida válida basándote en:
+  * La descripción detallada del producto
+  * El tipo de mercancía (textil, electrónica, alimentaria, química, etc.)
+  * El país de origen y destino del expediente
+  * El contexto general de la factura
+  * Tu conocimiento del Sistema Armonizado (HS Code)
+
+CLASIFICACIÓN ARANCELARIA:
+- Los códigos HS tienen 6 dígitos base (capítulo, partida, subpartida) y pueden extenderse a 8-10 dígitos según el país.
+- Para España-Andorra, usa códigos de 8 dígitos (Nomenclatura Combinada - NC).
+- Analiza cuidadosamente la descripción del producto para determinar la partida más apropiada.
+- Si la descripción es ambigua, elige la partida más probable basándote en el contexto (país origen, tipo de operación, etc.).
+
+EJEMPLOS DE CLASIFICACIÓN:
+- Ropa/textiles: Capítulos 50-63
+- Electrónica: Capítulos 84-85
+- Alimentos: Capítulos 1-24
+- Químicos: Capítulos 28-38
+- Vehículos: Capítulos 86-87
+
+Recuerda: Si estado = "sugerido", partida_validada DEBE ser un código HS válido, nunca null."""
         user_payload = {
             "factura": {
                 "valor_factura": expediente.valor_factura,
                 "moneda": expediente.moneda,
                 "suma_lineas": suma_lineas,
             },
+            "contexto_expediente": contexto_expediente,
             "lineas": lineas_payload,
         }
         
         client = OpenAI(api_key=api_key)
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": "Responde ÚNICAMENTE con JSON válido, sin código, sin markdown."},
@@ -716,12 +758,23 @@ Reglas:
             client = OpenAI(api_key=api_key)
             
             # Prompt detallado para extraer información estructurada
-            prompt = """Eres un experto en procesamiento de facturas comerciales para documentos aduaneros.
+            # Calcular longitud del texto para informar a GPT
+            text_length = len(text)
+            num_pages_estimated = text_length // 2000  # Estimación aproximada de páginas
+            
+            prompt = f"""Eres un experto en procesamiento de facturas comerciales para documentos aduaneros.
 
-Analiza el siguiente texto extraído de una factura y extrae TODA la información relevante en formato JSON estricto.
+IMPORTANTE: El texto que recibes proviene de una factura que puede tener MÚLTIPLES PÁGINAS. Debes analizar TODO el texto de TODAS las páginas para extraer:
+- TODAS las líneas de productos (no solo las de la primera página)
+- El valor total de la factura (que suele estar en la última página)
+- Toda la información relevante de todas las páginas
+
+El texto tiene aproximadamente {text_length} caracteres, lo que sugiere {num_pages_estimated} o más páginas.
+
+Analiza TODO el texto de principio a fin y extrae TODA la información relevante en formato JSON estricto.
 
 FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JSON):
-{
+{{
   "numero_factura": "número o null",
   "fecha_factura": "DD.MM.YYYY o DD/MM/YYYY o null",
   "remitente_nombre": "nombre completo de la empresa emisora o null",
@@ -730,7 +783,7 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
   "consignatario_nombre": "nombre completo del destinatario o null",
   "consignatario_nif": "NIF/CIF o null",
   "consignatario_direccion": "dirección completa o null",
-  "valor_total": número decimal o null,
+  "valor_total": número decimal o null (BUSCA en TODAS las páginas, especialmente al final),
   "moneda": "EUR" o "USD" o null,
   "incoterm": "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP" o null (si encuentras CIF, FOB, CFR, mapea a CIP, FCA, CPT respectivamente),
   "pais_origen": "código ISO de 2 letras (ES, AD, FR, etc.) o null",
@@ -742,7 +795,7 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
   "remolque": "matrícula del remolque o null",
   "codigo_transporte": "código del transporte o null",
   "lineas": [
-    {
+    {{
       "articulo": "código del artículo o null",
       "descripcion": "descripción completa del producto",
       "cantidad": número decimal,
@@ -755,34 +808,39 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
       "bultos": número entero o null,
       "peso_bruto": número decimal en KG o null,
       "peso_neto": número decimal en KG o null
-    }
+    }}
   ]
-}
+}}
 
-INSTRUCCIONES IMPORTANTES:
-1. Extrae SOLO los artículos/productos de la factura ACTUAL. IGNORA completamente cualquier sección que diga "Pedido pendiente", "Pedidos pendientes", "Pendiente" o similar. Esos productos NO deben aparecer en las líneas.
-2. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
-3. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto
-4. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD
-5. Para direction (sentido), determina basándote en los países:
+INSTRUCCIONES CRÍTICAS PARA FACTURAS MULTI-PÁGINA:
+1. LEE TODO EL TEXTO DE PRINCIPIO A FIN - NO te detengas en la primera página
+2. Extrae TODAS las líneas de productos de TODAS las páginas - no solo las de la primera página
+3. El valor total (valor_total) suele estar en la ÚLTIMA página - busca términos como "TOTAL", "TOTAL FACTURA", "IMPORTE TOTAL", "TOTAL A PAGAR"
+4. Las líneas de productos pueden continuar en páginas siguientes - busca tablas o listas que se extiendan por múltiples páginas
+5. Extrae SOLO los artículos/productos de la factura ACTUAL. IGNORA completamente cualquier sección que diga "Pedido pendiente", "Pedidos pendientes", "Pendiente" o similar. Esos productos NO deben aparecer en las líneas.
+6. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
+7. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto (puede estar en cualquier página)
+8. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD
+9. Para direction (sentido), determina basándote en los países:
    - Si pais_origen = "ES" y pais_destino = "AD" → direction = "export" (España → Andorra, Exportación)
    - Si pais_origen = "AD" y pais_destino = "ES" → direction = "import" (Andorra → España, Importación)
    - Si no puedes determinarlo con certeza, usa null
-6. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
-7. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
-8. Para transporte, busca:
-   - Transportista: nombre de la empresa transportista
-   - Matrícula: número de matrícula del vehículo (formato como 5728-KXF)
-   - Referencia Transporte: número de referencia del transporte o albarán
-   - Remolque: matrícula del remolque si aparece
-   - Código Transporte: código alfanumérico del transporte (como TXT, TX5X)
-9. Para descuentos, busca porcentajes de descuento asociados a cada línea o descuento general. Si hay "Descuento Principal 64,00%" o similar, inclúyelo en las líneas correspondientes.
-10. Si un campo no se encuentra, usa null (no uses cadenas vacías)
-11. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
-12. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
+10. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
+11. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
+12. Para transporte, busca en todas las páginas:
+    - Transportista: nombre de la empresa transportista
+    - Matrícula: número de matrícula del vehículo (formato como 5728-KXF)
+    - Referencia Transporte: número de referencia del transporte o albarán
+    - Remolque: matrícula del remolque si aparece
+    - Código Transporte: código alfanumérico del transporte (como TXT, TX5X)
+13. Para descuentos, busca porcentajes de descuento asociados a cada línea o descuento general. Si hay "Descuento Principal 64,00%" o similar, inclúyelo en las líneas correspondientes.
+14. Si un campo no se encuentra, usa null (no uses cadenas vacías)
+15. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
+16. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
+17. CRÍTICO: Asegúrate de incluir TODAS las líneas de productos de TODAS las páginas, no solo las de la primera página.
 
-TEXTO DE LA FACTURA:
-""" + text[:15000]  # Limitar a 15000 caracteres para evitar exceder límites
+TEXTO COMPLETO DE LA FACTURA (todas las páginas):
+""" + text[:50000]  # Aumentar límite a 50000 caracteres para facturas grandes
             
             _logger.info("Enviando texto a GPT-4o para interpretación estructurada...")
             
@@ -801,7 +859,7 @@ TEXTO DE LA FACTURA:
                         }
                     ],
                     temperature=0.1,  # Baja temperatura para respuestas más consistentes
-                    max_tokens=4000,
+                    max_tokens=8000,  # Aumentado para facturas con muchas líneas
                     response_format={"type": "json_object"},  # Forzar formato JSON (GPT-4o)
                 )
             except TypeError:
@@ -820,7 +878,7 @@ TEXTO DE LA FACTURA:
                         }
                     ],
                     temperature=0.1,
-                    max_tokens=4000
+                    max_tokens=8000  # Aumentado para facturas con muchas líneas
                 )
             
             response_text = response.choices[0].message.content
@@ -850,23 +908,25 @@ TEXTO DE LA FACTURA:
                 
                 # Validar y normalizar direction (sentido)
                 if data.get("direction"):
-                    direction = data["direction"].lower()
-                    if direction not in ["export", "import"]:
+                    direction = str(data["direction"]).lower() if data["direction"] else None
+                    if direction and direction not in ["export", "import"]:
                         # Intentar determinar basándose en países
-                        pais_origen = data.get("pais_origen", "").upper()
-                        pais_destino = data.get("pais_destino", "").upper()
+                        pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
+                        pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
                         if pais_origen == "ES" and pais_destino == "AD":
                             data["direction"] = "export"
                         elif pais_origen == "AD" and pais_destino == "ES":
                             data["direction"] = "import"
                         else:
                             data["direction"] = None
-                    else:
+                    elif direction:
                         data["direction"] = direction
+                    else:
+                        data["direction"] = None
                 else:
                     # Si no hay direction pero hay países, intentar determinarlo
-                    pais_origen = data.get("pais_origen", "").upper()
-                    pais_destino = data.get("pais_destino", "").upper()
+                    pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
+                    pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
                     if pais_origen == "ES" and pais_destino == "AD":
                         data["direction"] = "export"
                     elif pais_origen == "AD" and pais_destino == "ES":
@@ -1222,8 +1282,8 @@ TEXTO DE LA FACTURA:
                         data["pais_destino"] = paises_validos[1] if len(paises_validos) > 1 else "AD"
         
         # Determinar direction (sentido) basándose en países
-        pais_origen = data.get("pais_origen", "").upper()
-        pais_destino = data.get("pais_destino", "").upper()
+        pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
+        pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
         if pais_origen == "ES" and pais_destino == "AD":
             data["direction"] = "export"
         elif pais_origen == "AD" and pais_destino == "ES":
@@ -1454,8 +1514,8 @@ TEXTO DE LA FACTURA:
                 vals["direction"] = direction
         else:
             # Si no hay direction explícito, intentar determinarlo por países
-            pais_origen = invoice_data.get("pais_origen", "").upper()
-            pais_destino = invoice_data.get("pais_destino", "").upper()
+            pais_origen = (invoice_data.get("pais_origen") or "").upper() if invoice_data.get("pais_origen") else ""
+            pais_destino = (invoice_data.get("pais_destino") or "").upper() if invoice_data.get("pais_destino") else ""
             if pais_origen == "ES" and pais_destino == "AD":
                 vals["direction"] = "export"
             elif pais_origen == "AD" and pais_destino == "ES":

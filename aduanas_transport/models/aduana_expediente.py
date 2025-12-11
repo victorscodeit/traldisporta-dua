@@ -10,8 +10,14 @@ try:
     QUEUE_JOB_AVAILABLE = True
 except Exception:
     QUEUE_JOB_AVAILABLE = False
+
     def job(func):
         return func
+
+# Solo añadimos el mixin si realmente está disponible en la versión instalada.
+_EXPEDIENTE_INHERIT = ["mail.thread", "mail.activity.mixin"]
+if QUEUE_JOB_AVAILABLE:
+    _EXPEDIENTE_INHERIT.append("queue.job.mixin")
 
 class AduanaExpedienteLine(models.Model):
     _name = "aduana.expediente.line"
@@ -34,6 +40,7 @@ class AduanaExpedienteLine(models.Model):
         ("correcto", "Correcto"),
         ("corregido", "Corregido"),
         ("sugerido", "Sugerido"),
+        ("verificado", "Verificado"),
     ], string="Estado verificación", default="pendiente")
     verificacion_detalle = fields.Text(string="Verificación IA/QA")
     
@@ -73,7 +80,7 @@ class AduanaExpedienteLine(models.Model):
 class AduanaExpediente(models.Model):
     _name = "aduana.expediente"
     _description = "Expediente Aduanero"
-    _inherit = ["mail.thread", "mail.activity.mixin", "queue.job.mixin"]
+    _inherit = _EXPEDIENTE_INHERIT
     _order = "create_date desc"
 
     name = fields.Char(string="Referencia", required=True, copy=False, readonly=True, default=lambda self: _("Nuevo"))
@@ -983,9 +990,12 @@ class AduanaExpediente(models.Model):
                 "factura_en_cola_at": fields.Datetime.now(),
                 "factura_procesada": False,
             })
-            # Encolar con queue_job si está disponible
-            if QUEUE_JOB_AVAILABLE:
-                rec.with_delay(description=f"Procesar factura PDF expediente {rec.name}").process_pdf_job()
+            # Encolar con queue_job si está disponible; si no, forzar sync
+            rec.with_delay(
+                description=f"Procesar factura PDF expediente {rec.name}",
+                max_retries=3,
+                identity_key=lambda job, rec_id=rec.id: f"process_pdf_{rec_id}",
+            ).process_pdf_job()
         # Notificación inmediata
         return {
             "type": "ir.actions.client",
@@ -1003,23 +1013,43 @@ class AduanaExpediente(models.Model):
         pending = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
         for rec in pending:
             try:
-                if QUEUE_JOB_AVAILABLE:
-                    rec.with_delay(description=f"Procesar factura PDF expediente {rec.name}").process_pdf_job()
-                else:
-                    rec.with_context(process_async=True)._process_invoice_pdf_sync()
+                rec.with_delay(
+                    description=f"Procesar factura PDF expediente {rec.name}",
+                    max_retries=3,
+                    identity_key=lambda job, rec_id=rec.id: f"process_pdf_{rec_id}",
+                ).process_pdf_job()
             except Exception as e:
                 _logger.exception("Error procesando factura en cola (expediente %s): %s", rec.id, e)
         return True
 
+    # Job encolado (configuración de canal/reintentos se gestiona en with_delay o via queue.job.function)
     @job
     def process_pdf_job(self):
         """Job de cola para procesar la factura sin límite del hilo HTTP/cron."""
-        self.with_context(process_async=True)._process_invoice_pdf_sync()
+        # Desactivar prefetch para evitar problemas de caché durante transacciones largas
+        self = self.with_context(prefetch_fields=False)
+        for rec in self:
+            try:
+                rec.with_context(process_async=True)._process_invoice_pdf_sync()
+            except Exception as e:
+                # Marcar estado de error con un único write final
+                msg = _("Error procesando factura en background: %s") % (str(e),)
+                ctx_no_mail = dict(self.env.context, mail_notrack=True, tracking_disable=True, prefetch_fields=False)
+                # Único write final para marcar error
+                rec.with_context(**ctx_no_mail).write({
+                    "factura_estado_procesamiento": "error",
+                    "factura_mensaje_error": msg,
+                })
+                _logger.exception("Error en job de factura expediente %s", rec.id)
+                raise
 
     def _process_invoice_pdf_sync(self):
         """
         Procesa la factura PDF adjunta, extrae datos con OCR/IA y rellena la expedición.
         (Lógica original síncrona extraída para ser usada por cron o modo forzado)
+        
+        IMPORTANTE: Este método NO debe hacer writes intermedios durante el procesamiento.
+        Todos los cambios se acumulan y se escriben en un único write final al final.
         """
         for rec in self:
             # Desactivar notificaciones de email durante todo el proceso
@@ -1032,35 +1062,36 @@ class AduanaExpediente(models.Model):
                 'mail_notify_force_send': False,
                 'mail_auto_delete': False,
                 'default_message_type': 'notification',
+                'prefetch_fields': False,  # Evitar problemas de caché en transacciones largas
             })
             
-            # Marcar como procesando INMEDIATAMENTE (sin tracking)
-            # Usar write para forzar el guardado inmediato
-            rec.with_context(**ctx_no_mail).write({
-                'factura_estado_procesamiento': 'procesando',
-                'factura_mensaje_error': False
-            })
-            # Forzar guardado en base de datos y commit para que se vea inmediatamente en la UI
-            rec.flush_recordset(['factura_estado_procesamiento', 'factura_mensaje_error'])
-            # Commit de la transacción para que el cambio se vea inmediatamente en la UI
-            self.env.cr.commit()
-            rec.invalidate_recordset(['factura_estado_procesamiento', 'factura_mensaje_error'])
+            # NO hacer write aquí - se hará al final con todos los cambios acumulados
+            # Todos los cambios se acumularán en cambios_finales y se escribirán al final
             
             if not rec.factura_pdf:
-                rec.factura_estado_procesamiento = "error"
-                rec.factura_mensaje_error = _("No hay factura PDF adjunta para procesar")
+                # Error inmediato - escribir y salir
+                rec.with_context(**ctx_no_mail).write({
+                    'factura_estado_procesamiento': 'error',
+                    'factura_mensaje_error': _("No hay factura PDF adjunta para procesar")
+                })
                 raise UserError(_("No hay factura PDF adjunta para procesar"))
             
             # Obtener servicio OCR
             ocr_service = self.env["aduanas.invoice.ocr.service"]
+            
+            # Acumulador de cambios para el write final
+            cambios_finales = {}
+            mensaje_chatter = None
             
             # Extraer datos de la factura
             try:
                 # Asegurar que factura_pdf esté en el formato correcto
                 pdf_data = rec.factura_pdf
                 if not pdf_data:
-                    rec.factura_estado_procesamiento = "error"
-                    rec.factura_mensaje_error = _("No hay datos de PDF para procesar")
+                    cambios_finales.update({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': _("No hay datos de PDF para procesar")
+                    })
                     raise UserError(_("No hay datos de PDF para procesar"))
                 
                 # En Odoo, los campos Binary siempre vienen como string base64
@@ -1073,24 +1104,11 @@ class AduanaExpediente(models.Model):
                 
                 # Validar que se extrajo texto
                 if invoice_data.get("error"):
-                    rec.factura_estado_procesamiento = "error"
-                    rec.factura_mensaje_error = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
-                    # Crear mensaje de error directamente en mail.message sin validaciones de correo
-                    try:
-                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                        if not subtype:
-                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                        self.env['mail.message'].sudo().create({
-                            'model': 'aduana.expediente',
-                            'res_id': rec.id,
-                            'message_type': 'notification',
-                            'subtype_id': subtype.id if subtype else False,
-                            'body': _("Error al procesar factura: %s") % invoice_data.get("error"),
-                            'author_id': False,
-                            'email_from': False,
-                        })
-                    except Exception as msg_error:
-                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                    cambios_finales.update({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': invoice_data.get("error", _("Error desconocido al procesar el PDF"))
+                    })
+                    mensaje_chatter = _("❌ Error al procesar factura: %s") % invoice_data.get("error")
                     raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
                 
                 # Validar datos mínimos extraídos
@@ -1142,14 +1160,14 @@ class AduanaExpediente(models.Model):
                 rec = rec.with_context(**ctx_no_mail)
                 ocr_service.fill_expediente_from_invoice(rec, invoice_data)
                 
-                # Determinar estado final (sin tracking)
+                # Acumular estado final en cambios_finales (NO escribir todavía)
                 if advertencias:
-                    rec.with_context(**ctx_no_mail).write({
+                    cambios_finales.update({
                         'factura_estado_procesamiento': 'advertencia',
                         'factura_mensaje_error': "\n".join([_("ADVERTENCIAS:")] + advertencias)
                     })
                 else:
-                    rec.with_context(**ctx_no_mail).write({
+                    cambios_finales.update({
                         'factura_estado_procesamiento': 'completado',
                         'factura_mensaje_error': False
                     })
@@ -1166,6 +1184,8 @@ class AduanaExpediente(models.Model):
                     _logger.warning("Error ejecutando validación IA de coherencia: %s", val_err)
                 
                 # Actualizar líneas con resultados de IA (estado/verificación y partida sugerida)
+                # Acumular cambios de líneas en un diccionario (línea_id -> cambios)
+                cambios_lineas = {}
                 if ai_validation and not ai_validation_error:
                     lineas_result = ai_validation.get("lineas", []) or []
                     lines_sorted = rec.line_ids.sorted(lambda l: l.item_number or l.id)
@@ -1182,17 +1202,35 @@ class AduanaExpediente(models.Model):
                             estado = "pendiente"
                         detalle = res.get("detalle") or ""
                         partida_validada = res.get("partida_validada")
+                        # Limpiar partida_validada si es null, "null", "None" o vacío
+                        if partida_validada in (None, "null", "None", ""):
+                            partida_validada = None
+                        else:
+                            # Asegurar que sea string y limpiar espacios
+                            partida_validada = str(partida_validada).strip() if partida_validada else None
+                        
                         vals_linea = {
                             "verificacion_estado": estado,
                             "verificacion_detalle": detalle,
                         }
-                        # Solo sobrescribir partida si la IA la marca como corregida
+                        # Actualizar partida según el estado
                         if estado == "corregido" and partida_validada:
+                            # Si está corregida, siempre actualizar la partida
                             vals_linea["partida"] = partida_validada
-                        elif estado == "sugerido" and partida_validada and partida_validada not in detalle:
-                            # Añadir sugerencia al detalle si no se aplicó
-                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
-                        line.with_context(**ctx_no_mail).write(vals_linea)
+                            if partida_validada not in detalle:
+                                vals_linea["verificacion_detalle"] = f"{detalle} (Corregida: {partida_validada})" if detalle else f"Partida corregida: {partida_validada}"
+                        elif estado == "sugerido" and partida_validada:
+                            # Si está sugerida y no hay partida actual, actualizarla automáticamente
+                            if not line.partida or not line.partida.strip():
+                                vals_linea["partida"] = partida_validada
+                                if partida_validada not in detalle:
+                                    vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Partida sugerida: {partida_validada}"
+                            else:
+                                # Si ya hay partida, solo añadir al detalle
+                                if partida_validada not in detalle:
+                                    vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
+                        # Acumular cambios de líneas en diccionario (se escribirán después del write principal)
+                        cambios_lineas[line.id] = vals_linea
                 
                 # Crear mensaje detallado para el chatter con todos los datos extraídos
                 mensaje_chatter = _("✅ Factura procesada correctamente<br/><br/>")
@@ -1313,30 +1351,41 @@ class AduanaExpediente(models.Model):
                 elif ai_validation_error:
                     mensaje_chatter += "<br/>" + _("🤖 Verificación IA no disponible: %s<br/>") % ai_validation_error
                 
-                # Crear mensaje en el chatter directamente en mail.message sin pasar por el sistema de correo
-                try:
-                    # Obtener el subtipo de mensaje
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    
-                    # Crear mensaje directamente en mail.message sin validaciones de correo
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
-                        'body': mensaje_chatter,
-                        'author_id': False,  # Sistema, no usuario
-                        'email_from': False,  # No intentar enviar correo
-                    })
-                except Exception as msg_error:
-                    # Si hay error al crear mensaje, solo loguear y continuar
-                    _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
-                    # El proceso continúa normalmente aunque no se pueda crear el mensaje
+                # Acumular factura_procesada en cambios finales
+                cambios_finales['factura_procesada'] = True
                 
-                # Marcar factura como procesada
-                rec.factura_procesada = True
+                # PASO 1: Escribir cambios de líneas primero (si hay cambios acumulados)
+                if cambios_lineas:
+                    for line_id, vals_linea in cambios_lineas.items():
+                        line = rec.line_ids.browse(line_id)
+                        if line.exists():
+                            line.with_context(**ctx_no_mail).write(vals_linea)
+                
+                # PASO 2: ÚNICO WRITE FINAL con todos los cambios acumulados del expediente
+                if cambios_finales:
+                    rec.with_context(**ctx_no_mail).write(cambios_finales)
+                
+                # PASO 3: Crear mensaje en el chatter SOLO AL FINAL (después del write)
+                if mensaje_chatter:
+                    try:
+                        # Obtener el subtipo de mensaje
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        
+                        # Crear mensaje directamente en mail.message sin validaciones de correo
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
+                            'body': mensaje_chatter,
+                            'author_id': False,  # Sistema, no usuario
+                            'email_from': False,  # No intentar enviar correo
+                        })
+                    except Exception as msg_error:
+                        # Si hay error al crear mensaje, solo loguear y continuar
+                        _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
                 
                 # Forzar recarga del registro para actualizar la vista
                 rec.invalidate_recordset()
@@ -1367,26 +1416,33 @@ class AduanaExpediente(models.Model):
                         "target": "current",
                     }
             except UserError as ue:
-                # Guardar estado de error y mensaje
+                # Acumular error en cambios finales y escribir al final
                 error_msg = str(ue)
-                rec.factura_estado_procesamiento = "error"
-                rec.factura_mensaje_error = error_msg
-                # Crear mensaje de error directamente en mail.message sin validaciones de correo
-                try:
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
-                        'body': _("Error al procesar factura: %s") % error_msg,
-                        'author_id': False,
-                        'email_from': False,
-                    })
-                except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                cambios_finales.update({
+                    'factura_estado_procesamiento': 'error',
+                    'factura_mensaje_error': error_msg
+                })
+                mensaje_chatter = _("❌ Error al procesar factura: %s") % error_msg
+                # Escribir cambios acumulados antes de relanzar
+                if cambios_finales:
+                    rec.with_context(**ctx_no_mail).write(cambios_finales)
+                # Crear mensaje de error SOLO AL FINAL
+                if mensaje_chatter:
+                    try:
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
+                            'body': mensaje_chatter,
+                            'author_id': False,
+                            'email_from': False,
+                        })
+                    except Exception as msg_error:
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
@@ -1398,27 +1454,34 @@ class AduanaExpediente(models.Model):
                         "target": "current",
                     }
             except Exception as e:
+                # Acumular error en cambios finales y escribir al final
                 error_msg = str(e)
-                rec.factura_estado_procesamiento = "error"
-                # Mensaje de error más detallado
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
-                rec.factura_mensaje_error = mensaje_error_detallado
-                # Crear mensaje de error directamente en mail.message sin validaciones de correo
-                try:
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
-                        'body': _("Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado),
-                        'author_id': False,
-                        'email_from': False,
-                    })
-                except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                cambios_finales.update({
+                    'factura_estado_procesamiento': 'error',
+                    'factura_mensaje_error': mensaje_error_detallado
+                })
+                mensaje_chatter = _("❌ Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado)
+                # Escribir cambios acumulados antes de continuar
+                if cambios_finales:
+                    rec.with_context(**ctx_no_mail).write(cambios_finales)
+                # Crear mensaje de error SOLO AL FINAL
+                if mensaje_chatter:
+                    try:
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
+                            'body': mensaje_chatter,
+                            'author_id': False,
+                            'email_from': False,
+                        })
+                    except Exception as msg_error:
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:

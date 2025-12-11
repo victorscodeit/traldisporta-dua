@@ -228,7 +228,7 @@
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
                   <field name="valor_linea"/>
-                  <field name="verificacion_estado" widget="badge"/>
+                  <field name="verificacion_estado"/>
                   <field name="verificacion_detalle"/>
                   <field name="pais_origen"/>
                 </tree>
