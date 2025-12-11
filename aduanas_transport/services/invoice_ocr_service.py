@@ -191,7 +191,7 @@ class InvoiceOCRService(models.AbstractModel):
             if not api_key:
                 raise ValueError("API key de OpenAI no proporcionada")
             
-            # Inicializar cliente de OpenAI
+            # Inicializar cliente de OpenAI (sin timeout explícito para permitir trabajos largos en cola)
             client = OpenAI(api_key=api_key)
             
             # Abrir PDF y convertir a imágenes
@@ -620,6 +620,88 @@ class InvoiceOCRService(models.AbstractModel):
                 raise UserError(_("El archivo no es un PDF válido o está corrupto. Por favor, verifica el archivo e intenta de nuevo."))
             raise UserError(_("Error al procesar el PDF: %s\n\nPosibles causas:\n- El PDF está corrupto\n- El PDF está protegido o encriptado\n- El formato no es compatible") % error_msg)
 
+    def validate_invoice_consistency(self, expediente):
+        """
+        Realiza una verificación asistida por IA:
+        - Compara totales de líneas vs. total de factura.
+        - Revisa partidas arancelarias de cada línea y propone correcciones/sugerencias.
+        Devuelve un diccionario estructurado con los resultados o error.
+        """
+        api_key = self.env['res.config.settings'].get_openai_api_key()
+        if not api_key:
+            return {"error": _("No hay API Key configurada para OpenAI")}
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return {"error": _("El paquete 'openai' no está instalado en el servidor")}
+        
+        lines_sorted = expediente.line_ids.sorted(lambda l: l.item_number or l.id)
+        lineas_payload = []
+        for idx, line in enumerate(lines_sorted, 1):
+            lineas_payload.append({
+                "index": idx,
+                "item_number": line.item_number,
+                "partida": line.partida,
+                "descripcion": line.descripcion,
+                "unidades": line.unidades,
+                "valor_linea": line.valor_linea,
+                "precio_unitario": line.precio_unitario,
+                "peso_neto": line.peso_neto,
+                "peso_bruto": line.peso_bruto,
+            })
+        suma_lineas = sum([l.get("valor_linea") or 0 for l in lineas_payload])
+        
+        prompt = """Eres un auditor aduanero experto. Valida la coherencia de una factura ya extraída.
+Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
+{
+  "totales": {
+    "es_coherente": true/false,
+    "detalle": "explicación corta en español",
+    "diferencia": número (total_factura - suma_lineas)
+  },
+  "lineas": [
+    {
+      "index": número de línea (1..n según orden recibido),
+      "estado": "correcto" | "corregido" | "sugerido",
+      "partida_validada": "código HS de 8-10 dígitos o null",
+      "detalle": "explica por qué es correcta o la corrección/sugerencia"
+    }
+  ],
+  "resumen": "2-3 frases en español con hallazgos clave (totales y partidas)"
+}
+Reglas:
+- Usa estado "correcto" si la partida parece válida y coherente con la descripción.
+- Usa estado "corregido" solo si propones una partida mejor y estás razonablemente seguro; coloca esa partida en partida_validada.
+- Usa estado "sugerido" si no hay partida o la actual parece dudosa; sugiere la mejor partida posible en partida_validada si puedes.
+- Si faltan datos para validar, indícalo en detalle pero mantén el esquema.
+"""
+        user_payload = {
+            "factura": {
+                "valor_factura": expediente.valor_factura,
+                "moneda": expediente.moneda,
+                "suma_lineas": suma_lineas,
+            },
+            "lineas": lineas_payload,
+        }
+        
+        client = OpenAI(api_key=api_key)
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": "Responde ÚNICAMENTE con JSON válido, sin código, sin markdown."},
+                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+                temperature=0.1,
+            )
+            content = response.choices[0].message.content
+            return json.loads(content)
+        except Exception as e:
+            _logger.warning("Validación IA de factura falló: %s", e)
+            return {"error": str(e)}
+
     def _interpret_text_with_gpt(self, api_key, text):
         """
         Usa GPT-4o para interpretar el texto extraído y estructurarlo en formato JSON.
@@ -720,7 +802,7 @@ TEXTO DE LA FACTURA:
                     ],
                     temperature=0.1,  # Baja temperatura para respuestas más consistentes
                     max_tokens=4000,
-                    response_format={"type": "json_object"}  # Forzar formato JSON (GPT-4o)
+                    response_format={"type": "json_object"},  # Forzar formato JSON (GPT-4o)
                 )
             except TypeError:
                 # Si response_format no está disponible, usar sin él

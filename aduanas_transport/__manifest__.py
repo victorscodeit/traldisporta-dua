@@ -7,7 +7,7 @@
     "author": "Indomit / Traldisporta",
     "license": "LGPL-3",
     "website": "https://indomitlab.com",
-    "depends": ["base", "mail", "contacts", "web"],
+    "depends": ["base", "mail", "contacts", "web", "queue_job"],
     "data": [
         "security/ir.model.access.csv",
         "data/ir_sequence.xml",
@@ -30,6 +30,10 @@
         "web.assets_backend": [
             "aduanas_transport/static/src/js/multi_file_upload_action.js",
             "aduanas_transport/static/src/xml/multi_file_upload_action.xml",
+            "aduanas_transport/static/src/js/expediente_tree_extend.js",
+            "aduanas_transport/static/src/xml/expediente_list_button.xml",
+            "aduanas_transport/static/src/js/subir_facturas_wizard.js",
+            "aduanas_transport/static/src/css/subir_facturas_wizard.css",
         ],
     },
     "application": True,

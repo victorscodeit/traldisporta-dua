@@ -4,6 +4,15 @@ import base64
 import logging
 _logger = logging.getLogger(__name__)
 
+# Queue job support (opcional)
+try:
+    from odoo.addons.queue_job.job import job
+    QUEUE_JOB_AVAILABLE = True
+except Exception:
+    QUEUE_JOB_AVAILABLE = False
+    def job(func):
+        return func
+
 class AduanaExpedienteLine(models.Model):
     _name = "aduana.expediente.line"
     _description = "Línea de mercancía (expediente aduanero)"
@@ -20,6 +29,13 @@ class AduanaExpedienteLine(models.Model):
     descuento = fields.Float(string="Descuento (%)", help="Porcentaje de descuento aplicado a la línea")
     subtotal = fields.Float(string="Subtotal")
     pais_origen = fields.Char(default="ES")
+    verificacion_estado = fields.Selection([
+        ("pendiente", "Pendiente"),
+        ("correcto", "Correcto"),
+        ("corregido", "Corregido"),
+        ("sugerido", "Sugerido"),
+    ], string="Estado verificación", default="pendiente")
+    verificacion_detalle = fields.Text(string="Verificación IA/QA")
     
     @api.model_create_multi
     def create(self, vals_list):
@@ -57,7 +73,7 @@ class AduanaExpedienteLine(models.Model):
 class AduanaExpediente(models.Model):
     _name = "aduana.expediente"
     _description = "Expediente Aduanero"
-    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _inherit = ["mail.thread", "mail.activity.mixin", "queue.job.mixin"]
     _order = "create_date desc"
 
     name = fields.Char(string="Referencia", required=True, copy=False, readonly=True, default=lambda self: _("Nuevo"))
@@ -275,11 +291,13 @@ class AduanaExpediente(models.Model):
     factura_estado_procesamiento = fields.Selection([
         ("sin_factura", "Sin Factura"),
         ("pendiente", "Pendiente de Procesar"),
+        ("en_cola", "En cola (background)"),
         ("procesando", "Procesando..."),
         ("completado", "Completado"),
         ("error", "Error en Procesamiento"),
         ("advertencia", "Completado con Advertencias"),
     ], string="Estado Procesamiento", default="sin_factura", readonly=True, help="Estado del procesamiento de la factura")
+    factura_en_cola_at = fields.Datetime(string="Fecha en cola", readonly=True)
     factura_mensaje_error = fields.Text(string="Mensaje de Error/Advertencia", readonly=True, help="Mensajes de error o advertencias durante el procesamiento")
     factura_mensaje_html = fields.Html(string="Mensaje de Procesamiento", compute="_compute_factura_mensaje_html", store=False, sanitize=False)
     factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
@@ -297,6 +315,8 @@ class AduanaExpediente(models.Model):
             elif estado == 'advertencia':
                 # Amarillo/Naranja para advertencias
                 rec.factura_mensaje_html = f'<div class="alert alert-warning" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-exclamation-triangle"></i> {mensaje}</div>' if mensaje else False
+            elif estado == 'en_cola':
+                rec.factura_mensaje_html = '<div class="alert alert-info" role="alert" style="display: block; margin: 0; padding: 10px; border-radius: 4px; background-color: #e8f4ff; color: #0c5460; border: 1px solid #bee5eb; width: 100%; min-width: 100%; max-width: 100%; box-sizing: border-box;"><i class="fa fa-clock-o"></i> Factura en cola para procesamiento en background</div>'
             elif estado == 'completado':
                 # Verde para éxito
                 if mensaje:
@@ -947,7 +967,59 @@ class AduanaExpediente(models.Model):
     # ===== Procesamiento de Factura PDF con IA/OCR =====
     def action_process_invoice_pdf(self):
         """
+        Encola el procesamiento de la factura en background y devuelve notificación inmediata.
+        Si se pasa context force_sync=True o process_async=False, ejecuta en línea.
+        """
+        force_sync = self.env.context.get("force_sync") or (self.env.context.get("process_async") is False)
+        if force_sync:
+            return self._process_invoice_pdf_sync()
+        
+        for rec in self:
+            if not rec.factura_pdf:
+                raise UserError(_("No hay factura PDF adjunta para procesar"))
+            rec.write({
+                "factura_estado_procesamiento": "en_cola",
+                "factura_mensaje_error": _("Factura en cola para procesamiento en background"),
+                "factura_en_cola_at": fields.Datetime.now(),
+                "factura_procesada": False,
+            })
+            # Encolar con queue_job si está disponible
+            if QUEUE_JOB_AVAILABLE:
+                rec.with_delay(description=f"Procesar factura PDF expediente {rec.name}").process_pdf_job()
+        # Notificación inmediata
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Procesamiento en background"),
+                "message": _("La factura se ha encolado y se procesará en segundo plano. Puedes seguir trabajando, la vista se actualizará al terminar."),
+                "type": "info",
+                "sticky": False,
+            },
+        }
+
+    def cron_process_invoice_pdf_queue(self, limit=2):
+        """Procesa en background las facturas encoladas para evitar timeouts HTTP."""
+        pending = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
+        for rec in pending:
+            try:
+                if QUEUE_JOB_AVAILABLE:
+                    rec.with_delay(description=f"Procesar factura PDF expediente {rec.name}").process_pdf_job()
+                else:
+                    rec.with_context(process_async=True)._process_invoice_pdf_sync()
+            except Exception as e:
+                _logger.exception("Error procesando factura en cola (expediente %s): %s", rec.id, e)
+        return True
+
+    @job
+    def process_pdf_job(self):
+        """Job de cola para procesar la factura sin límite del hilo HTTP/cron."""
+        self.with_context(process_async=True)._process_invoice_pdf_sync()
+
+    def _process_invoice_pdf_sync(self):
+        """
         Procesa la factura PDF adjunta, extrae datos con OCR/IA y rellena la expedición.
+        (Lógica original síncrona extraída para ser usada por cron o modo forzado)
         """
         for rec in self:
             # Desactivar notificaciones de email durante todo el proceso
@@ -991,7 +1063,7 @@ class AduanaExpediente(models.Model):
                     rec.factura_mensaje_error = _("No hay datos de PDF para procesar")
                     raise UserError(_("No hay datos de PDF para procesar"))
                 
-                # En Odoo, los campos Binary vienen como string base64
+                # En Odoo, los campos Binary siempre vienen como string base64
                 # Si viene como bytes, convertirlo a base64
                 if isinstance(pdf_data, bytes):
                     import base64
@@ -1081,6 +1153,46 @@ class AduanaExpediente(models.Model):
                         'factura_estado_procesamiento': 'completado',
                         'factura_mensaje_error': False
                     })
+                
+                # Validación de coherencia y partidas con IA
+                ai_validation = None
+                ai_validation_error = None
+                lineas_result = []
+                try:
+                    ai_validation = ocr_service.validate_invoice_consistency(rec)
+                    ai_validation_error = ai_validation.get("error") if ai_validation else None
+                except Exception as val_err:
+                    ai_validation_error = str(val_err)
+                    _logger.warning("Error ejecutando validación IA de coherencia: %s", val_err)
+                
+                # Actualizar líneas con resultados de IA (estado/verificación y partida sugerida)
+                if ai_validation and not ai_validation_error:
+                    lineas_result = ai_validation.get("lineas", []) or []
+                    lines_sorted = rec.line_ids.sorted(lambda l: l.item_number or l.id)
+                    for res in lineas_result:
+                        try:
+                            idx = int(res.get("index", 0))
+                        except Exception:
+                            idx = 0
+                        if not idx or idx > len(lines_sorted):
+                            continue
+                        line = lines_sorted[idx - 1]
+                        estado = (res.get("estado") or "pendiente").lower()
+                        if estado not in ("correcto", "corregido", "sugerido"):
+                            estado = "pendiente"
+                        detalle = res.get("detalle") or ""
+                        partida_validada = res.get("partida_validada")
+                        vals_linea = {
+                            "verificacion_estado": estado,
+                            "verificacion_detalle": detalle,
+                        }
+                        # Solo sobrescribir partida si la IA la marca como corregida
+                        if estado == "corregido" and partida_validada:
+                            vals_linea["partida"] = partida_validada
+                        elif estado == "sugerido" and partida_validada and partida_validada not in detalle:
+                            # Añadir sugerencia al detalle si no se aplicó
+                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
+                        line.with_context(**ctx_no_mail).write(vals_linea)
                 
                 # Crear mensaje detallado para el chatter con todos los datos extraídos
                 mensaje_chatter = _("✅ Factura procesada correctamente<br/><br/>")
@@ -1176,6 +1288,31 @@ class AduanaExpediente(models.Model):
                     for adv in advertencias:
                         mensaje_chatter += f"• {adv}<br/>"
                 
+                # Resumen de verificación IA (totales y partidas)
+                if ai_validation and not ai_validation_error:
+                    mensaje_chatter += "<br/>"
+                    mensaje_chatter += _("🤖 Verificación IA:<br/>")
+                    totales_info = ai_validation.get("totales") or {}
+                    if totales_info:
+                        estado_totales = _("OK") if totales_info.get("es_coherente") else _("Revisar")
+                        detalle_totales = totales_info.get("detalle") or ""
+                        diferencia = totales_info.get("diferencia")
+                        diferencia_txt = f" (diferencia: {diferencia})" if diferencia is not None else ""
+                        mensaje_chatter += f"Totales: {estado_totales}. {detalle_totales}{diferencia_txt}<br/>"
+                    if lineas_result:
+                        mensaje_chatter += _("Líneas revisadas:<br/>")
+                        for res in lineas_result:
+                            idx_txt = res.get("index")
+                            estado_txt = (res.get("estado") or "").capitalize()
+                            detalle_txt = res.get("detalle") or ""
+                            partida_txt = res.get("partida_validada") or ""
+                            extra = f" | Partida: {partida_txt}" if partida_txt else ""
+                            mensaje_chatter += f"Línea {idx_txt}: {estado_txt}{extra}. {detalle_txt}<br/>"
+                    if ai_validation.get("resumen"):
+                        mensaje_chatter += f"{ai_validation.get('resumen')}<br/>"
+                elif ai_validation_error:
+                    mensaje_chatter += "<br/>" + _("🤖 Verificación IA no disponible: %s<br/>") % ai_validation_error
+                
                 # Crear mensaje en el chatter directamente en mail.message sin pasar por el sistema de correo
                 try:
                     # Obtener el subtipo de mensaje
@@ -1208,27 +1345,27 @@ class AduanaExpediente(models.Model):
                 notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
                 notif_message = _("La factura se ha procesado, pero hay algunas advertencias. Revisa los datos extraídos.") if advertencias else _("La factura se ha procesado correctamente y los datos se han extraído.")
                 
-                # Recargar el formulario y mostrar notificación
-                # Usar una acción combinada: mostrar notificación y recargar formulario
-                return {
-                    "type": "ir.actions.client",
-                    "tag": "display_notification",
-                    "params": {
-                        "title": notif_title,
-                        "message": notif_message,
-                        "type": "warning" if advertencias else "success",
-                        "sticky": False,
-                    },
-                    "context": {
-                        **self.env.context,
-                        "active_id": rec.id,
-                        "active_model": "aduana.expediente",
-                    },
-                    "res_model": "aduana.expediente",
-                    "res_id": rec.id,
-                    "view_mode": "form",
-                    "target": "current",
-                }
+                # Si la llamada es síncrona (botón forzado), devolver notificación+reload; si viene de cron, solo continuar
+                if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
+                    return {
+                        "type": "ir.actions.client",
+                        "tag": "display_notification",
+                        "params": {
+                            "title": notif_title,
+                            "message": notif_message,
+                            "type": "warning" if advertencias else "success",
+                            "sticky": False,
+                        },
+                        "context": {
+                            **self.env.context,
+                            "active_id": rec.id,
+                            "active_model": "aduana.expediente",
+                        },
+                        "res_model": "aduana.expediente",
+                        "res_id": rec.id,
+                        "view_mode": "form",
+                        "target": "current",
+                    }
             except UserError as ue:
                 # Guardar estado de error y mensaje
                 error_msg = str(ue)
@@ -1252,14 +1389,14 @@ class AduanaExpediente(models.Model):
                     _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
-                # Devolver acción que recarga el formulario
-                return {
-                    "type": "ir.actions.act_window",
-                    "res_model": "aduana.expediente",
-                    "res_id": rec.id,
-                    "view_mode": "form",
-                    "target": "current",
-                }
+                if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
+                    return {
+                        "type": "ir.actions.act_window",
+                        "res_model": "aduana.expediente",
+                        "res_id": rec.id,
+                        "view_mode": "form",
+                        "target": "current",
+                    }
             except Exception as e:
                 error_msg = str(e)
                 rec.factura_estado_procesamiento = "error"
@@ -1284,14 +1421,15 @@ class AduanaExpediente(models.Model):
                     _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
-                # Devolver acción que recarga el formulario
-                return {
-                    "type": "ir.actions.act_window",
-                    "res_model": "aduana.expediente",
-                    "res_id": rec.id,
-                    "view_mode": "form",
-                    "target": "current",
-                }
+                if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
+                    return {
+                        "type": "ir.actions.act_window",
+                        "res_model": "aduana.expediente",
+                        "res_id": rec.id,
+                        "view_mode": "form",
+                        "target": "current",
+                    }
+        return True
 
     def action_generate_dua(self):
         """

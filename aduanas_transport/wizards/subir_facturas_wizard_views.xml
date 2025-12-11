@@ -7,11 +7,23 @@
     <field name="arch" type="xml">
       <form string="Subir Facturas PDF">
         <sheet>
+          <div class="drop-zone-facturas">
+            <input type="file" multiple="multiple" accept="application/pdf,.pdf"/>
+            <div class="drop-icon">
+              <i class="fa fa-cloud-upload"/>
+            </div>
+            <div class="drop-text">
+              <strong>Arrastra y suelta múltiples archivos PDF aquí</strong>
+            </div>
+            <div class="drop-hint">
+              o haz clic para seleccionar archivos
+            </div>
+          </div>
           <group>
             <field name="factura_ids" nolabel="1">
-              <tree editable="bottom" create="1" delete="1">
-                <field name="name" required="1"/>
-                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1"/>
+              <tree editable="bottom" create="0" delete="1" string="Facturas a subir">
+                <field name="name" required="1" readonly="1"/>
+                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1" readonly="1"/>
                 <field name="factura_pdf_filename" invisible="1"/>
               </tree>
             </field>

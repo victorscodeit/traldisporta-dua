@@ -6,7 +6,7 @@
     <field name="name">aduana.expediente.tree</field>
     <field name="model">aduana.expediente</field>
     <field name="arch" type="xml">
-      <tree string="Expedientes Aduaneros" default_order="create_date desc" create="1">
+      <tree string="Expedientes Aduaneros" default_order="create_date desc" create="1" js_class="expediente_list_button">
         <field name="name" string="Código/Referencia"/>
         <field name="factura_estado_procesamiento" widget="badge" 
                decoration-success="factura_estado_procesamiento == 'completado'" 
@@ -228,6 +228,8 @@
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
                   <field name="valor_linea"/>
+                  <field name="verificacion_estado" widget="badge"/>
+                  <field name="verificacion_detalle"/>
                   <field name="pais_origen"/>
                 </tree>
               </field>
@@ -375,7 +377,7 @@
     <field name="name">Expedientes Aduaneros</field>
     <field name="res_model">aduana.expediente</field>
     <field name="view_mode">tree,kanban,form</field>
-    <field name="context">{'search_default_pending': 1, 'search_default_group_by_matricula': 1}</field>
+    <field name="context">{'search_default_pending': 1}</field>
     <field name="search_view_id" ref="view_aduana_expediente_search"/>
     <field name="help" type="html">
       <p class="o_view_nocontent_smiling_face">

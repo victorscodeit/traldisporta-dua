@@ -21,6 +21,17 @@
     <field name="active">False</field>
   </record>
 
+  <record id="ir_cron_aduana_expediente_process_pdf_queue" model="ir.cron">
+    <field name="name">Aduanas: Procesar facturas PDF en cola (expedientes)</field>
+    <field name="model_id" ref="model_aduana_expediente"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_process_invoice_pdf_queue(limit=2)</field>
+    <field name="interval_type">minutes</field>
+    <field name="interval_number">2</field>
+    <field name="numbercall">-1</field>
+    <field name="active">True</field>
+  </record>
+
   <!-- Template CUSDEC EX1 - Formato oficial DUA para exportación -->
   <template id="tpl_cusdec_ex1" name="CUSDEC EX1 XML (DUA Exportación)" t-name="aduanas_transport.tpl_cusdec_ex1">
     <CUSDEC xmlns="http://www.eurocustoms.eu/EX1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.eurocustoms.eu/EX1 CUSDEC_EX1.xsd">
