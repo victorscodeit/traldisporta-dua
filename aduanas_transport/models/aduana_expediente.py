@@ -114,6 +114,15 @@ class AduanaExpediente(models.Model):
     # Líneas
     line_ids = fields.One2many("aduana.expediente.line", "expediente_id", string="Líneas")
     
+    # Resumen Verificación IA
+    verificacion_ia_estado = fields.Selection([
+        ("ok", "OK"),
+        ("advertencia", "Advertencia"),
+        ("critico", "Crítico"),
+        ("pendiente", "Pendiente"),
+    ], string="Estado Verificación IA", compute="_compute_verificacion_ia_resumen", store=False)
+    verificacion_ia_resumen = fields.Char(string="Resumen Verificación IA", compute="_compute_verificacion_ia_resumen", store=False)
+    
     # Documentos requeridos por partida arancelaria (TARIC)
     documento_requerido_ids = fields.One2many("aduana.expediente.documento.requerido", "expediente_id", string="Documentos Requeridos")
 
@@ -367,6 +376,45 @@ class AduanaExpediente(models.Model):
         for rec in self:
             rec.incidencias_count = len(rec.incidencia_ids)
             rec.incidencias_pendientes_count = len(rec.incidencia_ids.filtered(lambda i: i.state in ("pendiente", "en_revision")))
+    
+    @api.depends("line_ids", "line_ids.verificacion_estado", "line_ids.verificacion_detalle")
+    def _compute_verificacion_ia_resumen(self):
+        """Calcula el resumen del estado de verificación IA basado en todas las líneas"""
+        for rec in self:
+            if not rec.line_ids:
+                rec.verificacion_ia_estado = "pendiente"
+                rec.verificacion_ia_resumen = "Sin líneas para verificar"
+                continue
+            
+            # Contar estados de verificación
+            estados = rec.line_ids.mapped("verificacion_estado")
+            total = len(estados)
+            correctos = estados.count("correcto") + estados.count("verificado")
+            corregidos = estados.count("corregido")
+            sugeridos = estados.count("sugerido")
+            pendientes = estados.count("pendiente")
+            
+            # Determinar estado general
+            if pendientes > 0:
+                # Si hay líneas pendientes, es crítico
+                rec.verificacion_ia_estado = "critico"
+                rec.verificacion_ia_resumen = f"{pendientes} línea(s) pendiente(s) de verificar"
+            elif corregidos > 0:
+                # Si hay correcciones, es advertencia
+                rec.verificacion_ia_estado = "advertencia"
+                rec.verificacion_ia_resumen = f"{corregidos} línea(s) corregida(s)"
+            elif sugeridos > 0:
+                # Si hay sugerencias, es advertencia
+                rec.verificacion_ia_estado = "advertencia"
+                rec.verificacion_ia_resumen = f"{sugeridos} línea(s) con sugerencias"
+            elif correctos == total:
+                # Todas correctas
+                rec.verificacion_ia_estado = "ok"
+                rec.verificacion_ia_resumen = f"✓ {total} línea(s) verificada(s) correctamente"
+            else:
+                # Estado desconocido
+                rec.verificacion_ia_estado = "pendiente"
+                rec.verificacion_ia_resumen = "Verificación incompleta"
     
     @api.depends("incoterm")
     def _compute_incoterm_info(self):
@@ -1014,7 +1062,7 @@ class AduanaExpediente(models.Model):
     def _normalize_partida_arancelaria(self, partida):
         """
         Normaliza una partida arancelaria a 10 dígitos.
-        Si tiene menos de 10 dígitos, rellena con ceros a la izquierda.
+        Si tiene menos de 10 dígitos, rellena con ceros al final (a la derecha).
         Si tiene más de 10 dígitos, trunca a 10.
         Si no es válida, devuelve None.
         """
@@ -1029,9 +1077,9 @@ class AduanaExpediente(models.Model):
         # Si tiene más de 10 dígitos, truncar
         if len(partida_limpia) > 10:
             partida_limpia = partida_limpia[:10]
-        # Si tiene menos de 10 dígitos, rellenar con ceros a la izquierda
+        # Si tiene menos de 10 dígitos, rellenar con ceros al final (a la derecha)
         if len(partida_limpia) < 10:
-            partida_limpia = partida_limpia.zfill(10)
+            partida_limpia = partida_limpia.ljust(10, '0')
         return partida_limpia
 
     def action_realizar_verificacion_ia(self):

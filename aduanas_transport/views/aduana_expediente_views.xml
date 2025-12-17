@@ -15,6 +15,13 @@
                decoration-muted="factura_estado_procesamiento == 'sin_factura'"
                decoration-danger="factura_estado_procesamiento == 'error'"
                string="Estado Factura"/>
+        <field name="verificacion_ia_estado" widget="badge" 
+               decoration-success="verificacion_ia_estado == 'ok'"
+               decoration-warning="verificacion_ia_estado == 'advertencia'"
+               decoration-danger="verificacion_ia_estado == 'critico'"
+               decoration-muted="verificacion_ia_estado == 'pendiente'"
+               string="Verif. IA"
+               invisible="context.get('hide_verificacion_ia', False)"/>
         <field name="matricula"/>
         <field name="direction"/>
         <field name="remitente"/>
@@ -109,6 +116,23 @@
                    widget="html"
                    colspan="2"
                    style="width: 100%;"/>
+          </group>
+          
+          <!-- RESUMEN VERIFICACIÓN IA -->
+          <group string="Verificación IA" col="2" attrs="{'invisible': [('line_ids', '=', [])]}">
+            <group>
+              <field name="verificacion_ia_resumen" readonly="1" nolabel="1" 
+                     widget="text" 
+                     placeholder="Ejecuta la verificación IA para ver el resumen"/>
+            </group>
+            <group>
+              <field name="verificacion_ia_estado" widget="badge" 
+                     decoration-success="verificacion_ia_estado == 'ok'"
+                     decoration-warning="verificacion_ia_estado == 'advertencia'"
+                     decoration-danger="verificacion_ia_estado == 'critico'"
+                     decoration-muted="verificacion_ia_estado == 'pendiente'"
+                     readonly="1"/>
+            </group>
           </group>
           
           <!-- INFORMACIÓN GENERAL -->
@@ -299,12 +323,6 @@
                 </form>
               </field>
             </page>
-            <page string="Datos Técnicos Factura" name="datos_tecnicos" attrs="{'invisible': [('factura_datos_extraidos', '=', False)]}">
-              <group string="Información Técnica de Extracción">
-                <field name="factura_datos_extraidos" widget="text" readonly="1" nolabel="1" 
-                       placeholder="Los datos técnicos extraídos de la factura aparecerán aquí..."/>
-              </group>
-            </page>
             <page string="Incidencias" name="incidencias">
               <field name="incidencia_ids">
                 <tree>
@@ -336,13 +354,6 @@
                 <field name="bandeja_last_num"/>
                 <field name="last_response_date" readonly="1"/>
               </group>
-            </page>
-            <page string="Chatter">
-              <chatter>
-                <field name="message_ids"/>
-                <field name="activity_ids"/>
-                <field name="message_follower_ids"/>
-              </chatter>
             </page>
           </notebook>
         </sheet>
