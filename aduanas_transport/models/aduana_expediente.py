@@ -1231,7 +1231,7 @@ class AduanaExpediente(models.Model):
                             else:
                                 # Si ya hay partida, solo añadir al detalle
                                 if partida_validada not in detalle:
-                                    vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
+                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
                         # Acumular cambios de líneas en diccionario (se escribirán después del write principal)
                         cambios_lineas[line.id] = vals_linea
                 
@@ -1370,25 +1370,25 @@ class AduanaExpediente(models.Model):
                 
                 # PASO 3: Crear mensaje en el chatter SOLO AL FINAL (después del write)
                 if mensaje_chatter:
-                    try:
-                        # Obtener el subtipo de mensaje
-                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                        if not subtype:
-                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                        
-                        # Crear mensaje directamente en mail.message sin validaciones de correo
-                        self.env['mail.message'].sudo().create({
-                            'model': 'aduana.expediente',
-                            'res_id': rec.id,
-                            'message_type': 'notification',
-                            'subtype_id': subtype.id if subtype else False,
-                            'body': mensaje_chatter,
-                            'author_id': False,  # Sistema, no usuario
-                            'email_from': False,  # No intentar enviar correo
-                        })
-                    except Exception as msg_error:
-                        # Si hay error al crear mensaje, solo loguear y continuar
-                        _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
+                try:
+                    # Obtener el subtipo de mensaje
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    
+                    # Crear mensaje directamente en mail.message sin validaciones de correo
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
+                        'body': mensaje_chatter,
+                        'author_id': False,  # Sistema, no usuario
+                        'email_from': False,  # No intentar enviar correo
+                    })
+                except Exception as msg_error:
+                    # Si hay error al crear mensaje, solo loguear y continuar
+                    _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
                 
                 # Forzar recarga del registro para actualizar la vista
                 rec.invalidate_recordset()
@@ -1431,21 +1431,21 @@ class AduanaExpediente(models.Model):
                     rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
-                    try:
-                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                        if not subtype:
-                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                        self.env['mail.message'].sudo().create({
-                            'model': 'aduana.expediente',
-                            'res_id': rec.id,
-                            'message_type': 'notification',
-                            'subtype_id': subtype.id if subtype else False,
+                try:
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
                             'body': mensaje_chatter,
-                            'author_id': False,
-                            'email_from': False,
-                        })
-                    except Exception as msg_error:
-                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                        'author_id': False,
+                        'email_from': False,
+                    })
+                except Exception as msg_error:
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
@@ -1470,21 +1470,21 @@ class AduanaExpediente(models.Model):
                     rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
-                    try:
-                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                        if not subtype:
-                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                        self.env['mail.message'].sudo().create({
-                            'model': 'aduana.expediente',
-                            'res_id': rec.id,
-                            'message_type': 'notification',
-                            'subtype_id': subtype.id if subtype else False,
+                try:
+                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                    if not subtype:
+                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                    self.env['mail.message'].sudo().create({
+                        'model': 'aduana.expediente',
+                        'res_id': rec.id,
+                        'message_type': 'notification',
+                        'subtype_id': subtype.id if subtype else False,
                             'body': mensaje_chatter,
-                            'author_id': False,
-                            'email_from': False,
-                        })
-                    except Exception as msg_error:
-                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                        'author_id': False,
+                        'email_from': False,
+                    })
+                except Exception as msg_error:
+                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
@@ -1748,4 +1748,4 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
                 'type': tipo_notificacion,
                 'sticky': len(errores_taric) > 0,  # Hacer sticky si hay errores
             }
-        }
+            }
