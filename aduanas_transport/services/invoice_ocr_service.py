@@ -672,7 +672,9 @@ class InvoiceOCRService(models.AbstractModel):
         
         prompt = """Eres un experto en clasificación arancelaria y auditoría aduanera. Tu tarea es validar y sugerir códigos HS (Sistema Armonizado) para las líneas de una factura comercial.
 
-IMPORTANTE: Cuando el estado sea "sugerido", SIEMPRE debes proporcionar un código HS válido de 8-10 dígitos en partida_validada. NUNCA devuelvas null cuando el estado es "sugerido".
+IMPORTANTE: 
+1. Cuando el estado sea "sugerido" o "corregido", SIEMPRE debes proporcionar un código HS válido de EXACTAMENTE 10 DÍGITOS en partida_validada. NUNCA devuelvas null cuando el estado es "sugerido" o "corregido".
+2. TODOS los códigos arancelarios (partida_validada) DEBEN tener EXACTAMENTE 10 DÍGITOS. Si el código tiene menos dígitos, rellénalo con ceros a la izquierda hasta llegar a 10 dígitos.
 
 Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
 {
@@ -685,7 +687,7 @@ Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
     {
       "index": número de línea (1..n según orden recibido),
       "estado": "correcto" | "corregido" | "sugerido",
-      "partida_validada": "código HS de 8-10 dígitos (OBLIGATORIO si estado es 'sugerido' o 'corregido')",
+      "partida_validada": "código HS de EXACTAMENTE 10 DÍGITOS (OBLIGATORIO si estado es 'sugerido' o 'corregido')",
       "detalle": "explica por qué es correcta o la corrección/sugerencia"
     }
   ],
@@ -693,9 +695,9 @@ Debes devolver JSON ESTRICTO (sin texto extra) con esta forma:
 }
 
 REGLAS DE CLASIFICACIÓN:
-- Usa estado "correcto" si la partida existe, es válida (8-10 dígitos) y es coherente con la descripción del producto.
-- Usa estado "corregido" si la partida actual existe pero es incorrecta; debes proporcionar la partida correcta en partida_validada.
-- Usa estado "sugerido" si NO hay partida o la actual es claramente incorrecta. EN ESTE CASO, SIEMPRE debes sugerir una partida válida basándote en:
+- Usa estado "correcto" si la partida existe, es válida (10 dígitos) y es coherente con la descripción del producto.
+- Usa estado "corregido" si la partida actual existe pero es incorrecta; debes proporcionar la partida correcta en partida_validada (EXACTAMENTE 10 DÍGITOS).
+- Usa estado "sugerido" si NO hay partida o la actual es claramente incorrecta. EN ESTE CASO, SIEMPRE debes sugerir una partida válida de EXACTAMENTE 10 DÍGITOS basándote en:
   * La descripción detallada del producto
   * El tipo de mercancía (textil, electrónica, alimentaria, química, etc.)
   * El país de origen y destino del expediente
@@ -703,19 +705,26 @@ REGLAS DE CLASIFICACIÓN:
   * Tu conocimiento del Sistema Armonizado (HS Code)
 
 CLASIFICACIÓN ARANCELARIA:
-- Los códigos HS tienen 6 dígitos base (capítulo, partida, subpartida) y pueden extenderse a 8-10 dígitos según el país.
-- Para España-Andorra, usa códigos de 8 dígitos (Nomenclatura Combinada - NC).
+- Los códigos HS tienen 6 dígitos base (capítulo, partida, subpartida) y se extienden a 10 dígitos para la Nomenclatura Combinada (NC) de la UE.
+- Para España-Andorra, usa códigos de EXACTAMENTE 10 DÍGITOS (Nomenclatura Combinada - NC).
+- Si el código tiene menos de 10 dígitos, rellénalo con ceros a la izquierda. Ejemplo: "12345678" → "1234567800", "123456" → "1234560000".
 - Analiza cuidadosamente la descripción del producto para determinar la partida más apropiada.
 - Si la descripción es ambigua, elige la partida más probable basándote en el contexto (país origen, tipo de operación, etc.).
 
-EJEMPLOS DE CLASIFICACIÓN:
-- Ropa/textiles: Capítulos 50-63
-- Electrónica: Capítulos 84-85
-- Alimentos: Capítulos 1-24
-- Químicos: Capítulos 28-38
-- Vehículos: Capítulos 86-87
+EJEMPLOS DE CLASIFICACIÓN (siempre 10 dígitos):
+- Ropa/textiles: Capítulos 50-63 (ej: "6109100000" para camisetas)
+- Electrónica: Capítulos 84-85 (ej: "8517120000" para teléfonos)
+- Alimentos: Capítulos 1-24 (ej: "0901110000" para café)
+- Químicos: Capítulos 28-38 (ej: "3004900000" para medicamentos)
+- Vehículos: Capítulos 86-87 (ej: "8703210000" para coches)
 
-Recuerda: Si estado = "sugerido", partida_validada DEBE ser un código HS válido, nunca null."""
+FORMATO DE CÓDIGOS:
+- SIEMPRE devuelve códigos de EXACTAMENTE 10 DÍGITOS.
+- Si el código original tiene 8 dígitos, añade "00" al final: "12345678" → "1234567800".
+- Si el código original tiene 6 dígitos, añade "0000" al final: "123456" → "1234560000".
+- NUNCA devuelvas códigos con menos de 10 dígitos.
+
+Recuerda: Si estado = "sugerido" o "corregido", partida_validada DEBE ser un código HS válido de EXACTAMENTE 10 DÍGITOS, nunca null ni con menos dígitos."""
         user_payload = {
             "factura": {
                 "valor_factura": expediente.valor_factura,

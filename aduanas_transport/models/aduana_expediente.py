@@ -1011,6 +1011,193 @@ class AduanaExpediente(models.Model):
             },
         }
 
+    def _normalize_partida_arancelaria(self, partida):
+        """
+        Normaliza una partida arancelaria a 10 dígitos.
+        Si tiene menos de 10 dígitos, rellena con ceros a la izquierda.
+        Si tiene más de 10 dígitos, trunca a 10.
+        Si no es válida, devuelve None.
+        """
+        if not partida:
+            return None
+        # Limpiar espacios, puntos y otros caracteres
+        partida_limpia = str(partida).strip().replace(' ', '').replace('.', '').replace('-', '')
+        # Solo mantener dígitos
+        partida_limpia = ''.join(filter(str.isdigit, partida_limpia))
+        if not partida_limpia:
+            return None
+        # Si tiene más de 10 dígitos, truncar
+        if len(partida_limpia) > 10:
+            partida_limpia = partida_limpia[:10]
+        # Si tiene menos de 10 dígitos, rellenar con ceros a la izquierda
+        if len(partida_limpia) < 10:
+            partida_limpia = partida_limpia.zfill(10)
+        return partida_limpia
+
+    def action_realizar_verificacion_ia(self):
+        """
+        Realiza la verificación IA de las líneas del expediente sin procesar la factura completa.
+        Valida partidas arancelarias, sugiere correcciones y normaliza a 10 dígitos.
+        """
+        for rec in self:
+            if not rec.line_ids:
+                raise UserError(_("No hay líneas de productos para verificar. Primero debes procesar la factura o agregar líneas manualmente."))
+            
+            # Obtener servicio OCR
+            ocr_service = self.env['aduanas.invoice.ocr.service']
+            
+            # Realizar validación IA
+            ai_validation = None
+            ai_validation_error = None
+            try:
+                ai_validation = ocr_service.validate_invoice_consistency(rec)
+                ai_validation_error = ai_validation.get("error") if ai_validation else None
+            except Exception as val_err:
+                ai_validation_error = str(val_err)
+                _logger.warning("Error ejecutando verificación IA: %s", val_err)
+            
+            if ai_validation_error:
+                raise UserError(_("Error al realizar la verificación IA: %s") % ai_validation_error)
+            
+            if not ai_validation:
+                raise UserError(_("No se pudo obtener resultados de la verificación IA"))
+            
+            # Contexto para evitar notificaciones durante la actualización
+            ctx_no_mail = {
+                'mail_notrack': True,
+                'tracking_disable': True,
+            }
+            
+            # Actualizar líneas con resultados de IA
+            lineas_result = ai_validation.get("lineas", []) or []
+            lines_sorted = rec.line_ids.sorted(lambda l: l.item_number or l.id)
+            cambios_lineas = {}
+            
+            for res in lineas_result:
+                try:
+                    idx = int(res.get("index", 0))
+                except Exception:
+                    idx = 0
+                if not idx or idx > len(lines_sorted):
+                    continue
+                line = lines_sorted[idx - 1]
+                estado = (res.get("estado") or "pendiente").lower()
+                if estado not in ("correcto", "corregido", "sugerido"):
+                    estado = "pendiente"
+                detalle = res.get("detalle") or ""
+                partida_validada = res.get("partida_validada")
+                
+                # Limpiar y normalizar partida_validada
+                if partida_validada in (None, "null", "None", ""):
+                    partida_validada = None
+                else:
+                    partida_validada = str(partida_validada).strip() if partida_validada else None
+                    # Normalizar a 10 dígitos
+                    if partida_validada:
+                        partida_validada = rec._normalize_partida_arancelaria(partida_validada)
+                
+                vals_linea = {
+                    "verificacion_estado": estado,
+                    "verificacion_detalle": detalle,
+                }
+                
+                # Actualizar partida según el estado
+                if estado == "corregido" and partida_validada:
+                    # Si está corregida, siempre actualizar la partida (normalizada a 10 dígitos)
+                    vals_linea["partida"] = partida_validada
+                    if partida_validada not in detalle:
+                        vals_linea["verificacion_detalle"] = f"{detalle} (Corregida: {partida_validada})" if detalle else f"Partida corregida: {partida_validada}"
+                elif estado == "sugerido" and partida_validada:
+                    # Si está sugerida y no hay partida actual, actualizarla automáticamente
+                    if not line.partida or not line.partida.strip():
+                        vals_linea["partida"] = partida_validada
+                        if partida_validada not in detalle:
+                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Partida sugerida: {partida_validada}"
+                    else:
+                        # Si ya hay partida, solo añadir al detalle
+                        if partida_validada not in detalle:
+                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
+                
+                cambios_lineas[line.id] = vals_linea
+            
+            # Normalizar partidas existentes a 10 dígitos
+            for line in rec.line_ids:
+                if line.partida:
+                    partida_normalizada = rec._normalize_partida_arancelaria(line.partida)
+                    if partida_normalizada and partida_normalizada != line.partida:
+                        if line.id not in cambios_lineas:
+                            cambios_lineas[line.id] = {}
+                        cambios_lineas[line.id]["partida"] = partida_normalizada
+            
+            # Aplicar cambios a las líneas
+            for line_id, vals_linea in cambios_lineas.items():
+                line = rec.line_ids.browse(line_id)
+                if line.exists():
+                    line.with_context(**ctx_no_mail).write(vals_linea)
+            
+            # Crear mensaje en el chatter
+            mensaje_chatter = _("🤖 Verificación IA completada<br/><br/>")
+            
+            # Resumen de totales
+            totales_info = ai_validation.get("totales") or {}
+            if totales_info:
+                estado_totales = _("✅ OK") if totales_info.get("es_coherente") else _("⚠️ Revisar")
+                detalle_totales = totales_info.get("detalle") or ""
+                diferencia = totales_info.get("diferencia")
+                diferencia_txt = f" (diferencia: {diferencia})" if diferencia is not None else ""
+                mensaje_chatter += _("📊 Totales: %s. %s%s<br/>") % (estado_totales, detalle_totales, diferencia_txt)
+            
+            # Resumen de líneas
+            if lineas_result:
+                mensaje_chatter += _("<br/>📦 Líneas revisadas:<br/>")
+                for res in lineas_result:
+                    idx_txt = res.get("index")
+                    estado_txt = (res.get("estado") or "").capitalize()
+                    detalle_txt = res.get("detalle") or ""
+                    partida_txt = res.get("partida_validada") or ""
+                    if partida_txt:
+                        partida_txt = rec._normalize_partida_arancelaria(partida_txt) or partida_txt
+                    extra = f" | Partida: {partida_txt}" if partida_txt else ""
+                    mensaje_chatter += f"Línea {idx_txt}: {estado_txt}{extra}. {detalle_txt}<br/>"
+            
+            if ai_validation.get("resumen"):
+                mensaje_chatter += f"<br/>{ai_validation.get('resumen')}<br/>"
+            
+            # Crear mensaje en el chatter
+            try:
+                subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                if not subtype:
+                    subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                
+                self.env['mail.message'].sudo().create({
+                    'model': 'aduana.expediente',
+                    'res_id': rec.id,
+                    'message_type': 'notification',
+                    'subtype_id': subtype.id if subtype else False,
+                    'body': mensaje_chatter,
+                    'author_id': False,
+                    'email_from': False,
+                })
+            except Exception as msg_error:
+                _logger.warning("No se pudo crear mensaje en chatter: %s", msg_error)
+            
+            # Forzar recarga del registro
+            rec.invalidate_recordset()
+            
+            # Notificación
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Verificación IA completada"),
+                    "message": _("La verificación IA se ha completado. Revisa los resultados en el chatter y en las líneas del expediente."),
+                    "type": "success",
+                    "sticky": False,
+                },
+            }
+        
+        return True
+
     def cron_process_invoice_pdf_queue(self, limit=2):
         """Procesa en background las facturas encoladas para evitar timeouts HTTP."""
         pending = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
@@ -1211,6 +1398,9 @@ class AduanaExpediente(models.Model):
                         else:
                             # Asegurar que sea string y limpiar espacios
                             partida_validada = str(partida_validada).strip() if partida_validada else None
+                            # Normalizar a 10 dígitos
+                            if partida_validada:
+                                partida_validada = rec._normalize_partida_arancelaria(partida_validada)
                         
                         vals_linea = {
                             "verificacion_estado": estado,
@@ -1218,7 +1408,7 @@ class AduanaExpediente(models.Model):
                         }
                         # Actualizar partida según el estado
                         if estado == "corregido" and partida_validada:
-                            # Si está corregida, siempre actualizar la partida
+                            # Si está corregida, siempre actualizar la partida (normalizada a 10 dígitos)
                             vals_linea["partida"] = partida_validada
                             if partida_validada not in detalle:
                                 vals_linea["verificacion_detalle"] = f"{detalle} (Corregida: {partida_validada})" if detalle else f"Partida corregida: {partida_validada}"
@@ -1231,9 +1421,18 @@ class AduanaExpediente(models.Model):
                             else:
                                 # Si ya hay partida, solo añadir al detalle
                                 if partida_validada not in detalle:
-                            vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
+                                    vals_linea["verificacion_detalle"] = f"{detalle} (Sugerida: {partida_validada})" if detalle else f"Sugerida: {partida_validada}"
                         # Acumular cambios de líneas en diccionario (se escribirán después del write principal)
                         cambios_lineas[line.id] = vals_linea
+                
+                # Normalizar partidas existentes a 10 dígitos
+                for line in rec.line_ids:
+                    if line.partida:
+                        partida_normalizada = rec._normalize_partida_arancelaria(line.partida)
+                        if partida_normalizada and partida_normalizada != line.partida:
+                            if line.id not in cambios_lineas:
+                                cambios_lineas[line.id] = {}
+                            cambios_lineas[line.id]["partida"] = partida_normalizada
                 
                 # Crear mensaje detallado para el chatter con todos los datos extraídos
                 mensaje_chatter = _("✅ Factura procesada correctamente<br/><br/>")
@@ -1370,25 +1569,25 @@ class AduanaExpediente(models.Model):
                 
                 # PASO 3: Crear mensaje en el chatter SOLO AL FINAL (después del write)
                 if mensaje_chatter:
-                try:
-                    # Obtener el subtipo de mensaje
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    
-                    # Crear mensaje directamente en mail.message sin validaciones de correo
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
-                        'body': mensaje_chatter,
-                        'author_id': False,  # Sistema, no usuario
-                        'email_from': False,  # No intentar enviar correo
-                    })
-                except Exception as msg_error:
-                    # Si hay error al crear mensaje, solo loguear y continuar
-                    _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
+                    try:
+                        # Obtener el subtipo de mensaje
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        
+                        # Crear mensaje directamente en mail.message sin validaciones de correo
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
+                            'body': mensaje_chatter,
+                            'author_id': False,  # Sistema, no usuario
+                            'email_from': False,  # No intentar enviar correo
+                        })
+                    except Exception as msg_error:
+                        # Si hay error al crear mensaje, solo loguear y continuar
+                        _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
                 
                 # Forzar recarga del registro para actualizar la vista
                 rec.invalidate_recordset()
@@ -1431,21 +1630,21 @@ class AduanaExpediente(models.Model):
                     rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
-                try:
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
+                    try:
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
                             'body': mensaje_chatter,
-                        'author_id': False,
-                        'email_from': False,
-                    })
-                except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                            'author_id': False,
+                            'email_from': False,
+                        })
+                    except Exception as msg_error:
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
@@ -1470,21 +1669,21 @@ class AduanaExpediente(models.Model):
                     rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
-                try:
-                    subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
-                    if not subtype:
-                        subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
-                    self.env['mail.message'].sudo().create({
-                        'model': 'aduana.expediente',
-                        'res_id': rec.id,
-                        'message_type': 'notification',
-                        'subtype_id': subtype.id if subtype else False,
+                    try:
+                        subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
+                        if not subtype:
+                            subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
+                        self.env['mail.message'].sudo().create({
+                            'model': 'aduana.expediente',
+                            'res_id': rec.id,
+                            'message_type': 'notification',
+                            'subtype_id': subtype.id if subtype else False,
                             'body': mensaje_chatter,
-                        'author_id': False,
-                        'email_from': False,
-                    })
-                except Exception as msg_error:
-                    _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
+                            'author_id': False,
+                            'email_from': False,
+                        })
+                    except Exception as msg_error:
+                        _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
                 rec.invalidate_recordset()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:

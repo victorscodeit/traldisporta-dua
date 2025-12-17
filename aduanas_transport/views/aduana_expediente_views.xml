@@ -34,11 +34,15 @@
     <field name="arch" type="xml">
       <form string="Expediente Aduanero">
         <header>
-          <!-- Botones principales en orden: Procesar Factura, Generar DUA, Consultar bandeja -->
+          <!-- Botones principales en orden: Procesar Factura, Verificación IA, Generar DUA, Consultar bandeja -->
           <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': ['|', ('factura_pdf', '=', False), ('factura_procesada', '=', True)]}"
                   help="Extrae datos de la factura PDF usando IA/OCR"/>
+          <button name="action_realizar_verificacion_ia" string="Realizar Verificación IA" type="object"
+                  class="oe_highlight"
+                  attrs="{'invisible': [('line_ids', '=', [])]}"
+                  help="Realiza una verificación IA de las partidas arancelarias y coherencia de las líneas del expediente. Normaliza las partidas a 10 dígitos."/>
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
