@@ -377,7 +377,9 @@ class AduanaExpediente(models.Model):
             rec.incidencias_count = len(rec.incidencia_ids)
             rec.incidencias_pendientes_count = len(rec.incidencia_ids.filtered(lambda i: i.state in ("pendiente", "en_revision")))
     
-    @api.depends("line_ids", "line_ids.verificacion_estado", "line_ids.verificacion_detalle")
+    @api.depends("line_ids", "line_ids.verificacion_estado", "line_ids.verificacion_detalle", 
+                 "line_ids.valor_linea", "valor_factura", 
+                 "documento_requerido_ids", "documento_requerido_ids.mandatory", "documento_requerido_ids.estado")
     def _compute_verificacion_ia_resumen(self):
         """Calcula el resumen del estado de verificación IA basado en todas las líneas"""
         for rec in self:
@@ -394,19 +396,45 @@ class AduanaExpediente(models.Model):
             sugeridos = estados.count("sugerido")
             pendientes = estados.count("pendiente")
             
-            # Determinar estado general
+            # Verificar incongruencias entre totales y líneas
+            suma_lineas = sum(rec.line_ids.mapped("valor_linea") or [0])
+            valor_factura = rec.valor_factura or 0
+            diferencia = abs(suma_lineas - valor_factura)
+            tiene_incongruencia_totales = diferencia > 0.01  # Tolerancia para decimales
+            
+            # Verificar documentos faltantes (obligatorios sin subir)
+            documentos_faltantes = rec.documento_requerido_ids.filtered(
+                lambda d: d.mandatory and d.estado == 'pendiente'
+            )
+            num_docs_faltantes = len(documentos_faltantes)
+            tiene_docs_faltantes = num_docs_faltantes > 0
+            
+            # Construir resumen con todas las verificaciones
+            problemas = []
+            
+            # Problemas críticos
             if pendientes > 0:
-                # Si hay líneas pendientes, es crítico
+                problemas.append(f"{pendientes} línea(s) pendiente(s)")
+            if tiene_docs_faltantes:
+                problemas.append(f"{num_docs_faltantes} documento(s) obligatorio(s) faltante(s)")
+            
+            # Problemas de advertencia
+            if tiene_incongruencia_totales:
+                problemas.append(f"Incongruencia totales: {suma_lineas:.2f} vs {valor_factura:.2f}")
+            if corregidos > 0:
+                problemas.append(f"{corregidos} línea(s) corregida(s)")
+            if sugeridos > 0:
+                problemas.append(f"{sugeridos} línea(s) con sugerencias")
+            
+            # Determinar estado general
+            if pendientes > 0 or tiene_docs_faltantes:
+                # Si hay líneas pendientes o documentos faltantes, es crítico
                 rec.verificacion_ia_estado = "critico"
-                rec.verificacion_ia_resumen = f"{pendientes} línea(s) pendiente(s) de verificar"
-            elif corregidos > 0:
-                # Si hay correcciones, es advertencia
+                rec.verificacion_ia_resumen = " | ".join(problemas) if problemas else "Problemas críticos detectados"
+            elif tiene_incongruencia_totales or corregidos > 0 or sugeridos > 0:
+                # Si hay incongruencias, correcciones o sugerencias, es advertencia
                 rec.verificacion_ia_estado = "advertencia"
-                rec.verificacion_ia_resumen = f"{corregidos} línea(s) corregida(s)"
-            elif sugeridos > 0:
-                # Si hay sugerencias, es advertencia
-                rec.verificacion_ia_estado = "advertencia"
-                rec.verificacion_ia_resumen = f"{sugeridos} línea(s) con sugerencias"
+                rec.verificacion_ia_resumen = " | ".join(problemas) if problemas else "Advertencias detectadas"
             elif correctos == total:
                 # Todas correctas
                 rec.verificacion_ia_estado = "ok"
@@ -1894,21 +1922,36 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         taric_service = self.env["aduanas.taric.service"]
         documentos_creados = 0
         documentos_actualizados = 0
+        documentos_eliminados = 0
         errores_taric = []
         
-        # Obtener todas las partidas únicas del expediente
-        partidas_unicas = expediente.line_ids.filtered(lambda l: l.partida and len(str(l.partida).strip()) >= 8).mapped('partida')
-        partidas_unicas = list(set(partidas_unicas))
+        # Obtener todas las partidas únicas del expediente (normalizadas)
+        partidas_en_lineas = expediente.line_ids.filtered(lambda l: l.partida and len(str(l.partida).strip()) >= 8).mapped('partida')
+        partidas_unicas = []
+        partidas_normalizadas = set()
+        
+        for partida in partidas_en_lineas:
+            # Normalizar partida usando el método del expediente
+            partida_limpia = expediente._normalize_partida_arancelaria(partida)
+            if partida_limpia and len(partida_limpia) >= 8 and partida_limpia not in partidas_normalizadas:
+                partidas_unicas.append(partida_limpia)
+                partidas_normalizadas.add(partida_limpia)
         
         if not partidas_unicas:
             raise UserError(_("No hay partidas arancelarias válidas (mínimo 8 dígitos) en las líneas del expediente."))
         
-        for partida in partidas_unicas:
-            # Limpiar partida (solo números)
-            partida_limpia = ''.join(filter(str.isdigit, str(partida)))[:10]
-            if len(partida_limpia) < 8:
-                continue
-            
+        # PASO 1: Eliminar documentos TARIC que ya no corresponden a ninguna partida actual
+        documentos_existentes = self.search([('expediente_id', '=', expediente.id)])
+        for doc in documentos_existentes:
+            # Normalizar la partida del documento para comparar usando el método del expediente
+            doc_partida_limpia = expediente._normalize_partida_arancelaria(doc.partida_arancelaria)
+            # Si la partida del documento no está en las partidas actuales, eliminarlo
+            if not doc_partida_limpia or doc_partida_limpia not in partidas_normalizadas:
+                doc.unlink()
+                documentos_eliminados += 1
+        
+        # PASO 2: Consultar TARIC y actualizar/crear documentos para las partidas actuales
+        for partida_limpia in partidas_unicas:
             # Consultar TARIC
             try:
                 documentos_taric = taric_service.get_required_documents(
@@ -1971,19 +2014,29 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
                     documentos_creados += 1
         
         # Construir mensaje con resultados
+        mensaje_partes = []
+        if documentos_eliminados > 0:
+            mensaje_partes.append(_("%d documento(s) eliminado(s) (partidas obsoletas)") % documentos_eliminados)
+        if documentos_creados > 0:
+            mensaje_partes.append(_("%d documento(s) creado(s)") % documentos_creados)
+        if documentos_actualizados > 0:
+            mensaje_partes.append(_("%d documento(s) actualizado(s)") % documentos_actualizados)
+        
         if errores_taric:
-            mensaje = _("Consulta TARIC completada con advertencias:\n- %d documentos creados\n- %d actualizados\n\nErrores:\n%s") % (
-                documentos_creados, 
-                documentos_actualizados,
+            mensaje = _("Consulta TARIC completada con advertencias:\n- %s\n\nErrores:\n%s") % (
+                "\n- ".join(mensaje_partes) if mensaje_partes else _("Sin cambios"),
                 "\n".join(errores_taric[:5])  # Mostrar máximo 5 errores
             )
             tipo_notificacion = 'warning'
         else:
-            mensaje = _("Consulta TARIC completada: %d documentos creados, %d actualizados.") % (documentos_creados, documentos_actualizados)
+            if mensaje_partes:
+                mensaje = _("Consulta TARIC completada:\n- %s") % "\n- ".join(mensaje_partes)
+            else:
+                mensaje = _("Consulta TARIC completada: Sin cambios necesarios.")
             tipo_notificacion = 'success'
         
         # Si no se crearon documentos y hubo errores, sugerir añadir manualmente
-        if documentos_creados == 0 and documentos_actualizados == 0 and errores_taric:
+        if documentos_creados == 0 and documentos_actualizados == 0 and documentos_eliminados == 0 and errores_taric:
             mensaje += _("\n\nNota: El servicio TARIC no está disponible. Puedes añadir los documentos requeridos manualmente.")
         
         return {
