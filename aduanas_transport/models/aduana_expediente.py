@@ -1277,17 +1277,16 @@ class AduanaExpediente(models.Model):
             
             # Forzar recarga del registro
             rec.invalidate_recordset()
+            rec.refresh()
             
-            # Notificación
+            # Retornar acción para recargar la vista del expediente
+            # Esto automáticamente recargará la vista con los datos actualizados
             return {
-                "type": "ir.actions.client",
-                "tag": "display_notification",
-                "params": {
-                    "title": _("Verificación IA completada"),
-                    "message": _("La verificación IA se ha completado. Revisa los resultados en el chatter y en las líneas del expediente."),
-                    "type": "success",
-                    "sticky": False,
-                },
+                "type": "ir.actions.act_window",
+                "res_model": "aduana.expediente",
+                "res_id": rec.id,
+                "view_mode": "form",
+                "target": "current",
             }
         
         return True
@@ -2076,13 +2075,16 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
             except Exception as msg_error:
                 _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
         
+        # Forzar recarga del registro para actualizar la vista
+        expediente.invalidate_recordset()
+        expediente.refresh()
+        
+        # Retornar acción para recargar la vista del expediente
+        # Esto automáticamente recargará la vista con los datos actualizados
         return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('Consulta TARIC'),
-                'message': mensaje,
-                'type': tipo_notificacion,
-                'sticky': len(errores_taric) > 0,  # Hacer sticky si hay errores
-            }
-            }
+            'type': 'ir.actions.act_window',
+            'res_model': 'aduana.expediente',
+            'res_id': expediente.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
