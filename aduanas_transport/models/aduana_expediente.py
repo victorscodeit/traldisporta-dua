@@ -1093,11 +1093,19 @@ class AduanaExpediente(models.Model):
         Si tiene menos de 10 dígitos, rellena con ceros al final (a la derecha).
         Si tiene más de 10 dígitos, trunca a 10.
         Si no es válida, devuelve None.
+        IMPORTANTE: Preserva códigos de exactamente 10 dígitos tal cual vienen.
         """
         if not partida:
             return None
+        # Convertir a string preservando el formato original
+        # Si viene como número, convertir manteniendo todos los dígitos
+        if isinstance(partida, (int, float)):
+            # Convertir a string sin formateo adicional para preservar ceros finales
+            partida_str = str(int(partida))
+        else:
+            partida_str = str(partida).strip()
         # Limpiar espacios, puntos y otros caracteres
-        partida_limpia = str(partida).strip().replace(' ', '').replace('.', '').replace('-', '')
+        partida_limpia = partida_str.replace(' ', '').replace('.', '').replace('-', '')
         # Solo mantener dígitos
         partida_limpia = ''.join(filter(str.isdigit, partida_limpia))
         if not partida_limpia:
@@ -1108,6 +1116,7 @@ class AduanaExpediente(models.Model):
         # Si tiene menos de 10 dígitos, rellenar con ceros al final (a la derecha)
         if len(partida_limpia) < 10:
             partida_limpia = partida_limpia.ljust(10, '0')
+        # Si tiene exactamente 10 dígitos, devolver tal cual (sin modificar)
         return partida_limpia
 
     def action_realizar_verificacion_ia(self):
@@ -1167,8 +1176,17 @@ class AduanaExpediente(models.Model):
                 if partida_validada in (None, "null", "None", ""):
                     partida_validada = None
                 else:
-                    partida_validada = str(partida_validada).strip() if partida_validada else None
-                    # Normalizar a 10 dígitos
+                    # Convertir a string preservando el formato original (importante para códigos con ceros)
+                    # Si viene como número, convertirlo a string manteniendo todos los dígitos
+                    # IMPORTANTE: No usar formateo con :010d porque rellena con ceros a la izquierda
+                    # En su lugar, convertir directamente a string para preservar el formato original
+                    if isinstance(partida_validada, (int, float)):
+                        # Convertir a string sin formateo adicional para preservar ceros finales
+                        # Si el número es 1212210000, str() debería dar "1212210000"
+                        partida_validada = str(int(partida_validada))
+                    else:
+                        partida_validada = str(partida_validada).strip() if partida_validada else None
+                    # Normalizar a 10 dígitos (solo si es necesario, preserva códigos de 10 dígitos tal cual)
                     if partida_validada:
                         partida_validada = rec._normalize_partida_arancelaria(partida_validada)
                 
@@ -1472,9 +1490,17 @@ class AduanaExpediente(models.Model):
                         if partida_validada in (None, "null", "None", ""):
                             partida_validada = None
                         else:
-                            # Asegurar que sea string y limpiar espacios
-                            partida_validada = str(partida_validada).strip() if partida_validada else None
-                            # Normalizar a 10 dígitos
+                            # Convertir a string preservando el formato original (importante para códigos con ceros)
+                            # Si viene como número, convertirlo a string manteniendo todos los dígitos
+                            # IMPORTANTE: No usar formateo con :010d porque rellena con ceros a la izquierda
+                            # En su lugar, convertir directamente a string para preservar el formato original
+                            if isinstance(partida_validada, (int, float)):
+                                # Convertir a string sin formateo adicional para preservar ceros finales
+                                # Si el número es 1212210000, str() debería dar "1212210000"
+                                partida_validada = str(int(partida_validada))
+                            else:
+                                partida_validada = str(partida_validada).strip() if partida_validada else None
+                            # Normalizar a 10 dígitos (solo si es necesario, preserva códigos de 10 dígitos tal cual)
                             if partida_validada:
                                 partida_validada = rec._normalize_partida_arancelaria(partida_validada)
                         
@@ -1994,24 +2020,8 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
                             'estado': 'pendiente',
                         })
                         documentos_creados += 1
-            else:
-                # Si TARIC no devuelve documentos, crear uno genérico para que el usuario pueda añadir manualmente
-                existing = self.search([
-                    ('expediente_id', '=', expediente.id),
-                    ('partida_arancelaria', '=', partida_limpia),
-                    ('codigo_documento', '=', False)
-                ], limit=1)
-                
-                if not existing:
-                    self.create({
-                        'expediente_id': expediente.id,
-                        'partida_arancelaria': partida_limpia,
-                        'name': _("Documentos requeridos para partida %s") % partida_limpia,
-                        'description': _("Consulta TARIC no devolvió documentos específicos. Añade los documentos necesarios manualmente."),
-                        'mandatory': True,
-                        'estado': 'pendiente',
-                    })
-                    documentos_creados += 1
+            # Si TARIC no devuelve documentos, NO crear ningún documento genérico
+            # Solo se crean documentos cuando la API devuelve resultados
         
         # Construir mensaje con resultados
         mensaje_partes = []
@@ -2038,6 +2048,33 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         # Si no se crearon documentos y hubo errores, sugerir añadir manualmente
         if documentos_creados == 0 and documentos_actualizados == 0 and documentos_eliminados == 0 and errores_taric:
             mensaje += _("\n\nNota: El servicio TARIC no está disponible. Puedes añadir los documentos requeridos manualmente.")
+        
+        # Publicar resumen en el chatter si hay errores
+        if errores_taric:
+            mensaje_chatter = _("<b>🔍 Consulta TARIC - Resumen con errores</b><br/><br/>")
+            if documentos_eliminados > 0:
+                mensaje_chatter += _("📄 %d documento(s) eliminado(s) (partidas obsoletas)<br/>") % documentos_eliminados
+            if documentos_creados > 0:
+                mensaje_chatter += _("➕ %d documento(s) creado(s)<br/>") % documentos_creados
+            if documentos_actualizados > 0:
+                mensaje_chatter += _("🔄 %d documento(s) actualizado(s)<br/>") % documentos_actualizados
+            if not mensaje_partes:
+                mensaje_chatter += _("ℹ️ Sin cambios en documentos<br/>")
+            
+            mensaje_chatter += _("<br/><b>⚠️ Errores encontrados:</b><br/>")
+            for error in errores_taric[:10]:  # Mostrar hasta 10 errores en el chatter
+                mensaje_chatter += f"• {error}<br/>"
+            
+            if len(errores_taric) > 10:
+                mensaje_chatter += _("<br/>... y %d error(es) más.") % (len(errores_taric) - 10)
+            
+            try:
+                expediente.with_context(mail_notrack=True).message_post(
+                    body=mensaje_chatter,
+                    subtype_xmlid='mail.mt_note'
+                )
+            except Exception as msg_error:
+                _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
         
         return {
             'type': 'ir.actions.client',
