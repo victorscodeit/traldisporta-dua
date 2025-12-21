@@ -438,6 +438,19 @@
     </field>
   </record>
 
+  <!-- Acción de servidor para procesar facturas múltiples -->
+  <record id="action_procesar_facturas_multi" model="ir.actions.server">
+    <field name="name">Procesar Facturas</field>
+    <field name="model_id" ref="model_aduana_expediente"/>
+    <field name="binding_model_id" ref="model_aduana_expediente"/>
+    <field name="binding_view_types">list</field>
+    <field name="state">code</field>
+    <field name="code">
+if records:
+    action = records.action_procesar_facturas_multi()
+    </field>
+  </record>
+
   <!-- Acción para Subir Facturas (desde Expediciones) -->
   <record id="action_subir_facturas_desde_expedientes" model="ir.actions.act_window">
     <field name="name">Subir Facturas</field>

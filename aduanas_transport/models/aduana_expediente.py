@@ -1087,6 +1087,58 @@ class AduanaExpediente(models.Model):
             },
         }
 
+    def action_procesar_facturas_multi(self):
+        """
+        Procesa las facturas de múltiples expedientes seleccionados.
+        Encola el procesamiento en background usando jobs.
+        """
+        if not self:
+            raise UserError(_("No hay expedientes seleccionados"))
+        
+        # Filtrar expedientes que tienen factura PDF y no están ya procesados
+        expedientes_a_procesar = self.filtered(
+            lambda e: e.factura_pdf and not e.factura_procesada
+        )
+        
+        if not expedientes_a_procesar:
+            raise UserError(_("No hay expedientes con facturas PDF pendientes de procesar en la selección"))
+        
+        # Contar expedientes sin factura o ya procesados para informar
+        sin_factura = self.filtered(lambda e: not e.factura_pdf)
+        ya_procesados = self.filtered(lambda e: e.factura_procesada)
+        
+        # Procesar cada expediente
+        for expediente in expedientes_a_procesar:
+            try:
+                expediente.action_process_invoice_pdf()
+            except Exception as e:
+                _logger.exception("Error encolando procesamiento de factura para expediente %s: %s", expediente.name, e)
+                expediente.write({
+                    "factura_estado_procesamiento": "error",
+                    "factura_mensaje_error": _("Error al encolar procesamiento: %s") % str(e),
+                })
+        
+        # Construir mensaje de resultado
+        mensaje = _("Se han encolado %d expediente(s) para procesar sus facturas.") % len(expedientes_a_procesar)
+        
+        if sin_factura:
+            mensaje += "\n" + _("%d expediente(s) no tienen factura PDF adjunta.") % len(sin_factura)
+        
+        if ya_procesados:
+            mensaje += "\n" + _("%d expediente(s) ya tienen la factura procesada.") % len(ya_procesados)
+        
+        # Notificación
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Procesamiento en background"),
+                "message": mensaje,
+                "type": "success",
+                "sticky": True,
+            },
+        }
+
     def _normalize_partida_arancelaria(self, partida):
         """
         Normaliza una partida arancelaria a 10 dígitos.
