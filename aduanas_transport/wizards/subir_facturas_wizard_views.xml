@@ -19,11 +19,11 @@
               o haz clic para seleccionar archivos
             </div>
           </div>
-          <group>
-            <field name="factura_ids" nolabel="1">
+          <group class="o_group_full_width" colspan="2">
+            <field name="factura_ids" nolabel="1" class="oe_full_width" colspan="2">
               <tree editable="bottom" create="0" delete="1" string="Facturas a subir">
-                <field name="name" required="1" readonly="1"/>
-                <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1" readonly="1"/>
+                <field name="name" string="Nombre" required="1" readonly="1"/>
+                <field name="factura_pdf" string="Factura PDF" filename="factura_pdf_filename" widget="binary" required="1" readonly="1"/>
                 <field name="factura_pdf_filename" invisible="1"/>
               </tree>
             </field>

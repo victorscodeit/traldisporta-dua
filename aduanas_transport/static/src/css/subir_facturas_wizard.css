@@ -21,7 +21,16 @@
 }
 
 .drop-zone-facturas input[type="file"] {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+    opacity: 0;
 }
 
 .drop-zone-facturas .drop-icon {
@@ -39,5 +48,64 @@
 .drop-zone-facturas .drop-hint {
     font-size: 12px;
     color: #999;
+}
+
+/* Hacer que el grupo de facturas ocupe todo el ancho */
+.o_group_full_width {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+}
+
+.o_group_full_width .o_group {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+}
+
+.o_group_full_width field[name="factura_ids"],
+.o_group_full_width .oe_full_width {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+}
+
+/* Asegurar que el contenedor de la lista ocupe todo el ancho */
+.o_group_full_width .o_list_view,
+.o_group_full_width .o_list_view .o_list_table_wrapper,
+.o_group_full_width .o_list_table_wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+}
+
+/* Asegurar que la tabla ocupe todo el ancho */
+.o_group_full_width table.o_list_table,
+.o_group_full_width .o_list_table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto;
+}
+
+/* Asegurar que el sheet y el form ocupen todo el ancho */
+.o_form_view .o_form_sheet .o_group_full_width {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Forzar que el campo One2many ocupe todo el ancho disponible */
+.o_form_view field[name="factura_ids"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.o_form_view field[name="factura_ids"] .o_list_view {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.o_form_view field[name="factura_ids"] .o_list_table_wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
 }
 

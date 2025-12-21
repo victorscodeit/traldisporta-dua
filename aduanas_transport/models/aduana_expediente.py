@@ -2048,32 +2048,47 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         if documentos_creados == 0 and documentos_actualizados == 0 and documentos_eliminados == 0 and errores_taric:
             mensaje += _("\n\nNota: El servicio TARIC no está disponible. Puedes añadir los documentos requeridos manualmente.")
         
-        # Publicar resumen en el chatter si hay errores
+        # Publicar resumen en el chatter (siempre, con o sin errores)
         if errores_taric:
             mensaje_chatter = _("<b>🔍 Consulta TARIC - Resumen con errores</b><br/><br/>")
-            if documentos_eliminados > 0:
-                mensaje_chatter += _("📄 %d documento(s) eliminado(s) (partidas obsoletas)<br/>") % documentos_eliminados
-            if documentos_creados > 0:
-                mensaje_chatter += _("➕ %d documento(s) creado(s)<br/>") % documentos_creados
-            if documentos_actualizados > 0:
-                mensaje_chatter += _("🔄 %d documento(s) actualizado(s)<br/>") % documentos_actualizados
-            if not mensaje_partes:
-                mensaje_chatter += _("ℹ️ Sin cambios en documentos<br/>")
-            
+        else:
+            mensaje_chatter = _("<b>🔍 Consulta TARIC - Resumen</b><br/><br/>")
+        
+        # Agregar información de documentos procesados
+        if documentos_eliminados > 0:
+            mensaje_chatter += _("📄 %d documento(s) eliminado(s) (partidas obsoletas)<br/>") % documentos_eliminados
+        if documentos_creados > 0:
+            mensaje_chatter += _("➕ %d documento(s) creado(s)<br/>") % documentos_creados
+        if documentos_actualizados > 0:
+            mensaje_chatter += _("🔄 %d documento(s) actualizado(s)<br/>") % documentos_actualizados
+        if not mensaje_partes:
+            mensaje_chatter += _("ℹ️ Sin cambios en documentos<br/>")
+        
+        # Agregar información de partidas consultadas
+        if partidas_unicas:
+            mensaje_chatter += _("<br/><b>📋 Partidas consultadas:</b><br/>")
+            for partida in partidas_unicas[:10]:  # Mostrar hasta 10 partidas
+                mensaje_chatter += f"• {partida}<br/>"
+            if len(partidas_unicas) > 10:
+                mensaje_chatter += _("... y %d partida(s) más.<br/>") % (len(partidas_unicas) - 10)
+        
+        # Agregar errores si los hay
+        if errores_taric:
             mensaje_chatter += _("<br/><b>⚠️ Errores encontrados:</b><br/>")
             for error in errores_taric[:10]:  # Mostrar hasta 10 errores en el chatter
                 mensaje_chatter += f"• {error}<br/>"
             
             if len(errores_taric) > 10:
                 mensaje_chatter += _("<br/>... y %d error(es) más.") % (len(errores_taric) - 10)
-            
-            try:
-                expediente.with_context(mail_notrack=True).message_post(
-                    body=mensaje_chatter,
-                    subtype_xmlid='mail.mt_note'
-                )
-            except Exception as msg_error:
-                _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
+        
+        # Publicar mensaje en el chatter
+        try:
+            expediente.with_context(mail_notrack=True).message_post(
+                body=mensaje_chatter,
+                subtype_xmlid='mail.mt_note'
+            )
+        except Exception as msg_error:
+            _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
         
         # Forzar recarga del registro para actualizar la vista
         expediente.invalidate_recordset()

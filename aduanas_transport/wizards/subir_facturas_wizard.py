@@ -17,6 +17,31 @@ class SubirFacturasWizard(models.TransientModel):
         required=True
     )
 
+    def action_agregar_archivos(self, files_data):
+        """
+        Método para agregar archivos PDF al wizard desde JavaScript
+        files_data: lista de diccionarios con {name, factura_pdf, factura_pdf_filename}
+        """
+        self.ensure_one()
+        
+        if not files_data:
+            return False
+        
+        # Crear las líneas del wizard
+        line_vals = []
+        for file_data in files_data:
+            line_vals.append({
+                'wizard_id': self.id,
+                'name': file_data.get('name', file_data.get('factura_pdf_filename', 'Sin nombre')),
+                'factura_pdf': file_data.get('factura_pdf'),
+                'factura_pdf_filename': file_data.get('factura_pdf_filename', file_data.get('name', 'Sin nombre')),
+            })
+        
+        # Crear las líneas
+        self.env['aduanas.subir.facturas.wizard.line'].create(line_vals)
+        
+        return True
+
     def action_crear_expediciones(self):
         """Crea expediciones desde los PDFs subidos"""
         self.ensure_one()
