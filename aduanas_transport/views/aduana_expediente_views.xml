@@ -244,18 +244,18 @@
 
           <notebook>
             <page string="Líneas">
-              <field name="line_ids">
-                <tree editable="bottom">
+              <field name="line_ids" limit="40">
+                <tree editable="bottom" default_order="item_number">
                   <field name="item_number"/>
                   <field name="partida"/>
                   <field name="descripcion"/>
-                  <field name="unidades"/>
-                  <field name="bultos"/>
-                  <field name="peso_bruto"/>
-                  <field name="peso_neto"/>
+                  <field name="unidades" sum="Total"/>
+                  <field name="bultos" sum="Total"/>
+                  <field name="peso_bruto" sum="Total"/>
+                  <field name="peso_neto" sum="Total"/>
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
-                  <field name="valor_linea"/>
+                  <field name="valor_linea" sum="Total"/>
                   <field name="verificacion_estado" widget="badge"
                          decoration-success="verificacion_estado == 'correcto'"
                          decoration-info="verificacion_estado == 'verificado'"

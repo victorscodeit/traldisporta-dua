@@ -773,12 +773,15 @@ Recuerda: Si estado = "sugerido" o "corregido", partida_validada DEBE ser un có
             
             prompt = f"""Eres un experto en procesamiento de facturas comerciales para documentos aduaneros.
 
-IMPORTANTE: El texto que recibes proviene de una factura que puede tener MÚLTIPLES PÁGINAS. Debes analizar TODO el texto de TODAS las páginas para extraer:
-- TODAS las líneas de productos (no solo las de la primera página)
-- El valor total de la factura (que suele estar en la última página)
-- Toda la información relevante de todas las páginas
-
+⚠️⚠️⚠️ CRÍTICO - FACTURAS MULTI-PÁGINA ⚠️⚠️⚠️
+El texto que recibes proviene de una factura que puede tener MÚLTIPLES PÁGINAS (hasta 100+ páginas).
 El texto tiene aproximadamente {text_length} caracteres, lo que sugiere {num_pages_estimated} o más páginas.
+
+DEBES analizar TODO el texto de TODAS las páginas de principio a fin. NO te detengas en la primera página.
+- Extrae TODAS las líneas de productos de TODAS las páginas - no solo las de la primera página
+- El valor total de la factura (valor_total) suele estar en la ÚLTIMA página - busca términos como "TOTAL", "TOTAL FACTURA", "IMPORTE TOTAL", "TOTAL A PAGAR"
+- Las líneas de productos pueden continuar en páginas siguientes - busca tablas o listas que se extiendan por múltiples páginas
+- Recorre TODO el texto completo antes de generar la respuesta
 
 Analiza TODO el texto de principio a fin y extrae TODA la información relevante en formato JSON estricto.
 
@@ -822,10 +825,10 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
 }}
 
 INSTRUCCIONES CRÍTICAS PARA FACTURAS MULTI-PÁGINA:
-1. LEE TODO EL TEXTO DE PRINCIPIO A FIN - NO te detengas en la primera página
-2. Extrae TODAS las líneas de productos de TODAS las páginas - no solo las de la primera página
-3. El valor total (valor_total) suele estar en la ÚLTIMA página - busca términos como "TOTAL", "TOTAL FACTURA", "IMPORTE TOTAL", "TOTAL A PAGAR"
-4. Las líneas de productos pueden continuar en páginas siguientes - busca tablas o listas que se extiendan por múltiples páginas
+1. ⚠️ LEE TODO EL TEXTO DE PRINCIPIO A FIN - NO te detengas en la primera página. Recorre TODO el documento completo.
+2. ⚠️ Extrae TODAS las líneas de productos de TODAS las páginas - no solo las de la primera página. Las facturas pueden tener 50+ páginas con líneas en todas ellas.
+3. ⚠️ El valor total (valor_total) suele estar en la ÚLTIMA página - busca términos como "TOTAL", "TOTAL FACTURA", "IMPORTE TOTAL", "TOTAL A PAGAR", "TOTAL NETO", "TOTAL BRUTO". Recorre hasta el final del texto.
+4. ⚠️ Las líneas de productos pueden continuar en páginas siguientes - busca tablas o listas que se extiendan por múltiples páginas. Identifica patrones de tablas que continúan entre páginas.
 5. Extrae SOLO los artículos/productos de la factura ACTUAL. IGNORA completamente cualquier sección que diga "Pedido pendiente", "Pedidos pendientes", "Pendiente" o similar. Esos productos NO deben aparecer en las líneas.
 6. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
 7. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto (puede estar en cualquier página)
@@ -846,10 +849,10 @@ INSTRUCCIONES CRÍTICAS PARA FACTURAS MULTI-PÁGINA:
 14. Si un campo no se encuentra, usa null (no uses cadenas vacías)
 15. Devuelve SOLO el JSON, sin explicaciones, sin markdown, sin ```json
 16. CRÍTICO: Si ves una sección que dice "Pedido pendiente" o "Pedidos pendientes", esos productos NO son de esta factura. Solo extrae productos que estén claramente asociados a la factura actual.
-17. CRÍTICO: Asegúrate de incluir TODAS las líneas de productos de TODAS las páginas, no solo las de la primera página.
+17. ⚠️⚠️⚠️ CRÍTICO: Asegúrate de incluir TODAS las líneas de productos de TODAS las páginas, no solo las de la primera página. Recorre TODO el texto completo antes de generar la respuesta. Una factura puede tener cientos de líneas distribuidas en múltiples páginas.
 
 TEXTO COMPLETO DE LA FACTURA (todas las páginas):
-""" + text[:50000]  # Aumentar límite a 50000 caracteres para facturas grandes
+""" + text[:200000]  # Aumentado a 200000 caracteres para facturas muy grandes (50+ páginas)
             
             _logger.info("Enviando texto a GPT-4o para interpretación estructurada...")
             
@@ -868,7 +871,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                         }
                     ],
                     temperature=0.1,  # Baja temperatura para respuestas más consistentes
-                    max_tokens=8000,  # Aumentado para facturas con muchas líneas
+                    max_tokens=16000,  # Aumentado significativamente para facturas con muchas líneas (50+ páginas)
                     response_format={"type": "json_object"},  # Forzar formato JSON (GPT-4o)
                 )
             except TypeError:
@@ -887,7 +890,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                         }
                     ],
                     temperature=0.1,
-                    max_tokens=8000  # Aumentado para facturas con muchas líneas
+                    max_tokens=16000  # Aumentado significativamente para facturas con muchas líneas (50+ páginas)
                 )
             
             response_text = response.choices[0].message.content
@@ -1395,10 +1398,11 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 lineas.append(linea)
         
         # Método 2: Buscar formato tabla (ARTICULO DESCRIPCION BULTOS PESO)
-        if not lineas:
-            tabla_pattern = r'ARTICULO\s+DESCRIPCION\s+BULTOS\s+PESO\s+BRUTO\s+PESO\s+NETO\s*\n\s*(\d+)\s+([^\n]+?)\s+(\d+)\s+C/U\s+(\d+)\s+KG\s+(\d+)\s+KG'
-            tabla_match = re.search(tabla_pattern, text, re.IGNORECASE | re.MULTILINE)
-            if tabla_match:
+        # Buscar todas las ocurrencias en todo el texto, no solo la primera
+        tabla_pattern = r'ARTICULO\s+DESCRIPCION\s+BULTOS\s+PESO\s+BRUTO\s+PESO\s+NETO\s*\n\s*(\d+)\s+([^\n]+?)\s+(\d+)\s+C/U\s+(\d+)\s+KG\s+(\d+)\s+KG'
+        tabla_matches = list(re.finditer(tabla_pattern, text, re.IGNORECASE | re.MULTILINE))
+        if tabla_matches:
+            for tabla_match in tabla_matches:
                 linea = {
                     "articulo": tabla_match.group(1).strip(),
                     "descripcion": tabla_match.group(2).strip(),
@@ -1487,10 +1491,10 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                         # Solo agregar si tiene al menos descripción y cantidad
                         if linea["descripcion"] and linea["cantidad"]:
                             lineas.append(linea)
-                            break  # Solo tomar la primera coincidencia válida
+                            # No hacer break - continuar buscando todas las líneas en todo el texto
         
-        # Limitar a máximo 20 líneas para evitar ruido
-        return lineas[:20]
+        # No limitar líneas - devolver todas las encontradas (pueden ser cientos en facturas grandes)
+        return lineas
 
     def fill_expediente_from_invoice(self, expediente, invoice_data):
         """
