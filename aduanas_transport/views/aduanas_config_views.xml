@@ -18,7 +18,7 @@
           </div>
           
           <group string="Endpoints AEAT">
-            <group string="Exportación (AES)">
+            <group string="Presentar DUA (exportación)">
               <field name="aeat_endpoint_cc515c" placeholder="https://..."/>
               <field name="aeat_endpoint_cc511c" placeholder="https://..."/>
             </group>
@@ -27,6 +27,9 @@
             </group>
             <group string="Bandeja AEAT">
               <field name="aeat_endpoint_bandeja" placeholder="https://..."/>
+            </group>
+            <group string="EXS (Declaración Sumaria Salida - IE615 V5)">
+              <field name="aeat_endpoint_ie615" placeholder="https://prewww1.aeat.es/..."/>
             </group>
           </group>
 

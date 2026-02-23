@@ -1,0 +1,4843 @@
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+Guía técnica para la
+
+Declaración EXS (A1/A2),
+Notificación de Reexportación (A3)
+y Notificación de Reexpedición (NR)
+
+Autor:
+
+DIT
+
+Fecha:
+
+15/12/2025
+
+Versión:
+
+5.3
+
+Revisiones
+Ver.
+1.0
+1.1
+
+Fecha
+18/08/2010
+07/09/2010
+
+1.2
+
+11/11/2010
+
+1.3
+
+10/12/2010
+
+1.4
+1.5
+1.6
+
+20/12/2010
+10/02/2011
+06/06/2011
+
+1.7
+1.8
+
+23/03/2012
+08/10/2012
+
+1.9
+
+29/01/2015
+
+1.10
+
+13/01/2020
+
+1.11
+
+21/01/2021
+
+1.12
+1.13
+
+21/04/2021
+01/06/2021
+
+Descripción
+Versión inicial
+Inclusión de atributos Document operation y Document/reference number en IE615
+Inclusión de atributo Authentication code en IE628
+Revisión de los requisitos de EORI y NIF en los diferentes actores.
+Tabla 901 asociada al tipo de documento del documento previo en IE615
+Tabla 902 asociada a Customs intervention code
+Condición C994 vinculada a Document reference del grupo Previous Document
+Corrección de erratas: reglas y condiciones en IE615.
+Corrección de errata en Test Indicator
+Aplicación de Kelv0.23#224: DDNA And DDCOM (actualización de la especificación para
+el empleo de campos con valores numéricos)
+Aclaración sobre el escapado de caracteres especiales
+Nueva versión del servicio. Desarrollo de requisitos de firma electrónica
+Implantación definitiva de versión con verificación de firma electrónica (v2).
+Discontinuación de versión v1.
+Corrección de errata en url
+Inclusión de tabla de códigos 13
+Modificación de observaciones de elementos de datos
+Eliminación referencias a puertos del web service. Se documentan en descriptor del
+servicio (wsdl).
+Declaración de H7 como documento previo para devoluciones de importaciones de bajo
+valor
+Nueva versión V3 del servicio.
+Email del declarante en V3.
+
+______________________________________________________________________
+Pág. 1 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+4.0
+
+17/01/2022
+
+4.1
+
+18/03/2022
+
+4.2
+4.3
+4.4
+
+26/04/2022
+17/05/2022
+10/08/2022
+
+4.5
+
+14/10/2022
+
+4.6
+
+10/01/2023
+
+4.7
+4.8
+
+25/01/2023
+28/03/2023
+
+4.9
+
+30/05/2023
+
+4.10
+4.11
+5.0
+
+01/09/2023
+05/06/2024
+07/05/2025
+
+5.1
+
+05/06/2025
+
+5.2
+
+19/09/2025
+
+5.3
+
+15/12/2025
+
+Versión 5.3
+
+Integración de documento de condiciones y reglas en la presente guía.
+Nueva versión V4 del servicio con la adaptación para los mensajes A1, A2 y A3 del CAU y
+las Notificaciones de Reexpedición
+Cambios varios en grupo Previous Document
+Inclusión de varias entradas en listado de cambios de versión 4.0
+Datos para pruebas en preproducción y corrección errata
+Nuevo elemento DocOpeHEA2 en respuesta con el código de operación efectuada
+Cambios en opcionalidad de varios elementos en IE919 y corrección de alias y
+namespaces esperados en los ejemplos
+Nuevo código de rechazo, aclaraciones sobre bultos en datados de DSDT en C061 y
+R105 e inclusión de código “VQ” en C061
+Modificada condición CV01 para hacer obligatoria la declaración del email del
+Declarante en versión 4
+Ampliación de ocurrencias de grupo GOOITEGDS de 100x a 500x
+Mejora de información en título 5. Aclaración sobre aspectos de cierre de versiones v2 y
+v3.
+Información sobre EORI de transportistas.
+Aclaración en C995.
+Actualización de lista L49.
+Aclaraciones en varias reglas y condiciones (ver control de cambios).
+Nueva regla R994 para especificar el formato esperado en la referencia del documento
+previo, especialmente para tipos XSUM y XSUA.
+Nuevo tipo de documento N337. Modificación de C995, R994 y L901. Nueva regla R995.
+Modificación de validaciones para documentos previos T2L.
+Nueva versión v5 del servicio web de presentación e introducción de las
+Predeclaraciones (PreEXS)
+Nuevo título "6. COMUNICACIONES POR BANDEJA DE ENTRADA"
+Se eliminan XSUM y XSUA para versión v5 y posteriores
+Modificación condicionalidad de elemento DecCsvHEA en IE628
+Actualización de códigos de error funcional L49
+Eliminación de menciones a códigos de documento previo discontinuados: XSUM y
+XSUA.
+Revisión y actualización de datos de prueba.
+
+(*) Acción: A= Añadir; R= Reemplazar
+
+______________________________________________________________________
+Pág. 2 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+ESTA PÁGINA ESTÁ EN BLANCO INTENCIONADAMENTE
+
+______________________________________________________________________
+Pág. 3 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+Índice:
+1.
+
+INTRODUCCIÓN ...................................................................................... 10
+
+2. PROCEDIMIENTO DE PRESENTACIÓN DE DECLARACIONES
+SUMARIAS
+DE
+SALIDA
+Y
+NOTIFICACIONES
+DE
+REEXPORTACIÓN/REEXPEDICIÓN .............................................................. 11
+2.1.
+
+Mensajería utilizada ......................................................................................... 11
+
+2.2.
+
+Tipos de declaraciones ..................................................................................... 12
+
+2.3.
+
+Predeclaraciones EXS ...................................................................................... 12
+
+3.
+
+DESCRIPCIÓN DE LA PRESENTACIÓN MEDIANTE WEB SERVICES 14
+
+3.1.
+
+Estándares utilizados........................................................................................ 14
+
+3.2. Integridad transaccional .................................................................................. 14
+3.2.1.
+Uso para seguimiento y subsanación de rechazos funcionales................... 15
+3.3.
+
+Comunicación de incidencias en el procesado de las peticiones ................... 15
+
+3.4.
+
+Versionado......................................................................................................... 16
+
+3.5.
+
+Certificado electrónico ..................................................................................... 16
+
+3.6.
+
+Aclaración sobre escapado de caracteres especiales ..................................... 16
+
+4.
+
+SERVICIO WEB IE615 ............................................................................. 17
+
+4.1.
+
+Definición funcional.......................................................................................... 17
+
+4.2. Versión 5 del servicio web ................................................................................ 17
+4.2.1.
+Calendario de implantación de la versión 5................................................ 17
+4.3.
+
+Descriptor del servicio y puertos ..................................................................... 17
+
+4.4. Esquemas ........................................................................................................... 19
+4.4.1.
+Esquema de mensaje de petición ................................................................ 19
+4.4.2.
+Esquema de mensajes de respuesta ............................................................ 19
+4.4.3.
+Esquemas auxiliares comunes .................................................................... 19
+5. ESPECIFICACIÓN FUNCIONAL DE LOS MENSAJES RELACIONADOS
+CON IE615 ....................................................................................................... 20
+5.1.
+
+Introducción ...................................................................................................... 20
+
+5.2. Mensaje IE615 de declaración (altas, modificaciones y anulaciones) .......... 22
+______________________________________________________________________
+Pág. 4 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.3.
+
+Mensaje IE628 de aceptación .......................................................................... 28
+
+5.4.
+
+Mensaje IE616 de rechazo funcional .............................................................. 30
+
+5.5.
+
+Mensaje IE919 de rechazo no funcional (por errores XML)........................ 31
+
+5.6.
+
+Consideraciones especiales .............................................................................. 32
+
+5.7.
+
+Identificador EORI de transportistas ............................................................. 33
+
+5.8.
+
+Valores permitidos en campos numéricos ...................................................... 33
+
+6.
+
+COMUNICACIONES POR BANDEJA DE ENTRADA ............................. 34
+
+6.1. Recepción de mensajes ..................................................................................... 34
+6.1.1.
+Nota importante .......................................................................................... 34
+6.2. Servicio web de comunicación de activación exitosa de PreEXS ................. 35
+6.2.1.
+Definición funcional ................................................................................... 35
+6.2.2.
+Descriptor del servicio y puertos ................................................................ 35
+6.2.3.
+Esquemas de mensajes................................................................................ 35
+6.3. Servicio web de comunicación de rechazo funcional en la activación de
+PreEXS .......................................................................................................................... 37
+6.3.1.
+Definición funcional ................................................................................... 37
+6.3.2.
+Descriptor del servicio y puertos ................................................................ 37
+6.3.3.
+Esquemas de mensajes................................................................................ 37
+7.
+
+CONDICIONES Y REGLAS...................................................................... 39
+
+C010 ............................................................................................................................... 39
+C011 ............................................................................................................................... 39
+C061 ............................................................................................................................... 39
+C501 ............................................................................................................................... 39
+C562 ............................................................................................................................... 39
+C570 ............................................................................................................................... 40
+C576 ............................................................................................................................... 40
+C577 ............................................................................................................................... 40
+C585 ............................................................................................................................... 40
+C991 ............................................................................................................................... 40
+______________________________________________________________________
+Pág. 5 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+C994 ............................................................................................................................... 40
+C995 ............................................................................................................................... 40
+CS01 ............................................................................................................................... 40
+CS02 ............................................................................................................................... 40
+CS03 ............................................................................................................................... 40
+R005 ............................................................................................................................... 41
+R007 ............................................................................................................................... 41
+R012 ............................................................................................................................... 41
+R013 ............................................................................................................................... 41
+R014 ............................................................................................................................... 41
+R021 ............................................................................................................................... 41
+R105 ............................................................................................................................... 41
+R660 ............................................................................................................................... 41
+R837 ............................................................................................................................... 41
+R838 ............................................................................................................................... 41
+R839 ............................................................................................................................... 42
+R879 ............................................................................................................................... 42
+R880 ............................................................................................................................... 42
+R881 ............................................................................................................................... 42
+R994 ............................................................................................................................... 42
+R995 ............................................................................................................................... 42
+R996 ............................................................................................................................... 47
+Referencia con formato PPC.…C, donde PP es un país del TAU y C…C una
+cadena de caracteres. .................................................................................................... 47
+RS01 ............................................................................................................................... 47
+TR0022........................................................................................................................... 47
+TR9085........................................................................................................................... 47
+______________________________________________________________________
+Pág. 6 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+TR9120........................................................................................................................... 47
+TR9181........................................................................................................................... 47
+8.
+
+LISTAS DE CÓDIGOS.............................................................................. 48
+
+L8 – Países ..................................................................................................................... 48
+L13 – Tipos de documentos, certificados y autorizaciones ....................................... 48
+L14 – Tipos de documentos de transporte ................................................................. 48
+L17 – Tipos de bultos ................................................................................................... 48
+L27 - Flag....................................................................................................................... 49
+L30 – Códigos de error XML ...................................................................................... 49
+L49 – Códigos de error funcionales ............................................................................ 49
+L60 – Tipos de mensaje XML ...................................................................................... 50
+L96 – Indicador de Circunstancia Específica ............................................................ 50
+L101 – Código UN de mercancías peligrosas ............................................................. 50
+L116 – Métodos de pago............................................................................................... 50
+L117 – Operación sobre la declaración en la petición (DocOpeHEA) .................... 51
+L118 – Operación sobre la declaración en la respuesta (DocOpeHEA2) ................ 51
+L901 – Tipos de documento previo ............................................................................. 51
+L902 – Circuito aduanero ............................................................................................ 51
+L903 - Función de agente de la cadena de suministros ............................................. 51
+L904 - Tipos de declaraciones ..................................................................................... 52
+L905 - Estatus de representación ................................................................................ 52
+L906 - Indicador de predeclaración ............................................................................ 52
+9. CONSIDERACIONES PARA LA DEVOLUCIÓN DE IMPORTACIONES
+DE BAJO VALOR (H7) .................................................................................... 53
+9.1.
+
+Declaración como documento previo de un H7 ............................................. 53
+
+9.2.
+
+Bloqueo de EXS con H7 devuelto .................................................................... 53
+
+______________________________________________________________________
+Pág. 7 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+10.
+
+PRUEBAS EN PREPRODUCCIÓN ...................................................... 54
+
+10.1.
+
+Declaraciones marítimas .............................................................................. 54
+
+10.2.
+
+Declaraciones aéreas..................................................................................... 55
+
+11.
+PRUEBAS EN PRODUCCIÓN EN RECINTOS ADUANEROS DE
+PRUEBAS ........................................................................................................ 56
+11.1.
+
+Declaraciones marítimas .............................................................................. 56
+
+11.2.
+
+Declaraciones aéreas..................................................................................... 57
+
+12.
+
+EJEMPLOS ........................................................................................... 58
+
+12.1.
+
+Ejemplo de IE615 ......................................................................................... 58
+
+12.2.
+
+Ejemplo de IE628 ......................................................................................... 60
+
+12.3.
+
+Ejemplo de IE616 ......................................................................................... 61
+
+12.4.
+
+Ejemplo de IE919 ......................................................................................... 62
+
+13.
+
+CONTROL DE VERSIONES ................................................................. 63
+
+13.1.
+
+Versiones anteriores ..................................................................................... 63
+
+13.2.
+
+Última versión 5.3 ......................................................................................... 68
+
+______________________________________________________________________
+Pág. 8 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+ESTA PÁGINA ESTÁ EN BLANCO INTENCIONADAMENTE
+
+______________________________________________________________________
+Pág. 9 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+1. INTRODUCCIÓN
+El presente documento describe el proceso declarativo aduanero y los servicios web de que se
+dispondrá para la presentación de las siguientes declaraciones:
+-
+
+Declaración Sumaria de Salida (EXS – Exit Summary Declaration)
+Notificación de Reexportación
+Notificación de Reexpedición
+
+La Declaración Sumaria de Salida (Exit Summary Declaration) o EXS (en adelante EXS) se presentará
+tal y como se describe en el artículo 271.1 del CAU (Código Aduanero de la Unión), reglamento (UE) nº
+952/2013 del Parlamento Europeo y del Consejo de 9 de octubre de 2013. Esto es, cuando las
+mercancías vayan a salir del TAU y no se presente una declaración en aduana o una declaración de
+reexportación como declaración previa a la salida.
+Corresponde con las columnas A1 y A2 del Anexo B del Reglamento de Ejecución (UE) 2015/2447 de la
+Comisión.
+La Notificación de Reexportación (en adelante A3) se presentará tal y como se describe en el artículo
+274.1 CAU, cuando las mercancías no pertenecientes a la Unión vayan a salir del TAU y se haya
+concedido dispensa de la obligación de presentar una declaración sumaria de salida para dichas
+mercancías, contempladas en el artículo 270.3 CAU, letras b) y c), es decir:
+b) mercancías transbordadas dentro de una zona franca o directamente reexportadas desde una zona
+franca;
+c) mercancías en depósito temporal y que se reexporten directamente desde un almacén de depósito
+temporal.
+Corresponde con la columna A3 del Anexo B del Reglamento de Ejecución (UE) 2015/2447 de la
+Comisión.
+La Notificación de Reexpedición (en adelante NR) cuando la mercancía en depósito temporal sea
+reexpedida a otro punto del TAU (Territorio Aduanero de la Unión) y no esté obligada a circular en
+tránsito comunitario.
+Nota importante:
+A partir de determinada fecha, que se comunicará más adelante en la sede de la AEAT, todo
+transbordo en puerto o aeropuerto nacional deberá solicitarse, previo a la salida, mediante una de las
+anteriormente citadas declaraciones y notificaciones (EXS, A3, NR), o cualquier otra que proceda.
+
+______________________________________________________________________
+Pág. 10 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+2. PROCEDIMIENTO DE PRESENTACIÓN DE DECLARACIONES
+SUMARIAS DE SALIDA Y NOTIFICACIONES DE
+REEXPORTACIÓN/REEXPEDICIÓN
+2.1. Mensajería utilizada
+El esquema general de funcionamiento se inicia con el envío, por parte del operador (Person lodging the
+Summary Declaration), de la Declaración Sumaria de Salida (EXS, A1/A2), Notificación de Reexportación
+(A3) o Notificación de Reexpedición (NR), a la Aduana de Salida de la Unión Europea, en nuestro caso, a
+la AEAT. Esta presentación se realiza por vía telemática, concretamente mediante Servicios Web
+basados en el intercambio de mensajes XML. El mensaje de presentación es una adaptación del IE615
+publicado a nivel comunitario. Por similitud, se le referencia como IE615, ampliándose en apartados
+posteriores las diferencias.
+El mensaje de petición contiene básicamente:
+• Información de la mercancía (a nivel de cabecera y partidas, contenedores, precintos. etc.)
+• Itinerario de la mercancía, a nivel de países
+• Información del Declarante, Expedidor y Destinatario
+Una vez enviado el mensaje la AEAT procederá a realizar automáticamente un proceso de validación del
+formato XML, de las reglas y condiciones de negocio definidas en el presente documento, y de otras
+validaciones funcionales aduaneras.
+Si el mensaje no supera alguna de las validaciones de formato XML, se devolverá un mensaje de error
+IE919, en el que se especifica el error concreto.
+Si el mensaje no supera alguna de las validaciones funcionales, se devolverá un mensaje de error IE616,
+en el que se especifica el código de error correspondiente.
+Si el mensaje sí supera el proceso de validación se realizará un Análisis de Riesgo y Seguridad para la
+mercancía declarada según las reglas establecidas en los grupos de trabajo de análisis de riesgos. De
+acuerdo a la calificación de riesgo recibida se devolverá en una adaptación del mensaje IE628
+comunitario los siguientes datos:
+- el Circuito en el que ha caído la declaración, sólo en el caso de que no sea una PreEXS. Si fuera una
+PreEXS el circuito se devolverá verde, puesto que el análisis de riesgo se realizará en la activación.
+- el MRN asignado a la declaración.
+- el CSV de la declaración, asignado a la declaración para su cotejo en sede.
+- el CSV de levante, vinculado al justificante de levante generado en formato pdf, sólo emitido en
+caso de que haya levante, no sea una PreEXS, tenga circuito verde y se haya concedido el levante debido
+al despacho automático.
+Todos los mensajes mencionados se devuelven de forma síncrona al operador remitente de la
+declaración.
+En la siguiente tabla aparecen listados todos los mensajes implicados:
+Código
+
+Nombre
+
+Descripción
+
+IE615
+
+E_EXS_DAT
+
+Presentación de A1/A2/A3/NR
+
+IE616
+
+E_EXS_REJ
+
+Presentación de A1/A2/A3/NR rechazada
+
+______________________________________________________________________
+Pág. 11 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+IE628
+
+E_EXS_ACK
+
+Presentación de A1/A2/A3/NR aceptada
+
+IE919
+
+C_XML_NCK
+
+XML incorrecto
+
+Versión 5.3
+
+2.2. Tipos de declaraciones
+La presente versión del IE615, y desde la versión 4, surge como adaptación a las declaraciones A1, A2 y
+A3 del Código Aduanero de la Unión. El propósito de esta versión es el de simplificar la declaración de
+estas expediciones. La AEAT ha decidido no exigir mensajes diferenciados y emplear en su lugar el
+mensaje IE615, adaptado desde su versión 4 al conjunto de datos exigidos por el Anexo B del
+Reglamento de Ejecución (UE) 2015/2447 de la Comisión.
+En función de los datos en el IE615, se encajará la expedición de mercancías declarada en uno de los
+siguientes tipos de declaración o notificación:
+- A1. Declaración Sumaria de Salida (EXS)
+- A2. Declaración Sumaria de Salida para envíos urgentes (EXS for express consignments)
+- A3. Notificación de Reexportación (Reexport Notification)
+- NR. Notificación de Reexpedición
+El tipo de declaración/notificación calculado se devolverá en el mensaje IE628 en el elemento
+‘Declaration Type’
+
+2.3. Predeclaraciones EXS
+A partir de la versión 5 del servicio web, se permitirá presentar declaraciones EXS con Documento Previo
+de tipo N337 “Declaraciones de Depósito Temporal (DDT)” que podrán ser DSDT o G4 y que
+correspondan a mercancía que aún no esté presentada de forma efectiva ante la aduana (activación de
+la sumaria en el caso de la DSDT o bien mensajes G3 y ATMNot enviados en el caso de G4). Dichas
+declaraciones EXS se considerarán “Predeclaraciones EXS” o PreEXS.
+La PreEXS puede ser de cualquier tipo de declaración: A1, A2, A3 o NR.
+La PreEXS se activará de oficio en el momento de la presentación del último DSDT/G4, declarado como
+documento previo en alguna partida de la PreEXS, que aún estuviera pendiente de activar/presentar
+ante la aduana.
+En ese momento, la declaración pasará de PreEXS a EXS y se informará por el servicio de Bandeja de
+Entrada al NIF del Representante, en caso de haberlo, o del Declarante, en su defecto, mediante el xml
+de respuesta correspondiente:
+- IE628 si es una aceptación.
+- IE616 si se rechaza la activación por incumplimiento de alguna validación funcional.
+Consultar los detalles en el apartado “6. COMUNICACIONES POR BANDEJA DE ENTRADA”.
+La PreEXS no anticipará ningún control aduanero, siendo por tanto el circuito informado en la respuesta
+de la predeclaración siempre verde. En el momento de la activación se calculará el circuito aduanero
+correspondiente y la EXS podrá pasar a un estado pendiente de despacho aduanero. Se podrá obtener el
+circuito aduanero consultando la respuesta IE628 disponible en el servicio de Bandeja de Entrada tras la
+activación de la última Declaración de Depósito Temporal (G4/DSDT) que precisara
+activación/presentación de mercancías.
+
+______________________________________________________________________
+Pág. 12 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+La PreEXS se podrá modificar de tal forma que, si los nuevos documentos previos declarados fueran DDT
+ya presentadas/activadas, aquella se activará automáticamente pasando de PreEXS a EXS. En la propia
+respuesta I628 obtenida se informará de este hecho y del circuito asignado.
+Una vez activada una PreEXS conservará el mismo MRN y el resto de datos declarados, se le asignará el
+circuito aduanero que le corresponda y se establecerá su fecha de admisión.
+Cualquier PreEXS que no se active (por presentación/activación de sus DDT o por modificación de sus
+documentos previos) después de 30 días desde su fecha de alta será anulada de oficio.
+Las EXS ya activadas no pueden transicionar mediante una modificación a ser PreEXS. Se rechazará
+cualquier modificación que implique una transición al estado PreEXS.
+
+______________________________________________________________________
+Pág. 13 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+3. DESCRIPCIÓN DE LA PRESENTACIÓN MEDIANTE WEB
+SERVICES
+3.1. Estándares utilizados
+El uso de servicios Web constituye la base de las buenas prácticas para desplegar servicios que
+posibiliten la interacción máquina-máquina, es decir, la automatización integral de un proceso en el que
+interviene varios sistemas de información (el del ciudadano/empresa y el de la Agencia Tributaria).
+Se utilizarán los estándares de facto para el desarrollo de servicios web.
+La estructura de los mensajes será descrita sobre la base de la creación de esquemas XML utilizando
+para ello la recomendación W3C de 28-Octubre de 2004 en http://www.w3.org/TR/xmlschema-0 y
+referenciada por el namespace http://www.w3.org/2001/XMLSchema.
+Con relación a SOAP se utilizará SOAP V1.1 disponible como NOTA W3C de 08-Mayo-2000 en :
+http://www.w3.org/TR/2000/NOTE-SOAP-20000508/y
+referenciado
+por
+el
+namespace
+http://schemas.xmlsoap.org/soap/envelope/
+En SOAP-1.1 existen dos estilos para implementar servicio, modo “rpc” y modo “document”, en línea
+con las recomendaciones actuales se utilizará siempre el modo “document” (style=”document”) sin
+ningún tipo de codificación (use=”literal”). Es decir, el mensaje de entrada y salida estará descrito
+íntegramente por su respectivo esquema XML.
+Con relación a la descripción de los servicios utilizaremos WSDL 1.1 disponible como NOTA W3C de 14Marzo-2001 en: http://www.w3.org/TR/2001/NOTE-wsdl-20010315 y referenciado por el namespace
+http://schemas.xmlsoap.org/wsdl/.
+
+3.2. Integridad transaccional
+Los servicios web se despliegan utilizando el protocolo de transporte https, consistiendo la
+comunicación en una petición que procesa el servidor y genera su respectiva respuesta.
+En condiciones normales el protocolo descrito anteriormente responde a las necesidades de un servicio
+web, pero puede ocurrir por diversos motivos (caída de red, caída del servidor, etc.) que el cliente no
+reciba la respuesta. En estas ocasiones no podemos conocer si el servidor ha procesado la petición.
+Esta circunstancia puede no tener importancia, por ejemplo, en una consulta para conocer el estado, se
+volverá a pedir más tarde no afectando a la integridad de los datos. Sin embargo, si el servicio actualiza
+la base de datos, el resultado después de aplicar dos peticiones iguales podría alterar de forma
+sustancial lo esperado.
+Por lo anterior, en todo servicio web que actualice información se implementa un mecanismo que
+garantice un control de las peticiones duplicadas.
+Cada petición contiene una referencia única, el elemento <MesIdMES19> en el caso del IE615, de tal
+modo que caso de recibir una petición del mismo remitente con la misma referencia que una previa
+actuaremos del siguiente modo:
+- Si el contenido del mensaje es idéntico al recibido en la primera ocasión, se devolverá la
+respuesta que se generó para la primera petición.
+
+______________________________________________________________________
+Pág. 14 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Si el contenido del mensaje difiere al recibido en la primera ocasión, se devolverá un error
+indicando el uso incorrecto de la referencia que debería ser unívoca.
+Con este mecanismo el cliente, en caso de error y por tanto de indeterminación acerca de si la petición
+se ha procesado o no, tiene una forma fácil de sincronizarse con garantía de integridad en el resultado
+final de la operación. En caso de que no se recibiera la primera petición se procesará como nueva y en
+caso contrario se devolverá un error indicando el uso incorrecto de la referencia que debería ser
+unívoca).
+
+3.2.1. Uso para seguimiento y subsanación de rechazos funcionales
+Se expone a continuación cómo emplear la integridad transaccional para la resolución de incidencias por
+rechazos funcionales a determinadas peticiones y, de esta forma, controlar modificaciones de un
+mensaje que pretendan, por ejemplo, subsanar posibles errores funcionales (como un error dado por un
+valor incorrecto en una casilla determinada de una notificación).
+a) Cuando se realiza el envío de una notificación lo primero que se comprueba es la unicidad de la
+pareja: <MesSenMES3> + < MesIdMES19>, coincidiendo siempre <MesSenMES3> con el NIF del
+certificado digital usado para enviar la declaración.
+1.- Si es única, es decir, es la primera vez que el remitente envía ese <MesIdMES19>, la notificación se
+admite pudiendo obtener una respuesta correcta (sin errores) o respuesta incorrecta (con errores
+funcionales).
+2.- Si no es única, es decir, ya se envió en otra ocasión ese mismo <MesIdMES19>, puede darse uno de
+los casos siguientes:
+2.1.- Que el contenido de este segundo envío coincida exactamente (función hash) con el
+primer envío. En ese caso la respuesta que se obtendría a este segundo envío sería la misma que la del
+primero sin que se realice actualización alguna en los sistemas de la AEAT.
+2.2.- Que el contenido de este segundo envío no coincida exactamente con el del primer envío, en
+cuyo caso se rechazará este segundo envío, ya que la información no es exactamente igual.
+b) Cuando una misma notificación tiene varios envíos debido a errores funcionales, y se quieren
+controlar por parte del remitente los envíos realizados.
+En este caso, como todos los envíos tienen distinto contenido, para subsanar el error correspondiente,
+el Id que se debe mandar ha de ser también diferente en cada envío.
+Una posible solución, que algunos operadores están adoptando, aunque cada operador el libre de optar
+por la solución que más le convenga, si pretende realizar este seguimiento de los envíos realizados para
+subsanar errores funcionales, es dividir el Id en dos sub-Id.
+De esta forma, la primera parte del <MesIdMES19> es única y la segunda parte es un numero secuencial
+que se corresponde con cada envío.
+Nota importante
+La AEAT mantiene en línea durante aproximadamente 15 días el histórico (log) de los envíos
+efectuados. Así, si pasados esos 15 días se realizara un envío con la misma pareja de <MesSenMES3> +
+<MesIdMES19> y no se encontrase en este histórico en línea, se devolvería un error indicando que es
+imposible la recuperación de información del citado histórico. Por consiguiente, no se obtendría la
+respuesta del primer envío.
+
+3.3. Comunicación de incidencias en el procesado de las peticiones
+En caso de incidencias en la aplicación estás serán comunicadas tal como se describen en el protocolo
+SOAP V1.1, es decir utilizando el elemento FAULT.
+
+______________________________________________________________________
+Pág. 15 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+A modo de resumen como respuesta a una petición se pueden producir los siguientes casos:
+Resultado
+
+Acción
+
+Recibimos una respuesta con el xml esperado
+
+OK. Mensaje procesado
+
+Recibimos una respuesta con elemento FAULT y Reenviar mensaje
+faultcode del tipo “soapenv:Server.”
+No progresa la trasmisión o bien no recibimos un Reenviar mensaje
+documento xml que responde a lo esperado
+Recibimos una respuesta con elemento FAULT y La respuesta enviada NO es formalmente
+faultcode del tipo “soapenv:Client.”
+incorrecta, o bien contiene referencia única
+duplicada de otra con distinto contenido. La
+notificación NO se debe reenviar.
+
+3.4. Versionado
+Los servicios se definirán con un convenio de versionado que facilite que las futuras actualizaciones son
+reconocibles y por tanto diferenciables. Para ello, detrás del nombre del servicio y de todos los objetos
+relacionados se incluye un número de versión.
+
+3.5. Certificado electrónico
+Este servicio requiere tener instalado un certificado de usuario admitido por la AEAT en el ordenador
+desde el que se produzca el envío de la información. Consúltese la información al respecto en el
+siguiente enlace:
+https://www.agenciatributaria.es/AEAT.internet/Inicio/Ayuda/Certificado_electronico/Certificado_elect
+ronico.shtml
+
+3.6. Aclaración sobre escapado de caracteres especiales
+En caso de que fuera necesario consignar en un valor de un elemento XML algunos de los siguientes
+caracteres, se escaparán con las entidades xml siguientes:
+Carácter
+&
+<
+>
+' (apóstrofe/comilla simple)
+" (comillas dobles)
+
+Carácter escapado
+&amp;
+&lt;
+&gt;
+&apos;
+&quot;
+
+______________________________________________________________________
+Pág. 16 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+4. SERVICIO WEB IE615
+4.1. Definición funcional
+Servicio web que permite el alta, modificación y anulación de la declaración sumaria de salida (EXS),
+notificaciones de reexportación y de reexpedición.
+
+4.2. Versión 5 del servicio web
+Actualmente existe en producción la versión v4 del mensaje IE615 que será sustituida por la versión v5
+que describe el presente documento, aunque transitoriamente convivirán durante unos meses.
+Las diferencias entre la v5 y la v4 son nuevos elementos y eliminación de otros exclusivamente en los
+mensajes de respuesta y la posibilidad que se abre únicamente en v5 de declarar como documento
+previo N337 (DSDT o G4) cuya mercancía aún no se haya presentado de forma efectiva ante la aduana.
+Una vez presentado el último conocimiento de DSDT/G4 implicado en los documentos previos de la EXS
+se activará dicha declaración.
+En la v5 se impedirá el uso de los tipos de documento previo XSUM/XSUA que serán sustituidos por el ya
+existente N337 que permite referencia DSDT y G4.
+Se aceptarán anulaciones y modificaciones empleando la v5 de declaraciones realizadas con la v4.
+
+4.2.1. Calendario de implantación de la versión 5
+El calendario de implantación previsto para la versión 5 es el siguiente:
+- Pruebas en Preproducción:
+- Pruebas en Producción para recintos 999x:
+- Entrada en Producción:
+- Cierre de versión 4:
+
+Septiembre de 2025
+Octubre de 2025
+Noviembre de 2025
+2º trimestre de 2026
+
+Suscríbase al canal RSS de Novedades de Aduanas de la sede electrónica de la AEAT para estar al tanto
+de futuros comunicados y más información sobre las fechas de implantación definitivas.
+
+4.3. Descriptor del servicio y puertos
+Su descriptor wsdl es el siguiente:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5.wsdl
+
+______________________________________________________________________
+Pág. 17 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+En la definición de este servicio se ofrece una dirección de envío de las notificaciones, bien para el
+entorno de producción:
+- usando certificado personal:
+https://www1.agenciatributaria.gob.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+- usando certificado de sello:
+https://www10.agenciatributaria.gob.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+o bien para entorno de pruebas/preproducción:
+- usando certificado personal:
+https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+- usando certificado de sello:
+https://prewww10.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+
+______________________________________________________________________
+Pág. 18 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+4.4. Esquemas
+Los esquemas para los mensajes de petición y respuesta implicados son los siguientes:
+
+4.4.1. Esquema de mensaje de petición
+Para altas/modificaciones/anulaciones:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd
+
+4.4.2. Esquema de mensajes de respuesta
+- Mensaje de aceptación:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE628V5Sal.xsd
+
+- Mensaje de rechazo funcional:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE616V5Sal.xsd
+
+- Mensaje de rechazo no funcional:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE919V5Sal.xsd
+
+4.4.3. Esquemas auxiliares comunes
+Existen dos esquemas auxiliares donde se encuentran la mayoría de los tipos de datos comunes a todos
+los esquemas de petición/respuesta utilizados en el sistema. Cuando el tipo de datos no es común a
+varios mensajes está definido en el propio mensaje.
+types_exs_simple_v5.xsd. Contiene la definición de los Data Items que se utilizan en los esquemas
+específicos de cada mensaje.
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/types_exs_simple_v5.xsd
+
+types_exs_complex_v5.xsd. Contiene la definición de los tipos complejos que se utilizan en los
+esquemas específicos de cada mensaje.
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/types_exs_complex_v5.xsd
+
+______________________________________________________________________
+Pág. 19 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5. ESPECIFICACIÓN FUNCIONAL DE LOS MENSAJES
+RELACIONADOS CON IE615
+5.1. Introducción
+El contenido de un mensaje es un fichero XML. Un documento XML debe cumplir las reglas descritas en
+los diferentes esquemas los cuales proporcionan normas respecto a formatos, obligatoriedad, etc., pero
+son las aplicaciones de las distintas Administraciones las que deben encargarse de la coherencia de los
+datos.
+Cada esquema está organizado en Data Groups (grupos de datos) que contienen Data Items (elementos
+de datos). Un Data Group no es necesariamente el equivalente a una entidad de la Base de Datos. Los
+Data Items se han agrupado de modo que constituyen bloques lógicos, manteniendo una coherencia
+con el ámbito de cada esquema.
+Cada esquema contiene:
+• Las características de cada Data Group: secuencia, número de repeticiones, valor de estado que
+indica si el Data Group es obligatorio (R: Requerido), opcional (O: Opcional) o condicional (D:
+Dependiente).
+• Las características de cada Data Item perteneciente a un Data Group: secuencia, número de
+repeticiones, tipo de dato, longitud, y un valor que indica si el Data Group es obligatorio (R:
+Requerido), opcional (O: Optional) o condicional (D: Dependiente).
+• Índice de Data groups para indicar si un Data Group contiene otros Data Groups, además de Data
+Items.
+• Las reglas y condiciones que aplican.
+La representación de los esquemas es como sigue:
+
+El modelo del mensaje está dividido en tres partes:
+
+______________________________________________________________________
+Pág. 20 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+La zona identificativa (A), donde cada mensaje se identifica por:
+- Un número único formado por las letras IE seguido de hasta un máximo de 3 dígitos
+- El título del mensaje
+- Una referencia única directamente relacionada con el número único mencionado: ‘E_’ (external
+domain), ‘C_’ (common domain).
+
+La zona de la estructura (B), que proporciona lo siguiente:
+- La secuencia de los Data Groups;
+- El nombre del Data Group (a)
+- Un número seguido del carácter ‘x’ (b) indicando cuantas veces se repite el Data Group dentro del
+mensaje.
+- Un valor (c) indicando si el Data Group es (R)equerido, (O)pcional o condicional (D: Dependiente);
+- Una referencia (f) cuando aplica una Regla o una Condición
+- El índice de Data Groups (d) indica la dependencia entre Data Groups.
+La zona del detalle del Data Group (C), que proporciona lo siguiente para cada atributo:
+- La secuencia de atributos dentro del Data Group
+- El nombre del Data Group (a)
+- El nombre del atributo (b)
+- Un valor (c) indicando si el Data Group es (R)equerido, (O)pcional o condicional (D: Dependiente);
+- El tipo de dato del Data Item (d): (a)lfabético y/o (n)numérico;
+- La longitud del atributo (e)
+Los dos puntos opcionales antes del indicador de longitud indican que un Data Item no tiene una
+longitud fija, sino que admite un tamaño variable limitado por la longitud indicada). Hay que remarcar
+que el tipo de dato/longitud de los campos que representan fechas son siempre n8, para que cumplan
+con el efecto 2000 (Ej. 19980220). Una coma en la longitud del Data Item (Ej. 11,3), quiere decir que el
+Data Item soporta decimales. El dígito antes de la coma indica la longitud total, el dígito detrás de la
+coma indica el número máximo de dígitos tras el punto decimal.
+- Reglas y Condiciones o Reglas Técnicas que aplican (f)
+A continuación, se lista, a nivel funcional, los grupos de datos y elementos de datos que aparecerán en
+los mensajes del servicio web de EXS, donde:
+R. : nº de repeticiones máximas de cada Data Group
+O. : indica si el elemento de datos es (R)equerido, (O)pcional o condicional (D: Dependiente)
+Tm. : Tipo de dato y longitud.
+Tb. : Tabla de códigos correspondiente al Data Item
+Reg. : Reglas y condiciones aplicables al Data Group o Data Item
+
+Nota sobre últimos cambios
+Como ayuda para visualizar fácilmente los cambios en la última versión de la guía se marcan con fondo
+amarillo o con fondo gris y tachaduras.
+
+______________________________________________________________________
+Pág. 21 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.2. Mensaje IE615 de declaración (altas, modificaciones y anulaciones)
+IE615 Grupo
+MESSAGE
+
+HEADER
+
+Elemento de datos
+Grupo de datos de servicio (sobre
+MENSAJE)
+Remitente
+Receptor
+Fecha de preparación
+Hora de preparación
+Indicador de test
+Identificador del mensaje
+Tipo de mensaje
+CABECERA
+Reference number
+
+Etiqueta
+CC615A
+
+Ubicación de mercancías
+Total de partidas
+Total de bultos
+Total de peso bruto
+Fecha-hora de la declaración
+Lugar de declaración
+Indicador de circunstancia
+específica
+
+MesSenMES3
+MesRecMES6
+DatOfPreMES9
+TimOfPreMES10
+TesIndMES18
+MesIdeMES19
+MesTypMES20
+HEAHEA
+RefNumHEA4
+
+R.
+1x
+
+O. Tm.
+R R
+R
+R
+R
+O
+R
+R
+R
+R
+
+an..35
+an..35
+n6
+n4
+n1
+an..14
+an..6
+
+CusSubPlaHEA66
+TotNumOfIteHEA305
+TotNumOfPacHEA306
+TotGroMasHEA307
+DecDatTimHEA114
+DecPlaHEA394
+SpeCirIndHEA1
+
+R
+R
+O
+R
+R
+R
+O
+
+an..17
+n..5
+n..10
+n..18,6
+n12
+an..35
+a1
+
+Indicador nacional de
+circunstancia específica
+
+NatSpeCirIndHEA
+
+O
+
+a1
+
+Indicador de operación
+
+DocOpeHEA
+
+O
+
+a1
+
+Referencia de operación
+
+DocNumHEA5
+
+D
+
+an..21
+
+1x
+
+Tb.
+
+L27
+
+Reg.
+
+TR9085
+
+L60
+
+an..22
+
+R105
+R660
+L96
+
+R839
+
+L117
+
+C991
+
+C991
+
+Observaciones
+
+NIF del operador que envía la EXS
+Se indicará como valor fijo: NICA.ES
+Fecha de la respuesta (AAMMDD)
+Hora de la respuesta (HHMM)
+Indicador de test
+Identificador único del mensaje
+Valor CC615A
+Número de referencia único local (LRN)
+asignado por el declarante a la EXS
+Código de ubicación de las mercancías
+Número total de partidas (GOODS ITEM)
+Número total de bultos
+Masa bruta total
+Fecha de alta de la declaración
+Lugar en el que se efectúa la declaración
+Indicador
+comunitario
+que
+especifica
+circunstancias especiales que afectan a la
+declaración
+Indicador
+nacional
+que
+especifica
+circunstancias especiales que afectan a la
+declaración
+Indicador de la operación que se aplicará
+sobre el MRN del campo Document/reference
+number
+MRN sobre el que se aplicará la operación de
+
+______________________________________________________________________
+Pág. 22 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+TRANSPORT
+DOCUMENT
+(Header)
+
+CONSIGNOR
+(Header)
+
+CONSIGNEE
+(Header)
+
+ADDITIONAL
+SUPPLY CHAIN
+ACTOR (Header)
+
+Método de pago
+DOCUMENTO DE TRANSPORTE
+(Cabecera)
+
+TraChaMetOfPayHEA1
+TRANSDOC1
+
+Tipo
+Referencia
+EXPEDIDOR de la mercancía
+(Cabecera)
+Nombre
+Calle y Número
+Código postal
+Ciudad
+País
+TIN (Trader Identification
+Number)
+
+TransDocType11
+TransDocRefNum12
+TRACONCO1
+
+DESTINATARIO de la mercancía
+(Cabecera)
+Nombre
+Calle y Número
+Código postal
+Ciudad
+País
+TIN (Trader Identification
+Number)
+AGENTE ADICIONAL DE LA
+CADENA DE SUMINISTRO
+(Cabecera)
+Rol
+
+TRACONCE1
+
+TIN (Trader Identification
+Number)
+
+Versión 5.3
+
+a1
+-
+
+L116
+
+1x
+
+O
+R
+
+an..4
+an..70
+-
+
+L14
+
+1x
+
+R
+R
+D
+D
+D
+D
+D
+D
+D
+
+an..35
+an..35
+an..9
+an..35
+a2
+an..17
+
+D
+
+-
+
+R
+R
+R
+R
+R
+O
+
+an..35
+an..35
+an..9
+an..35
+a2
+an..17
+
+O
+
+-
+
+RoleASCA11
+
+R
+
+a..3
+
+TINASCA12
+
+R
+
+an..17
+
+NamCO17
+StrAndNumCO122
+PosCodCO123
+CitCO124
+CouCO125
+TINCO159
+
+1x
+
+NamCE17
+StrAndNumCE122
+PosCodCE123
+CitCE124
+CouCE125
+TINCE159
+ASCA1
+
+99x
+
+Document operation
+Método de pago
+
+Tipo de conocimiento
+Número de conocimiento
+C010
+
+L8
+
+C501
+C501
+C501
+C501
+C501
+C562
+
+Nombre
+Dirección
+Código postal
+Ciudad
+Código de país
+EORI no requerido salvo que si lo tiene lo
+deberá declarar. Necesario para cumplir con la
+R839.
+
+C011
+
+R012
+
+L903
+
+Nombre
+Dirección
+Código postal
+Ciudad
+Código de país
+EORI no requerido salvo que si lo tiene lo
+deberá declarar.
+Agente de la cadena de suministro
+
+Función del agente de la cadena de
+suministros
+EORI del agente de la cadena de suministros
+
+______________________________________________________________________
+Pág. 23 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+ADDITIONAL
+INFORMATION
+(Header)
+
+GOODS ITEM
+
+INFORMACIÓN ADICIONAL
+(Cabecera)
+
+ADDINF1
+
+Código
+Texto descriptivo
+PARTIDA
+Número de partida
+
+CodeADDINF11
+TextADDINF12
+GOOITEGDS
+IteNumGDS7
+
+Descripción de las mercancías
+Peso bruto
+Método de pago
+
+O
+
+-
+
+R013
+
+Información adicional
+
+O
+O
+R
+R
+
+an5
+an..512
+n..5
+
+R014
+R014
+
+Código de información adicional
+Texto de información adicional
+
+R005
+R007
+
+Número de partida
+
+GooDesGDS23
+GroMasGDS46
+MetOfPayGDI12
+
+O
+R
+D
+
+an..512
+n...16,6
+a1
+
+UNDanGooCodGDI1
+UCR2
+PRODOCDC2
+
+an..4
+an..35
+-
+
+L101
+
+10x
+
+O
+O
+O
+
+an..4
+an..70
+-
+
+L13
+
+1x
+
+R
+R
+R
+
+DocTypPD11
+
+R
+
+an..4
+
+L901
+
+Referencia
+
+DocRefPD12
+
+D
+
+an..70
+
+Número de partida
+
+DocGdsIteNumPD13
+
+D
+
+n..5
+
+EXPEDIDOR de la mercancía
+(Partida)
+
+TRACONCO2
+
+D
+
+-
+
+UN dangerous code
+UCR / Reference Number
+PRODUCED
+DOCUMENTOS JUSTIFICATIVOS ,
+DOCUMENTS /
+CERTIFICADOS Y
+CERTIFICATES
+AUTORIZACIONES
+(Goods Item)
+(Partida)
+Tipo
+Referencia
+PREVIOUS
+DOCUMENTO PRECEDENTE
+DOCUMENT (Goods (Partida)
+Item)
+Tipo
+
+CONSIGNOR
+(Goods Item)
+
+Versión 5.3
+
+DocTypDC21
+DocRefDC23
+PREDOCGODITM1
+
+99x
+
+500x
+
+1x
+
+L116
+
+C576
+TR9120
+
+R901
+
+C994
+R994
+R995
+R996
+C995
+R995
+C010
+
+Descripción de la mercancía de esta partida
+Masa bruta
+Método de pago
+
+Documento precedente datado por
+presente declaración de reexpedición.
+
+la
+
+Tipo de documento previo datado por la
+partida de EXS
+Referencia del documento previo
+
+Número de partida del documento previo
+
+______________________________________________________________________
+Pág. 24 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Nombre
+Calle y Número
+Código postal
+Ciudad
+País
+TIN (Trader Identification
+Number)
+
+NamCO27
+StrAndNumCO222
+PosCodCO223
+CitCO224
+CouCO225
+TINCO259
+
+COMMODITY CODE CÓDIGO DE MERCANCÍA (Partida)
+(Goods Item)
+Código de mercancía
+CONSIGNEE (Goods DESTINATARIO de la mercancía
+Item)
+(Partida)
+Nombre
+Calle y Número
+Código postal
+Ciudad
+País
+TIN (Trader Identification
+Number)
+CONTAINERS
+CONTENEDORES (Partida)
+(Goods Item)
+Identificador de contenedor
+PACKAGES (Goods BULTOS (Partida)
+Item)
+Marcas de expedición
+Tipo de bultos
+Número de bultos
+
+COMCODGODITM
+
+CUSCODE (Goods
+Item)
+
+CUSCODE
+
+Código CUS (Partida)
+
+Versión 5.3
+
+ComNomCMD1
+TRACONCE2
+
+D
+D
+D
+D
+D
+D
+
+an..35
+an..35
+an..9
+an..35
+a2
+an..17
+
+1x
+
+D
+
+-
+
+C585
+
+1x
+
+R
+D
+
+an..8
+-
+
+R881
+C011
+
+R
+R
+R
+R
+R
+O
+
+an..35
+an..35
+an..9
+an..35
+a2
+an..17
+
+NamCE27
+StrAndNumCE222
+PosCodCE223
+CitCE224
+CouCE225
+TINCE259
+CONNR2
+
+99x
+
+O
+
+-
+
+ConNumNR21
+PACGS2
+
+99x
+
+R
+D
+
+an..17
+-
+
+O
+R
+D
+
+an..42
+an..3
+n..8
+
+O
+
+-
+
+R
+
+an9
+
+MarNumOfPacGS21
+KinOfPacGS23
+NumOfPacGS24
+
+CusCode
+
+1x
+
+L8
+
+C501
+C501
+C501
+C501
+C501
+C562
+
+Nombre
+Dirección
+Código postal
+Ciudad
+Código de país
+EORI no requerido salvo que si lo tiene lo
+deberá declarar. Necesario para cumplir con la
+R839.
+
+Código de mercancía
+
+Nombre
+Dirección
+Código postal
+Ciudad
+Código de país
+EORI no requerido salvo que si lo tiene lo
+deberá declarar.
+Contenedores
+
+C577
+
+L17
+C061
+R021
+TR0022
+
+Matrícula del contenedor
+Paquetes/Bultos
+Marcas de expedición
+Tipo de bultos
+Número de bultos
+
+El número de la Unión Aduanera y Estadística
+
+______________________________________________________________________
+Pág. 25 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+ADDITIONAL
+SUPPLY CHAIN
+ACTOR (Goods
+Item)
+
+ADDITIONAL
+INFORMATION
+(Goods Item)
+
+AGENTE ADICIONAL DE LA
+CADENA DE SUMINISTRO
+(Partida)
+
+ASCA2
+
+Rol
+TIN (Trader Identification
+Number)
+INFORMACIÓN ADICIONAL
+(Partida)
+
+Código
+Texto descriptivo
+ITINERARY (Header) ITINERARIO (Cabecera)
+
+CUSTOMS OFFICE
+OF LODGEMENT
+(Header)
+DECLARANT
+(Header)
+
+Versión 5.3
+
+O
+
+-
+
+RoleASCA21
+
+R
+
+a..3
+
+TINASCA22
+
+R
+
+an..17
+
+99x
+
+O
+
+-
+
+R013
+
+Información adicional
+
+99x
+
+O
+O
+D
+
+an5
+an..512
+-
+
+R014
+R014
+C570
+R879
+R880
+
+Código de información adicional
+Texto de información adicional
+Itinerario
+
+a2
+-
+
+ADDINF2
+
+CodeADDINF21
+TextADDINF22
+ITI
+
+99x
+
+R012
+
+(CUS) es el identificador asignado en el
+Inventario Aduanero Europeo de Sustancias
+Químicas (ECICS) a las sustancias y preparados
+principalmente químicos. El declarante podrá
+facilitar este código de forma voluntaria
+cuando no exista ninguna medida TARIC para
+las mercancías de que se trate, es decir,
+cuando el suministro de este código
+represente una carga menor que una
+descripción textual completa del producto.
+Agente de la cadena de suministro
+
+L903
+
+L8
+
+Función del agente de la cadena de
+suministros
+EORI del agente de la cadena de suministros
+
+País de la ruta
+ADUANA DE DECLARACIÓN
+(Cabecera)
+
+CouOfRouCodITI1
+CUSOFFLON
+
+1x
+
+R
+R
+
+Países de paso del envío
+Aduana de declaración y salida del envío
+
+Referencia aduana (COL)
+DECLARANTE (Cabecera)
+
+RefNumCOL1
+PERLODSUMDEC
+
+1x
+
+R
+R
+
+an8
+-
+
+Código de aduana (formato COL: “ES00xxxx”)
+Declarante
+
+Nombre
+
+NamPLD1
+
+O
+
+an..35
+
+Nombre
+
+______________________________________________________________________
+Pág. 26 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+REPRESENTATIVE
+(Header)
+
+Calle y Número
+Código postal
+Ciudad
+País
+TIN
+Email
+REPRESENTANTE (Cabecera)
+
+StrAndNumPLD1
+PosCodPLD1
+CitPLD1
+CouCodPLD1
+TINPLD1
+EmailPLD1
+REPLODPER
+
+TIN
+Estatus de representación
+
+TINREP1
+StatusREP1
+ContactPersonREP1
+NameREP1
+PhoneNumberREP1
+EmailREP1
+CARRIER
+TINCAR1
+ContactPersonCAR1
+NameCAR1
+PhoneNumberCAR1
+EmailCAR1
+SEAID529
+SeaIdSEAID530
+
+Contact Person
+
+CARRIER (Header)
+
+Nombre
+Teléfono
+Email
+TRANSPORTISTA (Cabecera)
+TIN
+
+Contact Person
+
+SEALS (Header)
+
+Nombre
+Teléfono
+Email
+PRECINTOS (Cabecera)
+Identificador de precinto
+
+Versión 5.3
+
+1x
+
+1x
+
+99x
+
+O
+O
+O
+O
+R
+R
+O
+
+an..35
+an..9
+an..35
+a2
+an..17
+an..512
+-
+
+R
+R
+O
+R
+O
+R
+R
+R
+O
+R
+O
+R
+O
+R
+
+an..17
+n1
+an..70
+an..35
+an..512
+an..17
+an..70
+an..35
+an..512
+an..20
+
+L8
+R837
+CV01
+
+R838
+L905
+
+R837
+
+Dirección
+Código postal
+Ciudad
+Código de país
+EORI requerido
+Email
+Representante
+EORI requerido
+Estatus de representación
+Nombre
+Teléfono
+Email
+Compañía de transporte
+EORI requerido
+Nombre
+Teléfono
+Email
+Precintos
+Código de precinto
+
+______________________________________________________________________
+Pág. 27 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.3. Mensaje IE628 de aceptación
+IE628 Grupo
+MESSAGE
+
+HEADER
+
+CUSTOMS OFFICE
+
+Campo
+Grupo de datos de servicio
+(sobre MENSAJE)
+Remitente
+Receptor
+Fecha de preparación
+Hora de preparación
+Indicador de test
+Identificador del mensaje
+Tipo de mensaje
+Identificador de correlación
+
+Etiqueta
+CC628A
+
+CABECERA
+Número de referencia local
+
+HEAHEA
+RefNumHEA4
+
+Indicador de operación
+Referencia de operación
+Fecha/hora de registro de la
+declaración
+Tipo de declaración
+Código de predeclaración
+
+R.
+1x
+
+MesSenMES3
+MesRecMES6
+DatOfPreMES9
+TimOfPreMES10
+TesIndMES18
+MesIdeMES19
+MesTypMES20
+CorIdeMES25
+
+O. Tm.
+R
+
+Tb.
+
+Reg.
+
+Observaciones
+
+TR9085
+
+Se indicará como valor fijo: NICA.ES
+NIF del Remitente que envió el mensaje IE615
+Fecha de la respuesta (AAMMDD)
+Hora de la respuesta (HHMM)
+Se indicará el valor 1 para pruebas
+Identificador único del mensaje
+Valor CC628A
+Se devolverá el “Identificador del mensaje” al
+que se responde
+
+R
+R
+R
+R
+O
+R
+R
+D
+
+an..35
+an..35
+n6
+n4
+n1
+an..14
+an..6
+an..14
+
+R
+R
+
+an..22
+
+DocOpeHEA2
+DocNumHEA5
+DecRegDatTimHEA115
+
+R
+R
+R
+
+an2
+an..21
+n12
+
+L118
+
+DecTypeHEA
+PreDecCodeHEA
+
+R
+R
+
+an2
+an2
+
+L904
+L906
+
+Circuito asignado
+
+CusChanHEA
+
+R
+
+a1
+
+L902
+
+CSV de declaración
+
+DecCsvHEA
+
+D
+
+an16
+
+CS03
+
+Sólo se enviará para respuestas a peticiones vía web
+service, en respuesta de un IE615, es decir cuando la
+operación DocOpeHEA2 sea "AL", "MO", "AN".
+
+CSV de levante
+
+RelCsvHEA
+
+D
+
+an16
+
+CS02
+
+Sólo se enviará para declaraciones (no
+predeclaraciones) con levante automático
+
+CUSOFFLON
+
+1x
+
+1x
+
+L27
+L60
+
+TR9181
+
+Número de referencia único local (LRN) asignado
+por el declarante a la EXS
+Operación realizada (AL, MO, AN, AC)
+MRN asignado a la declaración
+R660
+
+RS01
+
+Tipo de declaración efectuada (A1, A2, A3, NR)
+Indicador de predeclaración:
+PD – Predeclaración / PreEXS
+DE – Declaración activada
+Circuito aduanero asignado. Para PreEXS será
+verde (“V”).
+
+R
+
+______________________________________________________________________
+Pág. 28 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+OF LODGEMENT
+Reference number
+DECLARANT
+Name
+Street and number
+Postal code
+City
+Country code
+TIN
+
+RefNumCOL1
+PERLODSUMDEC
+NamPLD1
+StrAndNumPLD1
+PosCodPLD1
+CitPLD1
+CouCodPLD1
+TINPLD1
+
+1x
+
+R
+R
+
+an8
+
+O
+O
+O
+O
+O
+R
+
+an..35
+an..35
+an..9
+an..35
+a2
+an..17
+
+Declarante
+Nombre
+Dirección
+Código postal
+Ciudad
+Código de país
+
+L8
+R837
+
+______________________________________________________________________
+Pág. 29 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.4. Mensaje IE616 de rechazo funcional
+IE616 Grupo
+
+Campo
+
+Etiqueta
+
+R.
+
+O. Tm.
+
+MESSAGE
+
+Grupo de datos de servicio (sobre
+MENSAJE)
+Remitente
+Receptor
+Fecha de preparación
+Hora de preparación
+Indicador de test
+Identificador del mensaje
+Tipo de mensaje
+Identificador de correlación
+
+CC616A
+
+1X
+
+R
+
+CABECERA
+Número de referencia local
+Indicador de operación
+Referencia de operación
+Tipo de declaración
+Código de predeclaración
+
+HEAHEA
+RefNumHEA4
+DocOpeHEA2
+DocNumHEA5
+DecTypeHEA
+PreDecCodeHEA
+
+HEADER
+
+FUNCTIONAL
+ERROR
+
+MesSenMES3
+MesRecMES6
+DatOfPreMES9
+TimOfPreMES10
+TesIndMES18
+MesIdeMES19
+MesTypMES20
+CorIdeMES25
+
+Motivo de rechazo de la declaration DecRejReaHEA252
+Fecha/hora de rechazo de
+DecRejDatTimHEA116
+declaración
+FUNERRER1
+Código de error
+Puntero
+Motivo
+Valor original / Texto informativo
+
+ErrTypER11
+ErrPoiER12
+ErrReaER13
+OriAttValER14
+
+1X
+
+999x
+
+R
+R
+R
+R
+O
+R
+R
+D
+
+an..35
+an..35
+n6
+n4
+n1
+an..14
+an..6
+an..14
+
+R
+R
+R
+D
+D
+D
+
+an..22
+an2
+an..21
+an2
+an2
+
+O
+R
+
+an..350
+n12
+
+Tb.
+
+L27
+
+Reg.
+
+Observaciones
+
+TR9085
+
+Se indicará como valor fijo: NICA.ES
+NIF del Remitente que envió el mensaje IE615
+Fecha de la respuesta (AAMMDD)
+Hora de la respuesta (HHMM)
+Se indicará el valor 1 para pruebas
+Identificador único del mensaje
+Valor CC616A
+Se devolverá el "Identificador del mensaje" del
+mensaje al que se responde
+
+L60
+TR9181
+
+L118
+L904
+L906
+
+CS01
+CS01
+CS01
+
+Operación realizada (AL, MO, AN, AC)
+MRN asignado a la declaración en un alta previa
+Tipo de declaración efectuada (A1, A2, A3, NR)
+Indicador de predeclaración:
+PD – Predeclaración / PreEXS
+DE – Declaración activada
+
+R660
+
+R
+R
+R
+O
+O
+
+n..3
+an..512
+an..6
+an..512
+
+L49
+Puntero al elemento de datos origen del error
+Regla, Condición o Lista de códigos incumplida
+Valor original / Texto informativo sobre la causa
+del error
+
+______________________________________________________________________
+Pág. 30 / 68
+
+Departamento de Informática Tributaria.
+Subdirección General de Aplicaciones de Aduanas e II.EE.
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.5. Mensaje IE919 de rechazo no funcional (por errores XML)
+IE919 Grupo
+MESSAGE
+
+HEADER
+
+Campo
+Grupo de datos de servicio (sobre
+MENSAJE)
+Remitente
+Receptor
+Fecha de preparación
+Hora de preparación
+
+Etiqueta
+CD919B
+MesSenMES3
+MesRecMES6
+DatOfPreMES9
+TimOfPreMES10
+
+R
+R
+R
+R
+
+an..35
+an..35
+n6
+n4
+
+Indicador de test
+Identificador del mensaje
+Tipo de mensaje
+Identificador de correlación
+
+TesIndMES18
+MesIdeMES19
+MesTypMES20
+CorIdeMES25
+
+O
+R
+R
+D
+
+n1
+an..14
+an..6
+an..14
+
+CABECERA
+Document/reference number
+Localización
+Número de línea
+Número de columna
+Motivo
+Valor original
+
+HEAHEA
+DocNumHEA5
+XMLERR805
+ErrLocXMLER803
+ErrLinNumXMLER800
+ErrColNumXMLER801
+ErrReaXMLER802
+OriAttValXMLER804
+
+Código de error
+
+ErrCodXMLER806
+
+XML ERROR
+
+R.
+1x
+
+1x
+999x
+
+O. Tm.
+R
+
+O
+O
+R
+O
+O
+O
+R
+O
+R
+
+Tb.
+
+Reg.
+
+Observaciones
+
+Se indicará como valor fijo: NICA.ES
+Se indicará el NIF del remitente de la petición
+Fecha de la respuesta (AAMMDD)
+Hora de la respuesta (HHMM)
+L27
+
+TR9085
+
+L60
+TR9181
+
+Se indicará el valor 1 para pruebas
+Identificador único del mensaje
+Valor CD919B
+Se devolverá el "Identificador del mensaje” al
+que se responde
+
+an..22
+
+Número de referencia único
+
+an..350
+n..9
+n..9
+an..512
+an..512
+
+Localización del error
+Número de línea del error
+Número de la columna del error
+Descripción del error
+Valor original declarado por el operador en
+el campo con error
+Código del error
+
+n2
+
+L30
+
+______________________________________________________________________
+Pág. 31 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.6. Consideraciones especiales
+Por regla general los formatos de los campos están definidos en los esquemas de los mensajes y en el
+documento General. En este apartado se incluyen algunas aclaraciones para determinados campos:
+Remitente
+Receptor
+Indicador de test
+Identificador del
+mensaje
+
+Se pondrá el NIF del remitente que envía la EXS
+Se indicará como valor fijo: NICA.ES
+Se indicará el valor 1 para pruebas. No se enviará si es una presentación en real.
+Código de identificación del mensaje. Su longitud será como
+máximo de 14 posiciones (an..14).
+Debe ser único por operador y mensaje.
+Esta etiqueta no se usará en el mensaje de presentación. En los mensajes de respuesta
+aparecerá el Identificador del mensaje de presentación a que está respondiendo.
+Sin uso.
+
+Identificador de
+correlación
+Indicador nacional de
+circunstancia específica
+Indicador de operación Se admitirán dos operaciones especiales:
+
+Anulación (A). Será necesario el envío de un mensaje de presentación completo, con un
+“Identificador del mensaje” distinto, indicando en este campo el valor (A) y en
+CABECERA.“Referencia de operación” el MRN asignado a la declaración que se desea anular.
+Modificación (M). Se enviará el mensaje de presentación corregido, con un “Identificador del
+mensaje” distinto, y se cumplimentará este campo con el valor M y en CABECERA."Referencia
+de operación" el MRN asignado a la declaración que se desea modificar
+
+Requisitos de disponer
+de identificador
+Europeo (EORI) y/o de
+Número de
+Identificación Fiscal
+(NIF)
+
+Sólo se permitirá Modificar o Anular declaraciones sumarias de salida con circuito verde y con
+su mercancía aún no embarcadas.
+REMITENTE
+Persona que envía el mensaje
+- EORI no requerido
+- NIF requerido, pues debe coincidir con NIF de certificado digital
+DECLARANTE (Cabecera)
+- EORI requerido
+- NIF no requerido
+REPRESENTANTE (Cabecera)
+Representante
+- EORI requerido
+- NIF requerido
+EXPEDIDOR (Cabecera/Partida)
+- EORI no requerido, pero si dispone de uno se ha de declarar. Si el indicador de circunstancia
+específico es E debe tener EORI (y ser AEO)
+- NIF no requerido
+DESTINATARIO (Cabecera/Partida)
+- EORI no requerido, pero si dispone de uno se ha de declarar
+- NIF no requerido
+AGENTE ADICIONAL DE LA CADENA DE SUMINISTRO
+(Cabecera/Partida)
+- EORI requerido
+- NIF no requerido
+TRANSPORTISTA (Cabecera)
+Transportista
+- EORI requerido
+- NIF no requerido
+
+Pág. 32 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+5.7. Identificador EORI de transportistas
+El dato del transportista (Carrier), introducido en v4, requiere de un identificador EORI.
+Aquellos transportistas que carezcan de él tendrán que solicitarlo por el registro telemático de la AEAT o
+directamente en su oficina regional. Existe un procedimiento para dar de alta EORI sin NIF asociado
+específico para los transportistas de EXS/ENS.
+
+5.8. Valores permitidos en campos numéricos
+De forma general en todos los campos numéricos (enteros y decimales) sólo se podrá consignar valores
+positivos. El valor cero ("0") no se considera un número positivo.
+Para valores numéricos, los ceros por la izquierda no deberán emplearse. Los ceros por la derecha sólo
+podrán ser usados para indicar la precisión decimal.
+La única excepción a esta regla general serán los campos numéricos que expresen una fecha.
+Sólo se permitirá un valor cero en un campo numérico (no temporal) en el caso de que la regla R021 lo
+permita explícitamente. En el mensaje IE615 esto sólo sucede en el campo “Número de bultos”.
+
+Pág. 33 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+6. COMUNICACIONES POR BANDEJA DE ENTRADA
+A continuación, se describe los diferentes servicios de comunicación con declarantes y otros operadores
+económicos implicados sobre determinados eventos especialmente interesantes en el ciclo de vida de
+las declaraciones sumarias de salida con posterioridad a su alta.
+
+6.1. Recepción de mensajes
+Para la recepción de los mensajes se empleará la infraestructura del web service de Bandeja de
+Entrada. El operador económico destinatario de estos mensajes realizará periódicamente una petición
+al web service de bandeja de entrada enviando el NIF que emplearán para esta comunicación, que
+devolverá una lista con los mensajes que tiene pendiente de leer. Cada elemento de la lista tiene una
+clave propia de la Bandeja de Entrada. Con dicha clave se obtiene posteriormente el contenido de un
+mensaje concreto, que tendrá asociado un Tipo de Mensaje con un descriptor wsdl y un esquema xsd de
+respuesta específicos.
+Se puede consultar la documentación de Bandeja de Entrada en:
+Guía técnica de la Bandeja de Entrada
+y las especificaciones técnicas de su web service en el directorio de servicios web de la AEAT, aquí:
+Índice de Servicios Web
+
+6.1.1. Nota importante
+La mensajería hacia el operador económico, declarante o representante de las declaraciones EXS, de
+momento se ceñirá exclusivamente a la activación de PreEXS. El operador deberá ser capaz de
+conectarse a Bandeja de Entrada y leer dichas comunicaciones.
+No se descarta que en un futuro se usa la Bandeja de Entrada para comunicar los despachos por la
+aduana de circuitos naranjas/rojos y otros eventos de interés para el operador.
+
+Pág. 34 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+6.2. Servicio web de comunicación de activación exitosa de PreEXS
+6.2.1. Definición funcional
+Servicio web cuya función es que la AEAT comunique al operador económico que previamente hubiera
+declarado una PreEXS, que dicha declaración ha sido activada de oficio debido a la activación o
+presentación de mercancías ante la aduana de la última DSDT o G4 pendiente de activar/presentar que
+tuviera declarado como documento previo.
+La referencia en Bandeja de Entrada será el MRN asignado a la EXS.
+El mensaje enviado tendrá el mismo formato que el mensaje de aceptación síncrono IE628. Como se
+está informando de una activación exitosa se devolverá el elemento DocOpeHEA2 (“Indicador de
+operación”) con valor “AC” (“Activación de PreEXS por presentación de declaraciones de depósito
+temporal (G4)”) y el elemento PreDecCodeHEA (“Código de predeclaración”) con valor "DE".
+
+6.2.2. Descriptor del servicio y puertos
+Su descriptor wsdl es el siguiente:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/ActPreEXS628V5.wsdl
+
+En la definición de este servicio se ofrece una dirección de envío de las notificaciones, bien para el
+entorno de producción:
+- usando certificado personal:
+https://www1.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+- usando certificado de sello:
+https://www10.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+o bien para entorno de pruebas/preproducción:
+- usando certificado personal:
+https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+- usando certificado de sello:
+https://prewww10.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+
+6.2.3. Esquemas de mensajes
+Los mensajes de petición y respuesta implicados son los siguientes:
+
+Pág. 35 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Mensaje de petición:
+El servicio no tiene un esquema propio, se utiliza el estándar que proporciona la ‘Bandeja de Entrada’:
+https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adht/band
+/ws/det/DetalleV5Ent.xsd
+- Mensaje de respuesta:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE628V5Sal.xsd
+que tendrá los mismos esquemas auxiliares del IE628 ya descritos anteriormente.
+
+Pág. 36 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+6.3. Servicio web de comunicación de rechazo funcional en la
+activación de PreEXS
+6.3.1. Definición funcional
+Servicio web cuya función es que la AEAT comunique al operador económico que previamente hubiera
+declarado una PreEXS, que dicha declaración ha sufrido un intento de activación no exitoso, provocando
+un rechazo funcional en dicha activación. Se enviará en el momento de la activación de oficio debido a la
+activación o presentación de mercancías ante la aduana de la última DSDT o G4 pendiente de
+activar/presentar que tuviera declarado como documento previo.
+Esta situación es anómala. En caso de recibir un mensaje de este tipo póngase en contacto con el CAU
+de Aplicaciones de Aduanas.
+La referencia en Bandeja de Entrada será el MRN asignado a la EXS.
+El mensaje enviado tendrá el mismo formato que el mensaje de rechazo funcional síncrono IE616.
+
+6.3.2. Descriptor del servicio y puertos
+Su descriptor wsdl es el siguiente:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/ActPreEXS616V5.wsdl
+
+En la definición de este servicio se ofrece una dirección de envío de las notificaciones, bien para el
+entorno de producción:
+- usando certificado personal:
+https://www1.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+- usando certificado de sello:
+https://www10.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+o bien para entorno de pruebas/preproducción:
+- usando certificado personal:
+https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+- usando certificado de sello:
+https://prewww10.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP
+
+6.3.3. Esquemas de mensajes
+Los mensajes de petición y respuesta implicados son los siguientes:
+
+Pág. 37 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Mensaje de petición:
+El servicio no tiene un esquema propio, se utiliza el estándar que proporciona la 'Bandeja de Entrada':
+https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adht/band
+/ws/det/DetalleV5Ent.xsd
+- Mensaje de respuesta:
+https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE616V5Sal.xsd
+que tendrá los mismos esquemas auxiliares del IE616 ya descritos anteriormente.
+
+Pág. 38 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+7. CONDICIONES Y REGLAS
+Se pueden distinguir tres tipos de condiciones a cumplir en la construcción de los mensajes del sistema:
+• Lista de Condiciones CXXX
+• Lista de reglas RXXX
+• Lista de regla técnicas TRXXXX
+A continuación, listamos las que aplican en los mensajes de IE615.
+Nótese que:
+‘R’ implica que el elemento es ‘Requerido’ (obligatorio)
+‘O’ implica que el elemento es ‘Opcional’
+
+C010
+Es un dato obligatorio que se deberá declarar o bien en la cabecera (cuando sea el mismo para todas las partidas) o
+bien en cada una de las partidas (cuando en al menos una de ellas sea distinto).
+Cuando el mismo EXPEDIDOR se quiere declarar en todas las partidas se deberá usar el grupo de datos ‘EXPEDIDOR
+(Cabecera)’ a nivel de cabecera en su lugar y el grupo de datos ‘EXPEDIDOR (Partida)’ a nivel de partida no podrá
+usarse.
+Sin embargo, se podrá omitir la declaración del EXPEDIDOR tanto en cabecera como en partidas si el expedidor de
+toda la declaración es el Declarante consignado en el grupo ‘DECLARANTE’.
+
+C011
+Es un dato obligatorio que se deberá declarar o bien en la cabecera (cuando sea el mismo para todas las partidas) o
+bien en cada una de las partidas (cuando en al menos una de ellas sea distinto).
+Cuando el mismo DESTINATARIO se quiere declarar en todas las partidas (goods items) se deberá usar el grupo de
+datos ‘DESTINATARIO (Cabecera)’ a nivel de cabecera en su lugar y el grupo de datos ‘DESTINATARIO (Partida)’ a
+nivel de partida no podrá usarse.
+
+C061
+IF ‘Tipo de bultos’ indica GRANELES (códigos ‘VG’, ‘VL’, ‘VO’, ‘VQ’, ‘VR’, ‘VS’ o ‘VY’)
+THEN ‘Número de bultos’ no puede ser usado
+ELSE 'Número de bultos' = ‘R’ (requerido)
+Téngase presente que, aunque los tipos de bultos de graneles se consideran como 1 bulto para el total de bultos
+declarados en la EXS tal y como figura en la R105, de cara al datado de la DSDT (Sumaria de Descarga) se
+considerará como 0 bultos debido a que en la DSDT se declaran de esta forma.
+
+C501
+IF ‘TIN’ está presente en el grupo de datos
+THEN este elemento = ‘O’ (opcional)
+ELSE este elemento = ‘R’ (requerido)
+
+C562
+IF ‘Indicador de circunstancia específica’ = 'E'
+THEN este elemento = ‘R’
+ELSE este elemento = ‘O’
+
+Pág. 39 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+C570
+IF CABECERA.‘Indicador de circunstancia específica’ = 'B'
+THEN
+este grupo de datos = ‘O’
+ELSE IF
+CABECERA.‘Indicador de circunstancia específica’ = 'A'
+THEN
+el elemento de datos debe tener al menos una ocurrencia
+ELSE el elemento de datos debe tener al menos dos ocurrencias.
+
+C576
+IF CABECERA.’Método de pago’ es usado
+THEN este atributo no puede ser usado
+ELSE este atributo = ‘O’
+
+C577
+IF CABECERA.'Indicador de circunstancia específica' = 'A' o 'B'
+THEN este elemento o grupo = ‘O’
+ELSE este elemento o grupo = ‘R’
+
+C585
+IF PARTIDA.’Descripción de las mercancías’ es usado
+THEN este grupo de datos = ‘O’
+ELSE este grupo de datos = ‘R’
+
+C991
+IF CABECERA.’Indicador de operación’ es usado
+THEN este elemento = 'R'
+ELSE este elemento no puede ser usado
+IF CABECERA.’Referencia de operación' es usado
+THEN este elemento = 'R'
+ELSE este elemento no puede ser usado
+
+C994
+IF ‘PREVIOUS DOCUMENT.Document type’ = 'CNV'
+THEN este elemento = ‘O’
+ELSE este elemento = ‘R’
+
+C995
+Sólo se empleará en algunos de los casos, los más habituales, del ‘PREVIOUS DOCUMENT.Document type’ = ‘N337’
+tal y como se define en la regla R995. Para el resto de 'PREVIOUS DOCUMENT.Document type' no se usará.
+
+CS01
+Este elemento aparecerá si el elemento DocOpeHEA2 <> “AL” (alta).
+
+CS02
+Este elemento solo aparecerá si el elemento ‘Circuito asignado’ = ‘V’ y ‘Código de predeclaración’ = ‘DE’.
+
+CS03
+Sólo se enviará para respuestas a peticiones vía web service, es decir cuando la operación DocOpeHEA2 sea "AL",
+"MO", "AN", no cuando este mensaje sea una notificación de activación de una PreEXS (operación = "AC") vía Bandeja
+de Entrada.
+
+Pág. 40 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+R005
+‘Número de partida’ siempre debe declararse incluso si ‘Total de partidas’ = ‘1’. En dicho caso, en la única partida
+declarada, deberá usarse el valor ‘1’ en el ‘Número de partida’.
+
+R007
+Cada ‘Número de partida’ es único en toda la declaración. Las partidas se numerarán de forma secuencial con
+números naturales comenzando por el ‘1’ para el primer elemento e incrementando en 1 por cada nueva partida.
+
+R012
+Es un dato opcional de la declaración.
+Cuando el mismo ‘AGENTE ADICIONAL DE LA CADENA DE SUMINISTRO’ se quiere declarar en todas las partidas
+se deberá usar el grupo de datos ‘AGENTE ADICIONAL DE LA CADENA DE SUMINISTRO (Cabecera)’a nivel de
+cabecera en su lugar y el grupo de datos ‘AGENTE ADICIONAL DE LA CADENA DE SUMINISTRO (Partida)’ a nivel de
+partida no podrá usarse.
+
+R013
+Es un dato opcional de la declaración.
+Si se declara el grupo ‘INFORMACIÓN ADICIONAL (Cabecera)’ a nivel de cabecera no se podrá declarar el grupo '
+INFORMACIÓN ADICIONAL (Partida)' en ninguna de las partidas.
+Si se declara 'INFORMACIÓN ADICIONAL (Partida)' en alguna de las partidas no se podrá declarar el grupo '
+INFORMACIÓN ADICIONAL (Cabecera)' a nivel de cabecera.
+
+R014
+En los grupos de datos ‘INFORMACIÓN ADICIONAL’ se podrá declarar los elementos ‘Code’ o ‘Text’ o ambos, pero al
+menos uno de ellos.
+
+R021
+Un cero ‘0’ se considera un número válido en este elemento.
+
+R105
+El ‘Total de bultos’ será igual a la suma de todos los ‘Número de bultos’ + un valor de ‘1’ por cada granel (bulk)
+declarado.
+Téngase presente que, aunque los tipos de bultos de graneles listados en la C061 se consideran como 1 bulto para el
+total de bultos declarados en la EXS, de cara al datado de la DSDT (Sumaria de Descarga) se considerará como 0
+bultos debido a que en la DSDT se declaran de esta forma.
+
+R660
+La fecha hora en formato YYYYMMDDHHMM donde:
+YYYY = Año
+MM = Mes
+DD = Día
+HH = Hora
+MM = Minuto
+
+R837
+El TIN (EORI Trader Identification number) deberá declararse.
+
+R838
+El TIN (EORI Trader Identification number) deberá declararse y tener asociado un NIF.
+
+Pág. 41 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+R839
+El valor ‘E’ (OEA) del elemento 'Indicador de circunstancia específica’ sólo podrá ser usado si el ‘DECLARANTE’ y
+todos los ‘CONSIGNORS’ declarados disponen de certificado OEA de tipo ‘AEOF’ o ‘AEOS’.
+
+R879
+El país de destino final de la expedición debe ser declarado, en cualquier caso.
+Si 'Indicador de circunstancia específica' es distinto de ‘A’ adicionalmente, al menos, deberá declararse el país de
+origen de la expedición.
+Asimismo España (“ES”) deberá figurar en el Itinerario.
+
+R880
+En caso de declarar algún documento T2L como documento previo en una o varias partidas alguno de los países
+subsiguientes a España (“ES”) en el itinerario deberá pertenecer al TAU.
+
+R881
+El código de mercancía deberá declararse con un mínimo de 6 dígitos (sistema armonizado).
+
+R994
+En la siguiente tabla se detalla el formato esperado de la referencia al documento previo en función del tipo de
+documento declarado ('DOCUMENTO PRECEDENTE.Tipo').
+Tipo
+
+Formato esperado
+
+Ejemplo
+
+N337
+
+ver regla R995
+
+-
+
+DH7
+
+MRN de H7 (18 chars)
+
+23ESH7A039120394R4
+
+ENV
+
+Nº de envío (hasta 70 chars)
+
+1421579732
+
+T2L
+
+ver regla R996
+
+23ES004611L3861391
+ESPSL027532877
+ESEAPS005316
+PT000284483284
+
+CNV
+
+-
+
+-
+
+ZEZF
+
+-
+
+ZIRR
+
+-
+
+El documento N337 referencia una declaración de depósito temporal usando formatos aéreo o marítimo para una
+DSDT o los diversos formatos de referencia de un G4, siguiendo las reglas especificadas a continuación en la R995.
+
+R995
+El documento N337 hace referencia a una Declaración de Depósito Temporal, sea esta una DSDT (Declaración
+Sumaria de Depósito Temporal) habitualmente denominada Declaración Sumaria de Descarga; o bien una Declaración
+G4.
+Se admiten múltiples formatos tal y como se describe en el apartado:
+2.8.3.
+
+Documento previo N337 como referencia para el datado del Depósito Temporal (G4 o DSDT)
+
+de la guía técnica del G4.
+
+A continuación listamos unos ejemplos de datado de las actuales DSDT con el documento previo N337:
+
+DSDT en formato genérico MRN + partida:
+
+Pág. 42 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>25ES00481185001230</DocRefPD12>
+<DocGdsIteNumPD13>317</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+DSDT en formato aéreo:
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>20230101AC23289+5743938839037987329</DocRefPD12>
+</PREDOCGODITM1>
+DSDT en formato marítimo:
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>08116500123</DocRefPD12>
+<DocGdsIteNumPD13>3</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+
+Y en los siguientes ejemplos para el datado de G4:
+G4 en formato genérico MRN + partida global:
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>25ESG4A000000001U0</DocRefPD12>
+<DocGdsIteNumPD13>317</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+G4 en formato aéreo (nº vuelo + conocimiento + partida local a ese conocimiento):
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>20230101AC23289+5743938839037987329</DocRefPD12>
+<DocGdsIteNumPD13>1</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+G4 en formato marítimo (nº escala + conocimiento + partida local a ese conocimiento):
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>081126500123+5743938839037987329</DocRefPD12>
+<DocGdsIteNumPD13>1</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+
+En las páginas siguientes transcribimos la tabla que aparece en la guía técnica de G4, de todos estos formatos
+posibles listada en dicho apartado, donde:
+• ‘Reference number ‘ hace referencia a 'PREVIOUS DOCUMENT.Document reference' (elemento
+<DocRefPD12>)
+• ‘Goods item number’ hace referencia a 'PREVIOUS DOCUMENT.Document goods item number’(elemento
+<DocGdsIteNumPD13>)
+que servirá como referencia para el datado tanto de DSDT como del G4 en las declaraciones EXS.
+
+Pág. 43 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Reference number
+Exclusivos para G4
+MRN (G4)
+ó nº escala (12 chars)
+ó nº vuelo
+
+Versión 5.3
+
+Goods Item
+Number
+
+Tipo
+DDT
+
+Observaciones
+
+Ejemplos
+
+partida > 0
+
+G4
+
+Datado por partida de G4 (puede ser parcial).
+
+Reference
+number
+“24ESG4A000000001U6+9961337049312835311”
+ó
+“461124000001+9961337049312835311”
+ó
+“20240228PRU12345+9961337049312835311”
+
+partida> 0
+
+G4
+
+Datado por partida de G4 (puede ser parcial).
+
+Goods item number = “5”
+
+G4
+
+Al no enviar “MRN/nº escala/nº vuelo” el sistema informático escogerá el
+conocimiento más reciente pero no hay garantías en caso de repetidos.
+Datado por partida de G4 (puede ser parcial).
+
+Goods item number = “5”
+
+-
+
+G4
+
+Sólo se permitirá si el G4 referenciado por el MRN consta de un único
+conocimiento.
+Datado por conocimiento G4 (1).
+
+-
+
+G4
+
+Datado por conocimiento G4 (1).
+
+Goods item number = no declarado ó “0”
+
+G4
+
+Al no enviar “MRN/nº escala/nº vuelo” el sistema informático escogerá el
+conocimiento más reciente pero no hay garantías en caso de repetidos.
+Datado por conocimiento G4 (1).
+Sólo se permitirá si el G4 referenciado por el MRN consta de un único
+conocimiento.
+
+Goods item number = no declarado ó “0”
+
++ conocimiento
+
+conocimiento
+
+MRN (G4)
+
+MRN (G4)
+ó nº escala (12 chars)
+
+partida > 0
+
++ conocimiento
+
+conocimiento
+
+MRN (G4)
+
+-
+
+=
+
+Goods item number = “5”
+Reference number = “9961337049312835311”
+
+Reference number = “24ESG4A000000001U6”
+
+Reference
+number
+“24ESG4A000000001U6+9961337049312835311”
+ó
+“461124000001+9961337049312835311”
+
+=
+
+Goods item number = no declarado ó “0”
+Reference number = “9961337049312835311”
+
+Reference number = “24ESG4A000000001U6”
+
+Pág. 44 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Híbridos G4 o DSDT
+nº vuelo
++ conocimiento
+
+-
+
+G4
+/
+DSDT
+
+Versión 5.3
+
+Pueden darse dos situaciones:
+
+Reference
+number
+“20240228PRU12345+9961337049312835311”
+
+=
+
+- Datado por conocimiento G4 (1), si el nº de vuelo se declaró en un G4.
+- Actual datado aéreo de DSDT, si el nº de vuelo se declaró en una
+DSDT.
+En caso de que se encuentre el nº de vuelo en ambos sistemas de
+entrada (G4 y DSDT) se priorizará el G4, quedándose sin datar el vuelo
+declarado en la DSDT.
+Exclusivos DSDT
+nº escala (11 chars)
+
+partida > 0
+
+DSDT
+
+Actual datado marítimo de DSDT.
+
+Reference number = “46114000001”
+
+MRN (DSDT)
+
+partida > 0
+
+DSDT
+
+Actual datado genérico de DSDT.
+
+Goods item number = “5”
+Reference number = “24ES00461186033708”
+
+nº escala (11 chars)
++ conocimiento
+
+-
+
+DSDT
+
+Actual datado especial marítimo de DSDT para Ceuta/Melilla
+Se admitirá para recintos marítimos exclusivamente en Ceuta/Melilla en
+caso de solicitar datado masivo de partidas con el mismo conocimiento.
+
+MRN (DSDT)
++ conocimiento
+
+-
+
+DSDT
+
+Actual datado especial marítimo de DSDT para Ceuta/Melilla
+Se admitirá para recintos marítimos exclusivamente en Ceuta/Melilla en
+caso de solicitar datado masivo de partidas con el mismo conocimiento.
+
+Goods item number = “5”
+Reference
+number
+“46114000001+9961337049312835311”
+Goods item number = no declarado ó “0”
+
+=
+
+Reference
+number
+“24ES00461186033708+9961337049312835311”
+
+=
+
+Goods item number = no declarado ó “0”
+
+Pág. 45 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+donde:
+-
+
+allá donde figura un signo más “+” implica que se declarará explícitamente el carácter “+” para separar los
+dos elementos de información de que se compone “Reference Number” del “12 01 Previous Document”
+un valor “-“ equivale a NO declarar el Goods Item Number del Previous Document o bien, a declararlo con
+valor “0”.
+
+Como aclaración y resumen de elementos de información clave del G4 y la DSDT, Tal y como se describe en la guía
+técnica EDIFACT de la DSDT (Sumaria de Descarga) y en la presente guía:
+
+nº escala marítimo
+BGM/LRN marítimo
+MRN
+
+DSDT
+RRRRANNNNNN (11 chars)
+RRRRANNNNNNSSS
+
+G4
+RRRRAANNNNNN (12 chars)
+RRRRANNNNNN/SSSSS
+
+AAES00RRRR8NNNNNNC
+Ej.: 22ES00461185001237
+
+AAESG4ANNNNNNNNNUC
+Ej.: 24ESG4A000000001U6
+
+(1) Datado por conocimiento G4.
+Si se declara un datado por conocimiento G4 (sin partida de G4 declarada) en una partida de declaración
+aduanera (H1, H2, etc.) no podrá declarase un datado por conocimiento+partida G4 (con partida de G4
+declarada) del mismo conocimiento de G4 en la misma o diferentes partidas. Es decir, si se comienza a datar
+un conocimiento de G4 sin detallar partida de G4 se deberá seguir datando por conocimiento.
+Sí que se permitirá (y será lo habitual) declarar el mismo datado por conocimiento G4 (sin partida de G4) en
+diferentes partidas de la misma declaración. La suma de “bultos/peso bruto” de todas esas partidas de la
+declaración que realizan el datado al mismo conocimiento de G4 deberá coincidir con el saldo de
+“bultos/peso bruto” del conocimiento de G4, que deberá quedar completamente saldado. De no poder quedar
+saldado por la misma declaración aduanera se rechazará la declaración y deberá optarse por el datado de
+G4 por conocimiento+partida, que permite el datado parcial.
+En caso de que la declaración aduanera permita la declaración del elemento 12 01 Previous Document a
+nivel de conocimiento (Goods Shipment) se permitirá declarar el datado por conocimiento G4 únicamente en
+dicho grupo y se asumirá que todas sus partidas datarán dicho conocimiento de G4.
+Para operadores autorizados al efecto, siempre que se trate de empresas de transporte urgente de
+paquetería, no se contrastará la consistencia exacta de bultos y peso bruto de ambas declaraciones.
+
+______________________________________________________________________
+Pág. 46 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+R996
+El documento T2L podrá declararse empleando una de las siguientes referencias:
+- MRN (18 chars) de T2L electrónico que deberá existir y no estar anulado. Ejemplo:
+24ES004611L3871391
+
+- Otras referencias propias de manifiestos visados de menos de 18 caracteres de longitud:
+o Referencia de 13 caracteres de longitud con formato ESRRRRANNNNNN, donde RRRR
+es un recinto aduanero, A un número (el año) y NNNNNN un número.
+o Referencia de entre 6 y 14 caracteres de longitud con formato ESPSLN…N, donde N..N
+son entre 0 y 9 dígitos numéricos.
+o Referencia de entre 7 y 15 caracteres de longitud con formato ESEAPSN...N, donde
+N..N son entre 0 y 9 dígitos numéricos.
+- Otras referencias propias de facturas y documentos de transporte de menos de 18 caracteres de
+longitud:
+
+Referencia con formato PPC.…C, donde PP es un país del TAU y C…C una cadena de
+caracteres.
+RS01
+Para PreEXS, es decir con elemento de respuesta “Código de predeclaración” / PreDecCodeHEA = “PD”,
+el circuito informado será siempre “V” (verde). No se anticiparán controles en las predeclaraciones.
+
+TR0022
+En el caso de que el valor de un ‘BULTOS.Número de bultos’ sea '0' entonces deberá existir al menos una
+partida con el mismo 'Marcas de expedición’ y con un 'Número de bultos’ con valor mayor que ‘0’.
+
+TR9085
+Se consignará uno de los siguientes valores fijos:
+- ‘0’ para envío real, con efectos administrativos
+- ‘1’ para envíos de pruebas. La notificación se grabará en un recinto de pruebas sin efectos
+administrativos.
+Si se omite el elemento xml se considerará que el envío es a real, como si se hubiera enviado a ‘0’.
+
+TR9120
+Si se usa, este elemento de datos deberá ser declarado a nivel de partida sólo si hay más de un valor
+diferente. Si se declara el mismo valor para todas las partidas, deberá declararse únicamente a nivel de
+cabecera.
+
+TR9181
+El campo para mensajes de respuesta, tanto de aceptación como de rechazo. No aplica para los
+mensajes de petición.
+
+Pág. 47 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+8. LISTAS DE CÓDIGOS
+L8 – Países
+Los códigos alfabéticos de la Unión para países y territorios se basan en los actuales códigos ISO alfa 2
+(a2) en la medida en que sean compatibles con los requisitos del Reglamento de Ejecución (UE)
+2020/1470 de la Comisión, de 12 de octubre de 2020, relativo a la nomenclatura de países y territorios
+para las estadísticas europeas sobre el comercio internacional de bienes y al desglose geográfico para
+otras estadísticas empresariales (DO L 334 de 13.10.2020, p. 2). En el contexto de las operaciones de
+tránsito, se utilizará el código de país ISO 3166 alfa-2, y para Irlanda del Norte el código «XI».
+
+L13 – Tipos de documentos, certificados y autorizaciones
+La lista de documentos, certificados, autorizaciones y sus códigos respectivos figura en la base de datos
+TARIC.
+
+L14 – Tipos de documentos de transporte
+La lista de documentos y sus códigos respectivos figura en la base de datos TARIC.
+A fecha de publicación de la presente guía los documentos de transporte válidos son:
+Elemento
+
+C613
+C614
+N235
+N271
+
+N703
+N704
+N705
+N714
+N720
+N722
+N730
+N740
+N741
+N750
+N760
+N785
+N787
+N955
+
+Descripción
+Consignment Note CIM T2
+
+Consignment Note CIM T2F
+Container list
+Packing list
+House waybill
+Master bill of lading
+Bill of lading
+House bill of lading
+Consignment note CIM
+Road list - SMGS
+Road consignment note
+Air waybill
+Master airwaybill
+Movement by post including parcel post
+Multimodal / combined transport document
+Cargo manifest
+Bordereau (cargo load list)
+ATA carnet
+
+L17 – Tipos de bultos
+Código de tipo de bulto tal y como se define en la última versión del anexo IV de la Recomendación n. o
+21 de la CEPE/ONU.
+
+Pág. 48 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+L27 - Flag
+Elemento
+0
+1
+
+Descripción
+No
+Yes
+
+L30 – Códigos de error XML
+Elemento
+12
+13
+15
+18
+19
+35
+39
+40
+50
+51
+52
+53
+54
+55
+56
+57
+
+Descripción
+Incorrect enumeration
+Missing
+Not supported in this position
+Unspecified Error / Other
+Invalid decimal notation
+Too many repetitions
+Element too long (length constraint)
+Element too short (length constraint)
+Invalid Value for the specific type
+Invalid value according to the pattern
+Invalid XML format
+Invalid character(s)
+Value is lower than the allowed lowest limit
+(Minimum Inclusive)
+Value is greater than the allowed upper limit
+(Maximum Inclusive)
+Value is lower than or equal to the allowed
+lowest limit (Minimum Exclusive)
+Value is greater than or equal to the allowed
+upper limit (Maximum Exclusive)
+
+L49 – Códigos de error funcionales
+Elemento
+12
+13
+14
+15
+26
+35
+39
+40
+41
+81
+82
+83
+84
+85
+86
+90
+
+Descripción
+Código o valor incorrecto
+Dato no declarado
+Elemento de datos no declarable
+Formato de valor incorrecto
+Dato duplicado
+Demasiadas repeticiones
+Dato demasiado largo
+Dato demasiado corto
+Dato de cabecera no consistente con lo declarado en partidas
+Contenedor no se encuentra en DSDT
+Bultos-Peso incompatibles en datado DSDT
+Error al datar la DSDT
+Error al actualizar datados DSDT
+Error al anular datados DSDT
+Error al consultar la DSDT en la UAR
+MRN inexistente
+Pág. 49 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+91
+101
+111
+112
+113
+207
+250
+251
+259
+451
+454
+700
+701
+702
+703
+704
+879
+980
+981
+
+Versión 5.3
+
+Recinto aduanero incompatible con ubicación declarada
+EORI requerido
+Ubicación inexistente
+La ubicación no permite la salida directa del TAU
+Ubicación incompatible con recinto aduanero y documentos previos
+declarados
+Operación no permitida por devolución de H7
+Documento T2L inexistente o anulado
+Referencia a T2L incorrecta / no permitida
+Países subsiguientes a España en el itinerario no pertenecientes al TAU
+incompatible con declaración de T2L como documento previo
+EXS ya activada no puede transicionar a PreEXS
+PreEXS no permitida en versión v4. Alguno de los documentos previos de
+tipo DSDT/G4 no han presentado las mercancías ante la aduana.
+Error genérico en cruce con H7
+Si se declara DH7 o ENV en documentos precedentes sólo será posible
+declarar el mismo tipo y referencia en todas las partidas
+Declaración H7 no encontrada
+Declaración H7 no se encuentra en un estado que permita la devolución
+Importación de bajo valor (DH7/ENV) ya declarada en otra ETD/EXS
+Regla R879 incumplida
+Versión de EXS cerrada
+Incoherencia de versiones entre endpoint/puerto y esquema del mensaje
+xml
+
+L60 – Tipos de mensaje XML
+Elemento
+CC615A
+CC628A
+CC616A
+CD919B
+
+Descripción
+Presentación de A1/A2/A3/NR
+Aceptación de A1/A2/A3/NR
+Rechazo por error funcional de A1/A2/A3/NR
+Rechazo por error XML de A1/A2/A3/NR
+
+L96 – Indicador de Circunstancia Específica
+Elemento
+A
+B
+E
+
+Descripción
+Envío Postal y Express
+Suministros para barcos y aviones
+Operadores Económicos Autorizados (OEA)
+
+L101 – Código UN de mercancías peligrosas
+Se usarán los códigos de la UNDG (United Nations Dangeorus Goods list)
+
+L116 – Métodos de pago
+Elemento
+A
+B
+C
+
+Descripción
+Pago en Metálico
+Pago por tarjeta de crédito
+Pago por cheque
+Pág. 50 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+D
+H
+Y
+Z
+
+Versión 5.3
+
+Otro
+Transferencia de crédito electrónica
+Informe de cuenta con transporte
+No pre-pagado
+
+L117 – Operación sobre la declaración en la petición (DocOpeHEA)
+Elemento
+A
+M
+
+Descripción
+Anulación
+Modificación
+
+L118 – Operación sobre la declaración en la respuesta (DocOpeHEA2)
+Elemento
+AL
+MO
+AN
+AC
+
+Descripción
+Alta
+Modificación
+Anulación
+Activación de PreEXS por presentación de declaraciones de depósito
+temporal (G4)
+
+L901 – Tipos de documento previo
+Elemento
+CNV
+DH7
+ENV
+N337
+T2L
+XSUA
+XSUM
+ZEZF
+ZIRR
+
+Descripción
+Contenedores vacíos
+Declaración H7 de importación de mercancía de bajo valor
+Número de envío de mercancía de bajo valor
+Declaración de Depósito Temporal (G4 o Sumaria de Descarga)
+Mercancía comunitaria que transborde en un tercer país
+Sumaria de Descarga Aérea *
+Sumaria de descarga marítima *
+Entrada en Zona o Depósito Franco
+Entrada Irregular
+
+* Se dejará de permitir su uso a partir de la versión 5.
+
+L902 – Circuito aduanero
+Elemento
+N
+R
+V
+
+Descripción
+Circuito Naranja
+Circuito Rojo
+Circuito Verde
+
+L903 - Función de agente de la cadena de suministros
+Elemento
+CS
+FW
+MF
+WH
+
+Descripción
+Transitario que combina envíos individuales más pequeños en un único
+envió más grande
+Parte que organiza la expedición de mercancías
+Parte que fabrica mercancías
+Parte que asume la responsabilidad por las mercancías que entran en un
+deposito
+Pág. 51 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+L904 - Tipos de declaraciones
+Elemento
+A1
+A2
+A3
+NR
+
+Descripción
+EXS – Declaración Sumaria de Salida
+EXS – Declaración Sumaria de Salida - envíos urgentes/express
+consignments
+Notificación de Reexportación
+Notificación de Reexpedición
+
+L905 - Estatus de representación
+Elemento
+2
+3
+
+Descripción
+Representación directa a tenor del artículo 18, apartado 1, del Código
+Representación indirecta a tenor del artículo 18, apartado 1, del Código
+
+L906 - Indicador de predeclaración
+Elemento
+PD
+DE
+
+Descripción
+Predeclaración / PreEXS
+Declaración activada
+
+Pág. 52 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+9. CONSIDERACIONES PARA LA DEVOLUCIÓN DE
+IMPORTACIONES DE BAJO VALOR (H7)
+La mercancía de bajo valor importada mediante la declaración aduanera H7 podrá ser devuelta y
+reexportada mediante la oportuna comunicación de reexportación del H7 (servicio ReexportacionH7V1)
+detallada en su guía técnica.
+Para ello será necesario que el MRN del H7 o su nº de envío de bajo valor asociado se encuentre
+declarado como documento previo de una única declaración EXS o ETD y ésta se encuentre despachada.
+
+9.1. Declaración como documento previo de un H7
+El H7 se referenciará en la declaración EXS como documento previo en el grupo de datos
+<PREDOCGODITM1> pudiendo hacerlo de dos formas alternativas:
+- o bien declarando el MRN del H7 usando el tipo de documento previo “DH7”
+- o bien declarando el nº de envío de bajo valor asociado en el H7 empleando el tipo de documento
+previo “ENV”
+De cualquiera de las dos formas sólo se podrá declarar un único H7 en cada declaración EXS. Es decir, en
+caso de que la EXS tuviera más de una partida y en alguna de ellas se declarara como documento previo
+DH7 o ENV, en el resto de las partidas se deberá declarar el mismo documento previo. Por tanto, en
+caso de declarar un H7, no podrá declararse ningún otro documento previo, sea H7 o diferente.
+Ejemplo con tipo de documento DH7
+…
+<PREDOCGODITM1>
+<DocTypPD11>DH7</DocTypPD11>
+<DocRefPD12>21ESH7A000008753R7</DocRefPD12>
+</PREDOCGODITM1>
+…
+
+Ejemplo con tipo de documento ENV
+…
+<PREDOCGODITM1>
+<DocTypPD11>ENV</DocTypPD11>
+<DocRefPD12>0097150079158001612339001</DocRefPD12>
+</PREDOCGODITM1>
+…
+
+9.2. Bloqueo de EXS con H7 devuelto
+Téngase en cuenta que la declaración EXS quedará bloqueada, impidiéndose modificaciones o
+anulaciones una vez iniciado un proceso de devolución de su H7 asociado. Sólo la cancelación de la
+comunicación de reexportación en la declaración H7 o la anulación del H7 desbloqueará la declaración
+EXS.
+
+Pág. 53 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+10. PRUEBAS EN PREPRODUCCIÓN
+Para facilitar las pruebas en el entorno de preproducción se podrán emplear los siguientes datos en las declaraciones.
+
+10.1. Declaraciones marítimas
+Para declaraciones marítimas emplear el recinto 9999 con los siguientes datos:
+Atributo/Campo
+
+Valor
+https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+A discreción del usuario
+
+Endpoint
+<MesIdeMES19>
+
+<CusSubPlaHEA66>
+<PREDOCGODITM1>.<DocTypPD11>
+<PREDOCGODITM1>.<DocRefPD12>
+
+<PREDOCGODITM1>.<DocGdsIteNumPD13>
+
+<CUSOFFLON>.<RefNumCOL1>
+
+9999AAAAAA
+N337
+Mediante nº de escala/clave antigua:
+99992600404
+o bien mediante MRN:
+22ES00999986004042
+00001 → circuito verde
+00002 → circuito naranja
+00003 → circuito rojo
+o bien:
+1 → circuito verde
+2 → circuito naranja
+3 → circuito rojo
+ES009999
+
+______________________________________________________________________
+Pág. 54 / 68
+
+Observaciones
+Endpoint de pruebas
+Deberá ser distinto para cada declarante
+por cada mensaje enviado (aceptado o
+rechazado) a la AEAT
+Ubicación de la mercancía
+Tipo de documento previo DDT
+Referencia a la DDT-partida como documento previo, en este caso una
+DSDT.
+
+Recinto de declaración
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+10.2. Declaraciones aéreas
+Para declaraciones aéreas emplear el recinto 9998 con los siguientes datos:
+Atributo/Campo
+Endpoint
+<MesIdeMES19>
+
+<CusSubPlaHEA66>
+<PREDOCGODITM1>.<DocTypPD11>
+<PREDOCGODITM1>.<DocRefPD12>
+
+Valor
+https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+A discreción del usuario
+
+9998AAAAAA
+N337
+Mediante nº de escala/clave antigua:
+99985000383
+o bien mediante MRN:
+25ES00999880003831
+Otra opción es usar el datado mediante nº vuelo + conocimiento declarando
+toda la referencia en este campo DocRefPD12 y separando ambos campos con
+el carácter “+”:
+20251128PRU00432+CONOPRU00432A → circuito verde
+20251128PRU00432+CONOPRU00432B → circuito naranja
+20251128PRU00432+CONOPRU00432C → circuito rojo
+
+<PREDOCGODITM1>.<DocGdsIteNumPD13>
+
+<CUSOFFLON>.<RefNumCOL1>
+
+00001 → circuito verde
+00002 → circuito naranja
+00003 → circuito rojo
+o bien:
+1 → circuito verde
+2 → circuito naranja
+3 → circuito rojo
+ES009998
+
+Observaciones
+Endpoint de pruebas
+Deberá ser distinto para cada declarante
+por cada mensaje enviado (aceptado o
+rechazado) a la AEAT
+Ubicación de la mercancía
+Tipo de documento previo DDT
+Referencia a la DDT-partida como documento previo, en este caso
+una DSDT.
+Existen tres formas de declarar la referencia a la DDT-partida aérea:
+- Usando clave de 16 caracteres (11 de cabecera + 5 de partida)
+- Usando el MRN-partida de 23 caracteres (18 de cabecera + 5 de
+partida)
+- Usando el nº de vuelo + nº de conocimiento aéreo declarado en la
+DDT y separando ambos con carácter “+”
+Si el destino del itinerario (<ITI>) es un Estado miembro UE siempre
+saldrá circuito verde en este ejemplo.
+Sólo usarlo si en <DocRefPD12> se ha declarado valores nº
+escala/MRN “99985000383” o “25ES00999880003831”.
+
+Recinto de declaración
+
+Pág. 55 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+11. PRUEBAS EN PRODUCCIÓN EN RECINTOS ADUANEROS DE PRUEBAS
+Para facilitar las pruebas en el entorno de producción se podrán emplear los siguientes datos en las declaraciones.
+A diferencia de las pruebas preparadas en preproducción no se han habilitado diferentes partidas de DDT para la asignación de diferentes circuitos aduaneros. Nótese que
+si se envía el Indicador de Test a “1” (activado) no se datarán las DDT.
+
+11.1. Declaraciones marítimas
+Para declaraciones marítimas emplear el recinto 9999 con los siguientes datos:
+Atributo/Campo
+Endpoint
+<MesIdeMES19>
+
+<CusSubPlaHEA66>
+<PREDOCGODITM1>.<DocTypPD11>
+<PREDOCGODITM1>.<DocRefPD12>
+
+<PREDOCGODITM1>.<DocGdsIteNumPD13>
+
+<CUSOFFLON>.<RefNumCOL1>
+
+Valor
+https://www1.agenciatributaria.gob.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+A discreción del usuario
+
+9999AAAAAA
+N337
+Mediante nº de escala/clave antigua:
+99992600404
+o bien mediante MRN:
+22ES00999986004042
+00001 →
+00002 → circuito verde
+00003 →
+o bien:
+1 →
+2 → circuito verde
+3 →
+ES009999
+
+Observaciones
+Endpoint de pruebas
+Deberá ser distinto para cada declarante
+por cada mensaje enviado (aceptado o
+rechazado) a la AEAT
+Ubicación de la mercancía
+Tipo de documento previo DDT
+Referencia a la DDT-partida como documento previo, en este caso una
+DSDT.
+
+Recinto de declaración
+
+Pág. 56 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+11.2. Declaraciones aéreas
+Para declaraciones aéreas emplear el recinto 9998 con los siguientes datos:
+Atributo/Campo
+Endpoint
+<MesIdeMES19>
+
+<CusSubPlaHEA66>
+<PREDOCGODITM1>.<DocTypPD11>
+<PREDOCGODITM1>.<DocRefPD12>
+
+Valor
+https://www1.agenciatributaria.gob.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP
+A discreción del usuario
+
+9998AAAAAA
+N337
+Mediante nº de escala/clave antigua:
+99982000097
+o bien mediante MRN:
+22ES00999880000974
+Otra opción es usar el datado mediante nº vuelo + conocimiento declarando
+toda la referencia en este campo DocRefPD12 y separando ambos campos con
+el carácter “+”:
+20220425PRU00404+CONOPRU00404A →
+20220425PRU00404+CONOPRU00404B → circuito verde
+20220425PRU00404+CONOPRU00404C →
+
+<PREDOCGODITM1>.<DocGdsIteNumPD13>
+
+<CUSOFFLON>.<RefNumCOL1>
+
+00001 →
+00002 → circuito verde
+00003 →
+o bien:
+1 →
+2 → circuito verde
+3 →
+ES009998
+
+Observaciones
+Endpoint de pruebas
+Deberá ser distinto para cada declarante
+por cada mensaje enviado (aceptado o
+rechazado) a la AEAT
+Ubicación de la mercancía
+Tipo de documento previo DDT
+Referencia a la DDT-partida como documento previo, en este caso
+una DSDT.
+Existen tres formas de declarar la referencia a la DDT-partida aérea:
+- Usando clave de 16 caracteres (11 de cabecera + 5 de partida)
+- Usando el MRN-partida de 23 caracteres (18 de cabecera + 5 de
+partida)
+- Usando el nº de vuelo + nº de conocimiento aéreo declarado en la
+DDT y separando ambos con carácter “+”
+Si el destino del itinerario (<ITI>) es un Estado miembro UE siempre
+saldrá circuito verde en este ejemplo.
+Sólo usarlo si en <DocRefPD12> se ha declarado valores nº
+escala/MRN “99982000097” o “22ES00999880000974”.
+
+Recinto de declaración
+
+Pág. 57 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+12. EJEMPLOS
+12.1. Ejemplo de IE615
+<?xml version="1.0" encoding="UTF-8"?>
+<exs:CC615A
+xmlns:exs="https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5En
+t.xsd">
+<MesSenMES3>89890001K</MesSenMES3>
+<MesRecMES6>NICA.ES</MesRecMES6>
+<DatOfPreMES9>220121</DatOfPreMES9>
+<TimOfPreMES10>1135</TimOfPreMES10>
+<MesIdeMES19>270312001</MesIdeMES19>
+<MesTypMES20>CC615A</MesTypMES20>
+<HEAHEA>
+<RefNumHEA4>LRN000000041</RefNumHEA4>
+<CusSubPlaHEA66>9999AAAAAA</CusSubPlaHEA66>
+<TotNumOfIteHEA305>1</TotNumOfIteHEA305>
+<TotNumOfPacHEA306>10</TotNumOfPacHEA306>
+<TotGroMasHEA307>137</TotGroMasHEA307>
+<DecDatTimHEA114>202201211135</DecDatTimHEA114>
+<DecPlaHEA394>Valencia</DecPlaHEA394>
+<TraChaMetOfPayHEA1>A</TraChaMetOfPayHEA1>
+</HEAHEA>
+<TRANSDOC1>
+<TransDocType11>N705</TransDocType11>
+<TransDocRefNum12>V010102567780</TransDocRefNum12>
+</TRANSDOC1>
+<TRACONCO1>
+<NamCO17>XXX CARGO SL</NamCO17>
+<StrAndNumCO122>CL ALMANSA, 999</StrAndNumCO122>
+<PosCodCO123>46000</PosCodCO123>
+<CitCO124>Valencia</CitCO124>
+<CouCO125>ES</CouCO125>
+<TINCO159>ESA99999998</TINCO159>
+</TRACONCO1>
+<TRACONCE1>
+<NamCE17>ACME CORP</NamCE17>
+<StrAndNumCE122>34 ZHOU ST</StrAndNumCE122>
+<PosCodCE123>00000</PosCodCE123>
+<CitCE124>BEIJING</CitCE124>
+<CouCE125>CN</CouCE125>
+<TINCE159>CNXXXXXXXXX</TINCE159>
+</TRACONCE1>
+<ASCA1>
+<RoleASCA11>FW</RoleASCA11>
+<TINASCA12>ESA99999997</TINASCA12>
+</ASCA1>
+<GOOITEGDS>
+<IteNumGDS7>1</IteNumGDS7>
+<GooDesGDS23>DESCRIPCIÓN MERCANCIA</GooDesGDS23>
+<GroMasGDS46>137</GroMasGDS46>
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>99992600404</DocRefPD12>
+<DocGdsIteNumPD13>00001</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+<COMCODGODITM>
+<ComNomCMD1>840999</ComNomCMD1>
+</COMCODGODITM>
+<CONNR2>
+<ConNumNR21>ACME9696115</ConNumNR21>
+</CONNR2>
+<PACGS2>
+<MarNumOfPacGS21>MARCAS 001</MarNumOfPacGS21>
+<KinOfPacGS23>BX</KinOfPacGS23>
+<NumOfPacGS24>10</NumOfPacGS24>
+
+______________________________________________________________________
+Pág. 58 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+</PACGS2>
+</GOOITEGDS>
+<ITI>
+<CouOfRouCodITI1>CN</CouOfRouCodITI1>
+</ITI>
+<ITI>
+<CouOfRouCodITI1>ES</CouOfRouCodITI1>
+</ITI>
+<ITI>
+<CouOfRouCodITI1>BR</CouOfRouCodITI1>
+</ITI>
+<CUSOFFLON>
+<RefNumCOL1>ES009999</RefNumCOL1>
+</CUSOFFLON>
+<PERLODSUMDEC>
+<NamPLD1>PEDRO</NamPLD1>
+<StrAndNumPLD1>Castellana,999</StrAndNumPLD1>
+<PosCodPLD1>28003</PosCodPLD1>
+<CitPLD1>Madrid</CitPLD1>
+<CouCodPLD1>ES</CouCodPLD1>
+<TINPLD1>ESA99999996</TINPLD1>
+<EmailPLD1>info@acme.com</EmailPLD1>
+</PERLODSUMDEC>
+<CARRIER>
+<TINCAR1>ESA99999995</TINCAR1>
+<ContactPersonCAR1>
+<NameCAR1>TRANSP CORP</NameCAR1>
+<PhoneNumberCAR1>555-34-67</PhoneNumberCAR1>
+<EmailCAR1>info@transp.org</EmailCAR1>
+</ContactPersonCAR1>
+</CARRIER>
+<SEAID529>
+<SeaIdSEAID530>XX383471</SeaIdSEAID530>
+</SEAID529>
+</exs:CC615A>
+
+Pág. 59 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+12.2. Ejemplo de IE628
+<?xml version="1.0" encoding="UTF-8"?>
+<exs:CC628A
+xmlns:exs="https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE628V5Sa
+l.xsd">
+<MesSenMES3>NICA.ES</MesSenMES3>
+<MesRecMES6>89890001K</MesRecMES6>
+<DatOfPreMES9>220121</DatOfPreMES9>
+<TimOfPreMES10>1135</TimOfPreMES10>
+<TesIndMES18>0</TesIndMES18>
+<MesIdeMES19>270312001</MesIdeMES19>
+<MesTypMES20>CC628A</MesTypMES20>
+<CorIdeMES25>270312001</CorIdeMES25>
+<HEAHEA>
+<RefNumHEA4>LRN000000041</RefNumHEA4>
+<DocOpeHEA2>AL</DocOpeHEA2>
+<DocNumHEA5>25ES00999960000245</DocNumHEA5>
+<DecRegDatTimHEA115>202504281135</DecRegDatTimHEA115>
+<DecTypeHEA>A1</DecTypeHEA>
+<PreDecCodeHEA>DE</PreDecCodeHEA>
+<CusChanHEA>V</CusChanHEA>
+<DecCsvHEA>3R75NMPQXH3Q5K99</DecCsvHEA>
+<RelCsvHEA>YGTBL4GFXG66NL99</RelCsvHEA>
+</HEAHEA>
+</exs:CC628A>
+
+Pág. 60 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+12.3. Ejemplo de IE616
+<?xml version="1.0" encoding="UTF-8"?>
+<exs:CC616A
+xmlns:exs="https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE616V5Sa
+l.xsd">
+<MesSenMES3>NICA.ES</MesSenMES3>
+<MesRecMES6>89890001K</MesRecMES6>
+<DatOfPreMES9>220121</DatOfPreMES9>
+<TimOfPreMES10>1135</TimOfPreMES10>
+<TesIndMES18>0</TesIndMES18>
+<MesIdeMES19>270312001</MesIdeMES19>
+<MesTypMES20>CC616A</MesTypMES20>
+<CorIdeMES25>270312001</CorIdeMES25>
+<HEAHEA>
+<RefNumHEA4>LRN000000041</RefNumHEA4>
+<DocOpeHEA2>AL</DocOpeHEA2>
+<DocNumHEA5>22ES00461160000520</DocNumHEA5>
+<DecTypeHEA>A1</DecTypeHEA>
+<PreDecCodeHEA>DE</PreDecCodeHEA>
+<DecRejDatTimHEA116>202504281135</DecRejDatTimHEA116>
+</HEAHEA>
+<FUNERRER1>
+<ErrTypER11>12</ErrTypER11>
+<ErrPoiER12>MES.HEA.CusSubPlaHEA66</ErrPoiER12>
+<OriAttValER14>4611ZZZ999</OriAttValER14>
+</FUNERRER1>
+</exs:CC616A>
+
+Pág. 61 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+12.4. Ejemplo de IE919
+<?xml version="1.0" encoding="UTF-8"?>
+<exs:CD919B
+xmlns:exs="https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE919V5Sa
+l.xsd">
+<MesSenMES3>NICA.ES</MesSenMES3>
+<MesRecMES6>89890001K</MesRecMES6>
+<DatOfPreMES9>220121</DatOfPreMES9>
+<TimOfPreMES10>1135</TimOfPreMES10>
+<TesIndMES18>0</TesIndMES18>
+<MesIdeMES19>270312001</MesIdeMES19>
+<MesTypMES20>CD919B</MesTypMES20>
+<CorIdeMES25>270312001</CorIdeMES25>
+<XMLERR805>
+<ErrLocXMLER803>CC615A</ErrLocXMLER803>
+<ErrLinNumXMLER800>0</ErrLinNumXMLER800>
+<ErrColNumXMLER801>0</ErrColNumXMLER801>
+<ErrReaXMLER802>Se esperaba nodo
+{https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd}TotN
+umOfIteHEA305 y ha venido
+{https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd}DecD
+atTimHEA114</ErrReaXMLER802>
+<OriAttValXMLER804>Se esperaba nodo
+{https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd}TotN
+umOfIteHEA305 y ha venido
+{https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd}DecD
+atTimHEA114</OriAttValXMLER804>
+<ErrCodXMLER806>00</ErrCodXMLER806>
+</XMLERR805>
+</exs:CD919B>
+
+Pág. 62 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+13. CONTROL DE VERSIONES
+13.1. Versiones anteriores
+Versión 1.0
+Creación del documento.
+
+Versión 1.1
+Modificaciones con respeto a la anterior versión:
+- Asociada regla C567 a "HEADER.Transport charges/Method of Payment" y "GOODS ITEM.
+Transport charges/Method of Payment" en el mensaje IE615.
+- Asociada regla R011 al grupo "HEADER.(CONSIGNEE) TRADER" en el mensaje IE615.
+- Asociada regla C576 a "GOODS ITEM.Commercial Reference Number" en el mensaje IE615.
+- Añadido atributo "HEADER.Document operation" al mensaje IE615.
+- Añadido atributo "HEADER.Document/reference number" al mensaje IE615.
+- Añadida condición C991, asociada a los nuevos campos "HEADER.Document operation" y
+"HEADER.Document/reference number" del mensaje IE615.
+- Añadido atributo "HEADER.Authentication code" y su condición C993 en el mensaje IE628.
+- Asociada nueva regla R992 a los atributos "RISK ANALYSIS.Customs intervention code" y "RISK
+ANALYSIS.Customs intervention text".
+- Cambio de multiplicidad máxima del Grupo de datos "RISK ANALYSIS" del mensaje IE628 de 100x
+a 101x.
+- Incluida columna "Etiqueta" en las tablas de especificaciones de los mensajes de presentación y
+respuesta mostrando el literal de la etiqueta XML correspondiente al atributo listado.
+
+Versión 1.2
+Revisión de los requisitos de EORI y NIF en los diferentes actores.
+
+Versión 1.3
+Tabla 902 asociada a Customs intervention code.
+Condición C994 vinculada a Document reference del grupo Previous Document.
+
+Versión 1.4
+Corrección de erratas:
+- Eliminación de condición C576 de HEADER.Transport charges/Method of payment.
+- Vinculación de reglas R005 y R007 a atributo GOODS ITEM.Item number.
+- Vinculación de condición C580 a atributo GOODS ITEM.Gross mass.
+- Vinculación de regla TR9120 a atributo GOODS ITEM.Transport charges/Method of payment.
+- Vinculación de regla R876 a atributo GOODS ITEM.Commercial reference number.
+
+Pág. 63 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+Versión 1.5
+Corrección de errata en valor del indicador de test. El valor "1" en Test Indicator indicará que es un
+envío de pruebas.
+
+Versión 1.6
+Aplicación de Kelv0.23#224: DDNA And DDCOM (actualización de la especificación para el empleo de
+campos con valores numéricos), que implica los siguientes cambios:
+- Prohibición de ceros en campos numéricos (excepto aquellos con regla R021, que permite la
+consignación de ceros)
+- Eliminación de TR0021 por innecesaria
+Aclaración sobre el escapado de caracteres especiales.
+
+Versión 1.7
+Se desarrollan las especificaciones de firma electrónica de acuerdo a la Política de firma electrónica
+basada en certificados de la Administración del Estado. Para ello se crea una nueva versión del servicio
+V2.
+
+Versión 1.8
+Implantación definitiva de versión con verificación de firma electrónica (v2). Eliminación de referencias a
+la versión anterior (v1).
+
+Versión 1.9
+Inclusión de tabla de códigos 13 en el tipo de documento (<DocTypDC21>). Corrección de errata en url del
+esquema de documentación. Se modifican las observaciones de los siguientes elementos de datos:
+<IteNumInvRKA1>, <MesRecMES6>, <CusIntCodRKA1>
+
+Versión 1.10
+Eliminación referencias a puertos del web service. Se documentan en descriptor del servicio (wsdl).
+
+Versión 1.11
+Declaración de H7 como documento previo para devoluciones de importaciones de bajo valor. Ver título
+9. “CONSIDERACIONES PARA LA DEVOLUCIÓN DE IMPORTACIONES DE BAJO VALOR (H7)”.
+
+Versión 1.12
+Nueva versión V3 del web service que no requerirá firma electrónica y convivirá con la versión V2.
+
+Versión 1.13
+- Añadido elemento de datos opcional EmailPLD1 de grupo PERLODSUMDEC al IE615V3 con el fin de
+declarar email del declarante.
+- Integración de documento de condiciones y reglas en la presente guía.
+
+Versión 4.0
+Nueva versión 4 del web service de alta/modificación/anulación que sustituirá a los actuales v2 y v3 e
+incluye el conjunto de datos de los mensajes A1/A2 (EXS – Declaraciones sumarias de salida), A3
+(Notificaciones de Reexportación) y NR (Notificaciones de Reexpedición) con los siguientes cambios:
+Descriptor del servicio wsdl:
+- Actualizado a v4 y modificados servidores de endpoints de preproducción
+Todos los mensajes:
+- Eliminado elemento ‘Priority’ (PriMES15) en el IE615/IE628/IE616/IE919 que no se empleaba
+Mensaje IE615:
+Pág. 64 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+Añadido grupo opcional Representative (REPLODPER) a nivel de cabecera
+Añadido grupo obligatorio Carrier (CARRIER) a nivel de cabecera
+Añadido grupo Transport Document (TRANSDOC1) a nivel de cabecera
+Añadido elemento opcional UCR (UCR2) a nivel de partida
+Añadido grupo CUS Code (CUSCODE) a nivel de partida
+Añadido grupos Additional Supply Chain Actor (ASCA1 y ASCA2) a nivel de cabecera y partidas
+respectivamente.
+- Añadidos grupos Additional Information (ADDINF1 y ADDINF2) a nivel de cabecera y partidas
+respectivamente.
+- Añadido elemento opcional DocGdsIteNumPD13 para futuro uso.
+- Eliminados elementos "Commercial Reference Number" a nivel de cabecera y partidas
+- Eliminado elemento “Number of pieces”
+- “Gross mass” (GroMasGDS46) y “Total gross mass” (TotGroMasHEA307) pasan de “D”
+(dependientes) a “R” (requeridos). Se eliminan las condiciones C580 y C581 correspondientes.
+- Grupo PRODUCED DOCUMENTS / CERTIFICATES (Goods Item) pasa de “D” (dependiente) a O
+(opcional) debido a eliminación de condición C567
+- Grupo PREVIOUS DOCUMENT (Goods Item) pasa a tener un máximo de 10 ocurrencias. Se seguirá
+declarando una única ocurrencia como hasta ahora. Las ocurrencias adicionales se reservan
+para un futuro uso.
+- Cambio de formato de DocRefDC23 a an..70
+- Cambio de formato de DocRefPD12 (referencia del previous document) a an..70
+- Cambio de formato de elemento “Number of packages” a n..8
+- Cambio de formato de elemento “Gross Mass” a n..16,6
+- Cambio de formato de elemento “Total number of packages” a n..10
+- Cambio de formato de elemento “Total gross mass” a n..18,6
+Mensaje IE628
+- Nuevos elementos Declaration type, Customs Channel, Declaration CSV y Release CSV
+- Eliminado grupo Risk Analisys. Sustituido por campo Customs Channel
+- Eliminado elemento ‘Authentication code’ (‘AutCodHEA’) que se sustituye con mismo formato
+por ‘Release CSV’ (‘RelCsvHEA’)
+- Eliminada línea xml comentada con el CSV que pasa a informarse en elemento ‘Declaration CSV’
+Mensaje IE616:
+- Cambio de formato en IE616 de ErrorPointer y Original attribute value a an..512
+Mensaje IE919:
+- Cambio de formato en IE919 de Error Reason y Original attribute value a an..512
+Condiciones, reglas y listas de códigos:
+- Traducidas al español todas las condiciones y reglas
+- Integración de documento de listas de códigos en la presente guía
+- Codificación de listas de códigos con prefijo “L” (code list)
+- Eliminadas condiciones/reglas C567, R876, C580 y C581
+- Modificadas condiciones CV01 y C061
+- Se aplicará estrictamente regla R881
+- Nuevas reglas R012, R013, R014
+- Modificada regla R105
+- Nuevas listas de códigos L14, L903, L904, L905
+- Adaptada condición C993
+- Eliminada regla R992
+-
+
+Versión 4.1
+Cambios varios en Previous Document (PREDOCGODITM1):
+- La cardinalidad del grupo PREDOCGODITM1 retorna a 1x
+- Eliminación de regla R901 aplicada anteriormente únicamente en PREDOCGODITM1
+
+Pág. 65 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Se cambia DocGdsIteNumPD13 de “D” (dependiente) a “O” (opcional). Reservado para futuro
+uso.
+- Se incluye nuevo subelemento DocRefCompPD14. Reservado para futuro uso.
+Se añaden omisiones de cambios en punto anterior “1.15. Versión 4.0” sobre elementos CARRIER,
+REPLODPER, CUSCODE y DocRefDC23
+Errata corregida en elemento ADDITIONAL INFORMATION de partidas en tabla de especificación
+funcional de mensaje CC615A. Figuraba ADDITIONAL INFORMATION (Header) en lugar de ADDITIONAL
+INFORMATION (Goods Item)
+
+Versión 4.2
+- Se publica apartado “10. PRUEBAS EN PREPRODUCCIÓN” con datos a emplear para pruebas en
+preproducción en caso de no poder declarar Declaraciones Sumarias de Depósito Temporal en
+dicho entorno.
+- Corrección errata en literal de etiqueta de grupo “ADDITIONAL SUPPLY CHAIN ACTOR (Goods
+Item)”. Se sustituye ASCA21 por ASCA2. En esquema publicado figuraba correctamente como
+ASCA2.
+
+Versión 4.3
+- Nuevo elemento DocOpeHEA2 en respuesta con el código de operación efectuada y lista de
+códigos L118 asociada.
+- Se publica apartado “11. PRUEBAS EN PRODUCCIÓN EN RECINTOS ADUANEROS DE PRUEBAS” con
+datos a emplear para pruebas en producción en caso de no poder declarar Declaraciones Sumarias de
+Depósito Temporal en dicho entorno.
+
+Versión 4.4
+- Elementos ErrLinNumXMLER800, ErrColNumXMLER801, HEAHEA y DocNumHEA5 en mensaje
+IE919 de V4 pasan a ser opcionales.
+- Modificación de ejemplos para adecuarlos a los alias y namespaces esperados en V4 para el
+mensaje de petición IE615 y en los mensajes de respuesta.
+
+Versión 4.5
+- Nuevo código de rechazo 91 “Recinto aduanero incompatible con ubicación declarada”
+- Modificada condición C061 para considerar como granel el tipo de bulto “VQ” - CISTERNA,GAS
+LIQUIDO(TEMP-PRES-AN)
+
+- Aclaraciones sobre los graneles y el número de bultos en esta declaración y el datado de la DSDT
+en R105 y C061
+
+Versión 4.6
+Se modifica la condición CV01 para hacer obligatoria en versión 4 (IE615V4) la declaración del email del
+declarante.
+
+Versión 4.7
+Ampliación de ocurrencias máximas del grupo de datos GOOITEGDS de 100x a 500x.
+Se modifica esquema IE615V4Ent.xsd amplían número de ocurrencias máximo de dicho grupo de datos
+a 999. Se validará que el número de ocurrencias no exceda de las 500, fijando en este valor el número
+máximo de partidas por declaración.
+
+Versión 4.8
+- Mejora de la información suministrada en título 5. SERVICIO WEB IE615.
+Pág. 66 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Inclusión de nota sobre la fecha de cierre de versiones v2 y v3.
+- Aclaración sobre compatibilidad de versión v4 con operaciones de alta/anulación sobre
+declaraciones previas grabadas con versión v2/v3.
+- Sección nueva 6.7 “Identificador EORI de transportistas”
+- Actualización de listas de códigos de rechazo funcional L49.
+- Aclaración en condición C995.
+
+Versión 4.9
+- Nueva regla R994 para aclarar el formato esperado para la referencia al documento previo,
+especialmente con los tipos propios para declarar un DSDT: XSUM y XSUA.
+- La obligatoriedad/opcionalidad de los diversos grupos de datos relativos al expedidor (Consignor)
+y destinatario (Consignee) no varía, pero se aclara haciendo los grupos de datos dependientes
+(D) y no opcionales (O) e integrando las anteriores reglas R010 y R804 en la nueva condición
+C010 y la regla R011 en la nueva condición C011.
+- Aclaración en reglas R012 y R013 sobre opcionalidad de los grupos de datos sobre los que se
+aplican.
+- Nuevo código de error 981 en L49
+- Eliminación de campo DocRefCompPD14 descartado su futuro uso.
+- Eliminación de elementos tachados que figuraban en anteriores versiones y no figuran en v4
+- Eliminación de ayuda visual empleando colores en el fondo de las celdas para saber qué grupos
+de datos se añadieron o cambiaron de formato en la v4 y cuáles se suprimieron con la v4.
+
+Versión 4.10
+Nuevo tipo de documento N337 para la referencia como documento previo de la DSDT o G4. Al
+respecto se modifican condiciones y reglas en el grupo 'PREVIOUS DOCUMENT’:
+-
+
+Modificación de condición C995
+Modificación de regla R994
+Nueva regla R995
+Nuevo tipo de documento en L901
+
+Versión 4.11
+Modificación de validaciones para documentos previos T2L. Se modifican las siguientes condiciones y
+reglas:
+- Modificación de C994 para eliminar T2L. La referencia del documento T2L será obligatoria.
+- Modificación de regla R995 para apuntar a R996 en caso T2L.
+- Nueva regla R996 que describe los formatos esperados para documentos T2L.
+- Modificación de regla R879
+- Nueva regla R880
+- Nuevos errores funcionales en L49
+
+Versión 5.0
+Versión 5 del web service de declaración de EXS preparado para admitir PreEXS (declaraciones EXS
+previas a la presentación de la mercancía ante la aduana):
+- Nuevo apartado “3.3. Predeclaraciones EXS”
+- Apartado 5.2 renombrado de “Versión 4 del servicio web“ a “Versión 5 del servicio web”.
+- Nueva condición CS01.
+- Renombrada C993 a CS02 y modificada su descripción para contemplar Predeclaraciones.
+- Nueva regla RS01.
+- Nuevo error funcional 700 en tabla L906.
+- Eliminación de condición transitoria CV01 y cambio a R (Requerido) de campo DECLARANTE.Email
+- Renombrado de listas de códigos de CLxxxx a Lxxx
+Pág. 67 / 68
+
+Departamento de Informática Tributaria
+Subdirección General de Aplicaciones de Aduanas e II.EE
+Guía técnica de declaraciones EXS, notificaciones Reexportación y Reexpedición
+
+Versión 5.3
+
+- Nombres de elementos de datos en mensajes de petición y respuestas traducidos al castellano.
+- Modificación de respuesta de aceptación IE628:
+- Nuevo campo PreDecCodeHEA en IE628.
+- Nueva lista de códigos L906 de Indicador de predeclaración.
+- Añadimos operación de activación por presentación de Declaración de Depósito Temporal (AC)
+a L118.
+- Eliminación de grupos de datos superfluos CUSOFFLON y PERLODSUMDEC.
+- Modificación de respuesta de rechazo funcional IE616:
+- Nuevos campos DocOpeHEA2, DocNumHEA5, DecTypeHEA, PreDecCodeHEA en IE616
+dependientes (D) condicionados a nueva condición CS01.
+- Eliminación de elemento de datos DecRejReaHEA252.
+- Modificación de respuesta de rechazo no funcional IE919:
+- Eliminación de grupo de datos HEAHEA.
+
+La versión 5 sólo afecta a los esquemas xsd de los mensajes de respuesta con respecto a la versión 4.
+
+Versión 5.1
+Nuevo título “6. COMUNICACIONES POR BANDEJA DE ENTRADA” con la especificación de los web
+services y mensajes involucrados en las comunicaciones de activaciones de PreEXS.
+Se eliminan los tipos de documentos previos XSUM y XSUA de la tabla de códigos L901 para la versión 5
+y posteriores, que serán sustituidos por N337 válido para declarar tanto DSDT como G4.
+Se mueve el presente título de “CONTROL DE VERSIONES” al final de la guía y se renumeran todos los
+anteriores.
+
+Versión 5.2
+El elemento DecCsvHEA del mensaje IE628 de respuesta de aceptación se marca como condicional,
+dependiente de condición CS03. No aparecerá cuando el mensaje de respuesta se envíe por Bandeja de
+Entrada, como resultado de una activación de una PreEXS por activación/presentación de DSDT/G4
+declarados.
+Actualización de códigos de error funcional en lista L49.
+
+13.2. Última versión 5.3
+Siguientes bloques modificados para eliminar menciones a códigos de documento previo
+discontinuados: XSUM y XSUA:
+- Reglas R994 y R995
+- Apartados “10. PRUEBAS EN PREPRODUCCIÓN“ y “11. PRUEBAS EN PRODUCCION EN RECINTOS
+ADUANEROS DE PRUEBAS”
+- Apartado “12. EJEMPLOS”
+Se cambia DSDT de pruebas a utilizar en recinto aéreo de pruebas en entorno de preproducción
+(apartado 10.2) , por una nueva que sí devuelve los circuitos esperados.
+
+Pág. 68 / 68
+
+

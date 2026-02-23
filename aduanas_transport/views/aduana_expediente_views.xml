@@ -52,24 +52,30 @@
                   help="Realiza una verificación IA de las partidas arancelarias y coherencia de las líneas del expediente. Normaliza las partidas a 10 dígitos."/>
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
-                  help="Genera el DUA de exportación (CUSDEC EX1)"/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
+                  help="Genera el DUA de exportación (CUSDEC EX1). Conviene tener factura procesada o líneas rellenadas."/>
           <button name="action_generate_dua" string="Regenerar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('factura_procesada', '=', False), ('direction', '!=', 'export'), ('dua_generado', '=', False)]}"
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('dua_generado', '=', False)]}"
                   help="Regenera el DUA de exportación (CUSDEC EX1)"/>
+          <button name="action_send_cc515c" string="Presentar DUA a AEAT" type="object"
+                  class="oe_highlight"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', '=', 'accepted')]}"
+                  help="Envía el DUA (CUSDEC EX1) al endpoint configurado. Por defecto preproducción. Configurar en Aduanas &gt; Configuración."/>
           <button name="action_poll_bandeja" string="Consultar Bandeja" type="object" invisible="1"/>
           
-          <!-- Botones adicionales de exportación -->
+          <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
                   class="oe_highlight"
-                  invisible="1"/>
-          <button name="action_send_cc515c" string="(Export) Enviar CC515C" type="object"
                   invisible="1"/>
           <button name="action_present_cc511c" string="(Export) Presentar CC511C" type="object"
                   invisible="1"/>
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
                   invisible="1"/>
+          <button name="action_presentar_exs_preprod" string="Presentar EXS (preproducción)" type="object"
+                  class="oe_highlight"
+                  invisible="1"
+                  help="Presenta la Declaración Sumaria de Salida (EXS) al endpoint de preproducción IE615 V5 (oculto por el momento)"/>
 
           <!-- Botones de importación -->
           <button name="action_generate_imp_decl" string="(Import) Generar Declaración" type="object"
@@ -186,6 +192,11 @@
               <field name="state" readonly="1"/>
               <field name="lrn"/>
               <field name="mrn"/>
+              <field name="exs_circuito" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="exs_tipo_declaracion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="exs_dec_csv" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="exs_rel_csv" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="exs_predeclaracion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
             </group>
             <group>
               <field name="remitente"/>

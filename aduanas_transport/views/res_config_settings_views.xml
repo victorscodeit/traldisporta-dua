@@ -17,7 +17,7 @@
                         </div>
                         <div class="o_setting_right_pane">
                             <label for="aeat_endpoint_cc515c"/>
-                            <div class="text-muted">Exportación (AES)</div>
+                            <div class="text-muted">Presentar DUA (preproducción por defecto)</div>
                         </div>
                     </div>
 
@@ -38,6 +38,16 @@
                         <div class="o_setting_right_pane">
                             <label for="aeat_endpoint_bandeja"/>
                             <div class="text-muted">Bandeja AEAT (común)</div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="aeat_endpoint_ie615"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="aeat_endpoint_ie615"/>
+                            <div class="text-muted">EXS (IE615 V5 – Declaración Sumaria Salida)</div>
                         </div>
                     </div>
 

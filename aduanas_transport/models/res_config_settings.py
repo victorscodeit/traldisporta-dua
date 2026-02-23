@@ -3,17 +3,26 @@ from odoo import api, fields, models, _
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    # Export
-    aeat_endpoint_cc515c = fields.Char(string="Endpoint CC515C (Export)", config_parameter="aduanas_transport.endpoint.cc515c",
-        default="https://prewww1.agenciatributaria.gob.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP")
+    # Export (presentar DUA = CC515C). Preproducción: prewww1.aeat.es (agenciatributaria.gob.es no resuelve en preprod)
+    aeat_endpoint_cc515c = fields.Char(
+        string="Endpoint presentar DUA (CC515C)",
+        config_parameter="aduanas_transport.endpoint.cc515c",
+        default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
+        help="Preproducción por defecto. Cambiar a producción (www1.agenciatributaria.gob.es) cuando vaya a presentar DUAs reales.")
     aeat_endpoint_cc511c = fields.Char(string="Endpoint CC511C (Export)", config_parameter="aduanas_transport.endpoint.cc511c",
-        default="https://prewww1.agenciatributaria.gob.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP")
+        default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP")
     # Import
     aeat_endpoint_imp_decl = fields.Char(string="Endpoint Declaración Importación", config_parameter="aduanas_transport.endpoint.imp_decl",
-        default="https://prewww1.agenciatributaria.gob.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP")
+        default="https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP")
     # Bandeja
     aeat_endpoint_bandeja = fields.Char(string="Endpoint Bandeja", config_parameter="aduanas_transport.endpoint.bandeja",
-        default="https://prewww1.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP")
+        default="https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP")
+    # EXS (Declaración Sumaria de Salida - IE615 V5)
+    aeat_endpoint_ie615 = fields.Char(
+        string="Endpoint EXS (IE615 V5)",
+        config_parameter="aduanas_transport.endpoint.ie615",
+        default="https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
+        help="Presentación DUA EXS. Preproducción: prewww1.aeat.es; Producción: www1.agenciatributaria.gob.es")
 
     # Certificado (pendiente firma XAdES)
     cert_password = fields.Char(string="Password Certificado", config_parameter="aduanas_transport.cert_password")

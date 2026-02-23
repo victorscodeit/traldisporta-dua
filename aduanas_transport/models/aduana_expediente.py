@@ -2,6 +2,8 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 import base64
 import logging
+import time
+from xml.sax.saxutils import escape as xml_escape
 _logger = logging.getLogger(__name__)
 
 # Queue job support (opcional)
@@ -159,6 +161,13 @@ class AduanaExpediente(models.Model):
     observaciones = fields.Text(string="Observaciones")
     error_message = fields.Text(string="Último Error", readonly=True)
     last_response_date = fields.Datetime(string="Última Respuesta", readonly=True)
+
+    # Respuesta EXS (IE615/IE628)
+    exs_circuito = fields.Char(string="Circuito EXS", readonly=True, help="V=verde, N=naranja, R=rojo")
+    exs_dec_csv = fields.Char(string="CSV declaración EXS", readonly=True)
+    exs_rel_csv = fields.Char(string="CSV levante EXS", readonly=True)
+    exs_tipo_declaracion = fields.Char(string="Tipo declaración EXS", readonly=True, help="A1, A2, A3, NR")
+    exs_predeclaracion = fields.Char(string="PreEXS", readonly=True, help="DE si es predeclaración")
     
     # Referencias MSoft (para sincronización)
     msoft_codigo = fields.Char(string="Código MSoft", index=True, help="Código original del expediente en MSoft (ExpCod)")
@@ -591,6 +600,7 @@ class AduanaExpediente(models.Model):
             "aeat_endpoint_cc511c": icp.get_param("aduanas_transport.endpoint.cc511c") or "",
             "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl") or "",
             "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja") or "",
+            "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615") or "",
         }
 
     def _attach_xml(self, filename, xml_text, mimetype="application/xml"):
@@ -801,6 +811,267 @@ class AduanaExpediente(models.Model):
                 raise UserError(_("Error al presentar CC511C:\n%s") % error_msg)
         return True
 
+    # ===== EXS (Declaración Sumaria de Salida - IE615 V5) =====
+    def _build_ie615_body(self, preprod_maritimo=True, preprod_doc_ref=None, preprod_doc_item="00001"):
+        """
+        Construye el cuerpo XML del mensaje IE615 (CC615A) para presentación EXS.
+        preprod_maritimo: True = recinto 9999 (marítimo), False = 9998 (aéreo).
+        preprod_doc_ref: referencia DSDT en preprod (marítimo: 99992600404, aéreo: 99985000383).
+        preprod_doc_item: 00001=verde, 00002=naranja, 00003=rojo.
+        """
+        self.ensure_one()
+        company = self.env.company
+        nif_declarante = (company.vat or "").replace(" ", "").replace(".", "").replace("-", "").strip() or "ESA99999996"
+        if nif_declarante.upper().startswith("ES"):
+            nif_declarante = nif_declarante.upper()
+        else:
+            nif_declarante = "ES" + nif_declarante if len(nif_declarante) <= 9 else nif_declarante
+        now = fields.Datetime.now()
+        dt = now.strftime("%y%m%d") if now else "250123"
+        tm = now.strftime("%H%M") if now else "1200"
+        dec_dat_tim = now.strftime("%Y%m%d%H%M") if now else "202501231200"
+        mes_id = (self.name or "EX").replace(" ", "")[:8] + str(int(time.time()))[-6:]
+        mes_id = mes_id[:14]
+        lrn = self.lrn or self.name or "LRN%s" % mes_id
+        num_items = len(self.line_ids) or 1
+        tot_packages = sum((l.bultos or 1) for l in self.line_ids) or 1
+        tot_gross = sum((l.peso_bruto or 0) for l in self.line_ids) or 1.0
+        if preprod_maritimo:
+            cus_sub_pla = "9999AAAAAA"
+            ref_num_col = "ES009999"
+        else:
+            cus_sub_pla = "9998AAAAAA"
+            ref_num_col = "ES009998"
+        doc_ref = preprod_doc_ref or ("99992600404" if preprod_maritimo else "99985000383")
+        dec_place = (company.city or company.name or "Valencia").strip()[:35]
+        declarant_name = (company.name or "Declarante").strip()[:70]
+        declarant_street = (company.street or " ").strip()[:70]
+        declarant_zip = (company.zip or "28000").strip()[:9]
+        declarant_city = (company.city or "Madrid").strip()[:35]
+        declarant_country = (company.country_id and company.country_id.code) or "ES"
+        declarant_email = (company.email or "info@empresa.com").strip()[:80]
+        consignee = self.consignatario
+        if consignee:
+            consignee_name = (consignee.name or "").strip()[:70]
+            consignee_street = (consignee.street or "").strip()[:70]
+            consignee_zip = (consignee.zip or "00000").strip()[:9]
+            consignee_city = (consignee.city or "").strip()[:35]
+            consignee_country = (consignee.country_id and consignee.country_id.code) or "AD"
+            consignee_tin = (consignee.vat or "ADXXXXXXXXX").replace(" ", "").strip()[:17]
+        else:
+            consignee_name = "Consignatario"
+            consignee_street = "Calle"
+            consignee_zip = "00000"
+            consignee_city = "Ciudad"
+            consignee_country = self.pais_destino or "AD"
+            consignee_tin = "ADXXXXXXXXX"
+        trans_ref = (self.referencia_transporte or "V010102567780").strip()[:35]
+        # TRACONCO1 = carrier/sender (remitente o compañía)
+        sender = self.remitente or company
+        if sender:
+            sender_name = (sender.name or "Remitente").strip()[:70]
+            sender_street = (sender.street or " ").strip()[:70]
+            sender_zip = (sender.zip or "28000").strip()[:9]
+            sender_city = (sender.city or "Madrid").strip()[:35]
+            sender_country = (sender.country_id and sender.country_id.code) or "ES"
+            sender_tin = (sender.vat or "ESA99999998").replace(" ", "").strip()[:17]
+        else:
+            sender_name, sender_street, sender_zip, sender_city, sender_country, sender_tin = "Remitente", "Calle", "28000", "Madrid", "ES", "ESA99999998"
+        ns = "https://www2.agenciatributaria.gob.es/ADUA/internet/es/aeat/dit/adu/adrx/ws/IE615V5Ent.xsd"
+        lines_xml = []
+        for idx, line in enumerate(self.line_ids or [None]):
+            if line is None:
+                item_num = 1
+                desc = "Mercancía"
+                gross = "%.6g" % (tot_gross or 1)
+                partida = "840999"
+            else:
+                item_num = line.item_number or (idx + 1)
+                desc = (line.descripcion or "Mercancía")[:350]
+                gross = "%.6g" % (line.peso_bruto or 0) or "1"
+                partida = (line.partida or "840999").replace(" ", "")[:10]
+            lines_xml.append("""<GOOITEGDS>
+<IteNumGDS7>%s</IteNumGDS7>
+<GooDesGDS23>%s</GooDesGDS23>
+<GroMasGDS46>%s</GroMasGDS46>
+<PREDOCGODITM1>
+<DocTypPD11>N337</DocTypPD11>
+<DocRefPD12>%s</DocRefPD12>
+<DocGdsIteNumPD13>%s</DocGdsIteNumPD13>
+</PREDOCGODITM1>
+<COMCODGODITM>
+<ComNomCMD1>%s</ComNomCMD1>
+</COMCODGODITM>
+<PACGS2>
+<MarNumOfPacGS21>MARCAS</MarNumOfPacGS21>
+<KinOfPacGS23>BX</KinOfPacGS23>
+<NumOfPacGS24>%s</NumOfPacGS24>
+</PACGS2>
+</GOOITEGDS>""" % (item_num, xml_escape(desc), gross, doc_ref, preprod_doc_item, partida, tot_packages if not self.line_ids else (line.bultos or 1)))
+        dest_country = self.pais_destino or "AD"
+        body = """<?xml version="1.0" encoding="UTF-8"?>
+<exs:CC615A xmlns:exs="%s">
+<MesSenMES3>%s</MesSenMES3>
+<MesRecMES6>NICA.ES</MesRecMES6>
+<DatOfPreMES9>%s</DatOfPreMES9>
+<TimOfPreMES10>%s</TimOfPreMES10>
+<TesIndMES18>1</TesIndMES18>
+<MesIdeMES19>%s</MesIdeMES19>
+<MesTypMES20>CC615A</MesTypMES20>
+<HEAHEA>
+<RefNumHEA4>%s</RefNumHEA4>
+<CusSubPlaHEA66>%s</CusSubPlaHEA66>
+<TotNumOfIteHEA305>%s</TotNumOfIteHEA305>
+<TotNumOfPacHEA306>%s</TotNumOfPacHEA306>
+<TotGroMasHEA307>%s</TotGroMasHEA307>
+<DecDatTimHEA114>%s</DecDatTimHEA114>
+<DecPlaHEA394>%s</DecPlaHEA394>
+<TraChaMetOfPayHEA1>A</TraChaMetOfPayHEA1>
+</HEAHEA>
+<TRANSDOC1>
+<TransDocType11>N705</TransDocType11>
+<TransDocRefNum12>%s</TransDocRefNum12>
+</TRANSDOC1>
+<TRACONCO1>
+<NamCO17>%s</NamCO17>
+<StrAndNumCO122>%s</StrAndNumCO122>
+<PosCodCO123>%s</PosCodCO123>
+<CitCO124>%s</CitCO124>
+<CouCO125>%s</CouCO125>
+<TINCO159>%s</TINCO159>
+</TRACONCO1>
+<TRACONCE1>
+<NamCE17>%s</NamCE17>
+<StrAndNumCE122>%s</StrAndNumCE122>
+<PosCodCE123>%s</PosCodCE123>
+<CitCE124>%s</CitCE124>
+<CouCE125>%s</CouCE125>
+<TINCE159>%s</TINCE159>
+</TRACONCE1>
+%s
+<ITI>
+<CouOfRouCodITI1>%s</CouOfRouCodITI1>
+</ITI>
+<CUSOFFLON>
+<RefNumCOL1>%s</RefNumCOL1>
+</CUSOFFLON>
+<PERLODSUMDEC>
+<NamPLD1>%s</NamPLD1>
+<StrAndNumPLD1>%s</StrAndNumPLD1>
+<PosCodPLD1>%s</PosCodPLD1>
+<CitPLD1>%s</CitPLD1>
+<CouCodPLD1>%s</CouCodPLD1>
+<TINPLD1>%s</TINPLD1>
+<EmailPLD1>%s</EmailPLD1>
+</PERLODSUMDEC>
+<CARRIER>
+<TINCAR1>%s</TINCAR1>
+<ContactPersonCAR1>
+<NameCAR1>%s</NameCAR1>
+<PhoneNumberCAR1>555-000000</PhoneNumberCAR1>
+<EmailCAR1>%s</EmailCAR1>
+</ContactPersonCAR1>
+</CARRIER>
+<SEAID529>
+<SeaIdSEAID530>XX383471</SeaIdSEAID530>
+</SEAID529>
+</exs:CC615A>""" % (
+            ns,
+            nif_declarante,
+            dt,
+            tm,
+            mes_id,
+            xml_escape(lrn),
+            cus_sub_pla,
+            num_items,
+            tot_packages,
+            "%.6g" % (tot_gross or 1),
+            dec_dat_tim,
+            xml_escape(dec_place),
+            xml_escape(trans_ref),
+            xml_escape(sender_name),
+            xml_escape(sender_street),
+            sender_zip,
+            xml_escape(sender_city),
+            sender_country,
+            sender_tin,
+            xml_escape(consignee_name),
+            xml_escape(consignee_street),
+            consignee_zip,
+            xml_escape(consignee_city),
+            consignee_country,
+            consignee_tin,
+            "\n".join(lines_xml),
+            dest_country,
+            ref_num_col,
+            xml_escape(declarant_name),
+            xml_escape(declarant_street),
+            declarant_zip,
+            xml_escape(declarant_city),
+            declarant_country,
+            nif_declarante,
+            declarant_email,
+            nif_declarante,
+            xml_escape(declarant_name),
+            declarant_email,
+        )
+        return body
+
+    def _build_ie615_soap_envelope(self, body_xml):
+        """Envuelve el cuerpo CC615A en un envelope SOAP 1.1. Quita la declaración XML del body."""
+        if body_xml.strip().startswith("<?xml"):
+            body_xml = body_xml.split("?>", 1)[-1].strip()
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+<soapenv:Body>%s</soapenv:Body>
+</soapenv:Envelope>""" % body_xml
+
+    def action_presentar_exs_preprod(self, preprod_maritimo=True, preprod_doc_ref=None, preprod_doc_item="00001"):
+        """
+        Presenta el DUA como Declaración EXS (IE615) al endpoint configurado (preproducción por defecto)
+        y almacena la respuesta (IE628/IE616/IE919).
+        """
+        client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
+        for rec in self:
+            if rec.direction != "export":
+                raise UserError(_("La presentación EXS solo aplica a exportación"))
+            settings = rec._get_settings()
+            endpoint = settings.get("aeat_endpoint_ie615")
+            if not endpoint:
+                raise UserError(_("Configure el endpoint EXS (IE615) en Aduanas > Configuración"))
+            body = rec._build_ie615_body(preprod_maritimo=preprod_maritimo, preprod_doc_ref=preprod_doc_ref, preprod_doc_item=preprod_doc_item)
+            rec._attach_xml("EXS_IE615_%s.xml" % rec.name, body)
+            soap = rec._build_ie615_soap_envelope(body)
+            resp_xml = client.send_xml(endpoint, soap, service="IE615_EXS", timeout=60)
+            rec._attach_xml("EXS_IE615_response_%s.xml" % rec.name, resp_xml or "")
+            rec.last_response_date = fields.Datetime.now()
+            parsed = parser.parse_ie615_response(resp_xml or "")
+            rec.exs_circuito = parsed.get("exs_circuito")
+            rec.exs_dec_csv = parsed.get("exs_dec_csv")
+            rec.exs_rel_csv = parsed.get("exs_rel_csv")
+            rec.exs_tipo_declaracion = parsed.get("exs_tipo_declaracion")
+            rec.exs_predeclaracion = parsed.get("exs_predeclaracion")
+            if parsed.get("success"):
+                rec.mrn = parsed.get("mrn") or rec.mrn
+                rec.state = "accepted"
+                rec.error_message = False
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("EXS aceptada. MRN: %s | Circuito: %s | Tipo: %s") % (
+                        rec.mrn or "-", rec.exs_circuito or "-", rec.exs_tipo_declaracion or "-"
+                    ),
+                    subtype_xmlid="mail.mt_note",
+                )
+            else:
+                rec.state = "error"
+                error_msg = "\n".join(parsed.get("errors") or [parsed.get("error", _("Error desconocido"))])
+                rec.error_message = error_msg
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("EXS rechazada:\n%s") % error_msg,
+                    subtype_xmlid="mail.mt_note",
+                )
+                raise UserError(_("Error al presentar EXS:\n%s") % error_msg)
+        return True
 
     # ===== Importación (DUA Import) =====
     def action_generate_imp_decl(self):
