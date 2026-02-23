@@ -7,6 +7,7 @@
     <field name="arch" type="xml">
       <form string="Subir Facturas PDF">
         <sheet>
+          <field name="expediente_id" invisible="1"/>
           <div class="drop-zone-facturas">
             <input type="file" multiple="multiple" accept="application/pdf,.pdf"/>
             <div class="drop-icon">
@@ -30,7 +31,10 @@
           </group>
         </sheet>
         <footer>
-          <button string="Crear Expediciones" name="action_crear_expediciones" type="object" class="oe_highlight"/>
+          <button string="Añadir al expediente" name="action_crear_expediciones" type="object" class="oe_highlight"
+                  attrs="{'invisible': [('expediente_id', '=', False)]}"/>
+          <button string="Crear Expediciones" name="action_crear_expediciones" type="object" class="oe_highlight"
+                  attrs="{'invisible': [('expediente_id', '!=', False)]}"/>
           <button string="Cancelar" special="cancel"/>
         </footer>
       </form>

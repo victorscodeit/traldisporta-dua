@@ -3,7 +3,7 @@ import base64
 import json
 import re
 import io
-from odoo import models, _
+from odoo import models, fields, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -642,7 +642,18 @@ class InvoiceOCRService(models.AbstractModel):
         except ImportError:
             return {"error": _("El paquete 'openai' no está instalado en el servidor")}
         
-        lines_sorted = expediente.line_ids.sorted(lambda l: l.item_number or l.id)
+        # Filtrar líneas por factura si se especifica en el contexto
+        factura_id = self.env.context.get('factura_id')
+        if factura_id:
+            factura = self.env['aduana.expediente.factura'].browse(factura_id)
+            if factura.exists():
+                lines_to_validate = expediente.line_ids.filtered(lambda l: l.factura_id == factura)
+            else:
+                lines_to_validate = expediente.line_ids
+        else:
+            lines_to_validate = expediente.line_ids
+        
+        lines_sorted = lines_to_validate.sorted(lambda l: l.item_number or l.id)
         lineas_payload = []
         for idx, line in enumerate(lines_sorted, 1):
             lineas_payload.append({
@@ -1496,25 +1507,25 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         # No limitar líneas - devolver todas las encontradas (pueden ser cientos en facturas grandes)
         return lineas
 
-    def fill_expediente_from_invoice(self, expediente, invoice_data):
+    def fill_expediente_from_invoice(self, expediente, invoice_data, factura=None):
         """
         Rellena los campos de un expediente con los datos extraídos de la factura.
         
         :param expediente: Recordset de aduana.expediente
         :param invoice_data: Diccionario con datos extraídos
+        :param factura: Recordset opcional de aduana.expediente (expediente hijo/factura). Si se proporciona,
+                        las líneas se crean en expediente con factura_id=factura.
         """
         expediente.ensure_one()
         
         # Preparar valores para actualización masiva sin tracking
         vals = {}
         
-        # Actualizar número de factura
-        if invoice_data.get("numero_factura"):
+        # Actualizar número de factura (solo en modo legacy, sin factura específica)
+        if not factura and invoice_data.get("numero_factura"):
             vals["numero_factura"] = invoice_data["numero_factura"]
         
-        # Actualizar valor de factura
-        if invoice_data.get("valor_total"):
-            vals["valor_factura"] = invoice_data["valor_total"]
+        # valor_factura es campo computado (suma de line_ids.valor_linea); se actualiza al crear/actualizar líneas
         
         # Actualizar moneda
         if invoice_data.get("moneda"):
@@ -1666,10 +1677,12 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):
-            # Limpiar líneas existentes si las hay
-            expediente.line_ids.unlink()
+            # Si hay factura (expediente hijo), borrar solo las líneas de esa factura en el expediente principal
+            if factura:
+                expediente.line_ids.filtered(lambda l: l.factura_id == factura).unlink()
+            else:
+                expediente.line_ids.unlink()
             
-            # Crear nuevas líneas
             LineModel = self.env["aduana.expediente.line"]
             for idx, linea_data in enumerate(invoice_data["lineas"], start=1):
                 # Calcular unidades
@@ -1693,6 +1706,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 
                 line_vals = {
                     "expediente_id": expediente.id,
+                    "factura_id": factura.id if factura else False,  # Expediente hijo (factura) al que pertenece la línea
                     "item_number": idx,
                     "descripcion": linea_data.get("descripcion", ""),
                     "unidades": unidades,
@@ -1772,10 +1786,19 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 LineModel.create(line_vals)
         
         # Guardar datos extraídos como texto para referencia técnica (sin tracking)
-        expediente.with_context(mail_notrack=True, tracking_disable=True).write({
-            'factura_datos_extraidos': json.dumps(invoice_data, indent=2, ensure_ascii=False),
-            'factura_procesada': True
-        })
+        if factura:
+            # Guardar en la factura específica
+            factura.with_context(mail_notrack=True, tracking_disable=True).write({
+                'factura_datos_extraidos': json.dumps(invoice_data, indent=2, ensure_ascii=False),
+                'factura_procesada': True,
+                'fecha_procesamiento': fields.Datetime.now(),
+            })
+        else:
+            # Modo legacy: guardar en el expediente
+            expediente.with_context(mail_notrack=True, tracking_disable=True).write({
+                'factura_datos_extraidos': json.dumps(invoice_data, indent=2, ensure_ascii=False),
+                'factura_procesada': True
+            })
         
         # Agregar información técnica al chatter
         metodo_usado = invoice_data.get("metodo_usado", "Desconocido")

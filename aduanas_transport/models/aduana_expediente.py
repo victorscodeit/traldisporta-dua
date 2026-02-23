@@ -23,6 +23,8 @@ class AduanaExpedienteLine(models.Model):
     _name = "aduana.expediente.line"
     _description = "Línea de mercancía (expediente aduanero)"
     expediente_id = fields.Many2one("aduana.expediente", required=True, ondelete="cascade")
+    factura_id = fields.Many2one("aduana.expediente.factura", string="Factura", ondelete="set null", index=True,
+                                 help="Factura del expediente de la que proviene esta línea, si aplica")
     item_number = fields.Integer(string="Nº línea", default=1)
     partida = fields.Char(string="Partida arancelaria (NC)")
     descripcion = fields.Char()
@@ -107,8 +109,9 @@ class AduanaExpediente(models.Model):
     matricula = fields.Char(string="Matrícula")
     fecha_prevista = fields.Datetime()
 
-    # Totales factura
-    valor_factura = fields.Float()
+    # Totales factura (editable; se rellena con la suma de líneas al procesar facturas)
+    valor_factura = fields.Float(string="Valor total",
+                                help="Importe total del expediente. Se puede editar manualmente; al procesar facturas se rellena con la suma de las líneas.")
     moneda = fields.Selection([("EUR","EUR"),("USD","USD")], default="EUR")
 
     # Líneas
@@ -125,6 +128,13 @@ class AduanaExpediente(models.Model):
     
     # Documentos requeridos por partida arancelaria (TARIC)
     documento_requerido_ids = fields.One2many("aduana.expediente.documento.requerido", "expediente_id", string="Documentos Requeridos")
+
+    # Facturas del expediente (varios PDF por expediente; no son expedientes hijo)
+    factura_ids = fields.One2many("aduana.expediente.factura", "expediente_id", string="Facturas", help="Facturas PDF subidas a este expediente")
+    
+    # Campos para expediente con una sola factura (opcional)
+    lineas_count = fields.Integer(string="Nº Líneas", compute="_compute_lineas_count", store=False)
+    fecha_procesamiento = fields.Datetime(string="Fecha Procesamiento", readonly=True, help="Fecha en que se procesó la factura (cuando hay una sola factura en el expediente)")
 
     # Países
     pais_origen = fields.Char(default="ES")
@@ -198,19 +208,18 @@ class AduanaExpediente(models.Model):
             else:
                 rec.dua_generado = False
     
-    @api.depends('factura_pdf', 'name')
+    @api.depends('factura_ids', 'factura_ids.factura_pdf')
     def _compute_documento_ids(self):
-        """Obtiene todos los documentos (attachments) relacionados con este expediente"""
+        """Documentos del expediente: attachments con res_model=expediente (incluyen facturas subidas, que se copian al expediente al subir)."""
         for rec in self:
-            # No podemos depender de 'id' en @api.depends, pero podemos usarlo en el método
-            if rec.id:
-                attachments = self.env['ir.attachment'].search([
-                    ('res_model', '=', rec._name),
-                    ('res_id', '=', rec.id)
-                ])
-                rec.documento_ids = attachments
-            else:
-                rec.documento_ids = False
+            if not rec.id:
+                rec.documento_ids = self.env['ir.attachment']
+                continue
+            attachments = self.env['ir.attachment'].search([
+                ('res_model', '=', rec._name),
+                ('res_id', '=', rec.id)
+            ])
+            rec.documento_ids = attachments
     
     @api.model_create_multi
     def create(self, vals_list):
@@ -345,8 +354,36 @@ class AduanaExpediente(models.Model):
             else:
                 # Otros estados (pendiente, procesando) - no mostrar mensaje
                 rec.factura_mensaje_html = False
-    
-    
+
+    def _recompute_factura_estado_from_facturas(self):
+        """Actualiza factura_estado_procesamiento del expediente según el estado de factura_ids.
+        Solo aplica cuando el expediente tiene facturas (factura_ids); si no tiene, se mantiene
+        el estado legacy (factura_pdf único).
+        """
+        for expediente in self:
+            if not expediente.factura_ids:
+                # Sin facturas: si no usa factura_pdf legacy, poner sin_factura
+                if not expediente.factura_pdf and expediente.factura_estado_procesamiento != "sin_factura":
+                    expediente.write({"factura_estado_procesamiento": "sin_factura"})
+                continue
+            estados = expediente.factura_ids.mapped("factura_estado_procesamiento")
+            if "error" in estados:
+                nuevo = "error"
+            elif "procesando" in estados:
+                nuevo = "procesando"
+            elif "en_cola" in estados:
+                nuevo = "en_cola"
+            elif "pendiente" in estados or "sin_factura" in estados:
+                nuevo = "pendiente"
+            elif "advertencia" in estados:
+                nuevo = "advertencia"
+            elif estados and all(s in ("completado", "advertencia") for s in estados):
+                nuevo = "advertencia" if "advertencia" in estados else "completado"
+            else:
+                nuevo = "pendiente"
+            if expediente.factura_estado_procesamiento != nuevo:
+                expediente.write({"factura_estado_procesamiento": nuevo})
+
     # Incidencias
     incidencia_ids = fields.One2many("aduana.incidencia", "expediente_id", string="Incidencias")
     incidencias_count = fields.Integer(string="Nº Incidencias", compute="_compute_incidencias_count", store=True)
@@ -376,6 +413,12 @@ class AduanaExpediente(models.Model):
         for rec in self:
             rec.incidencias_count = len(rec.incidencia_ids)
             rec.incidencias_pendientes_count = len(rec.incidencia_ids.filtered(lambda i: i.state in ("pendiente", "en_revision")))
+    
+    @api.depends("line_ids")
+    def _compute_lineas_count(self):
+        """Calcula el número de líneas del expediente"""
+        for rec in self:
+            rec.lineas_count = len(rec.line_ids)
     
     @api.depends("line_ids", "line_ids.verificacion_estado", "line_ids.verificacion_detalle", 
                  "line_ids.valor_linea", "valor_factura", 
@@ -586,7 +629,23 @@ class AduanaExpediente(models.Model):
                 "mimetype": "application/pdf",
                 "datas": pdf_b64
             })
-    
+
+    def action_anadir_documento(self):
+        """Abre el formulario para subir un nuevo documento (PDF u otro) al expediente."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Añadir documento"),
+            "res_model": "ir.attachment",
+            "view_mode": "form",
+            "target": "new",
+            "context": {
+                "default_res_model": self._name,
+                "default_res_id": self.id,
+                "default_name": _("Documento"),
+            },
+        }
+
     def _generate_dua_pdf(self):
         """Genera el PDF del DUA usando el sistema de reportes de Odoo"""
         self.ensure_one()
@@ -940,6 +999,30 @@ class AduanaExpediente(models.Model):
             "context": {"default_expediente_id": self.id, "search_default_pending": 1},
         }
 
+    def action_view_lineas(self):
+        """Abre la vista de líneas del expediente/factura"""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Líneas de %s", self.name),
+            "res_model": "aduana.expediente.line",
+            "view_mode": "tree,form",
+            "domain": [("expediente_id", "=", self.id)],
+            "context": {"default_expediente_id": self.id},
+        }
+
+    def action_subir_facturas(self):
+        """Abre el wizard para subir múltiples facturas PDF y añadirlas a este expediente."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Subir facturas a %s", self.name),
+            "res_model": "aduanas.subir.facturas.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_expediente_id": self.id},
+        }
+
     def _ensure_cc515c_xml(self):
         """Genera o recupera el XML del DUA en formato CUSDEC EX1"""
         self.ensure_one()
@@ -1086,56 +1169,57 @@ class AduanaExpediente(models.Model):
                 "sticky": False,
             },
         }
-
-    def action_procesar_facturas_multi(self):
-        """
-        Procesa las facturas de múltiples expedientes seleccionados.
-        Encola el procesamiento en background usando jobs.
-        """
-        if not self:
-            raise UserError(_("No hay expedientes seleccionados"))
-        
-        # Filtrar expedientes que tienen factura PDF y no están ya procesados
-        expedientes_a_procesar = self.filtered(
-            lambda e: e.factura_pdf and not e.factura_procesada
+    
+    def action_procesar_todas_facturas(self):
+        """Procesa todas las facturas (PDF) del expediente; las encola para procesamiento en background."""
+        self.ensure_one()
+        facturas = self.factura_ids.filtered(
+            lambda f: f.factura_pdf
+            and f.factura_estado_procesamiento in ("pendiente", "sin_factura")
+            and not f.factura_procesada
         )
-        
-        if not expedientes_a_procesar:
-            raise UserError(_("No hay expedientes con facturas PDF pendientes de procesar en la selección"))
-        
-        # Contar expedientes sin factura o ya procesados para informar
-        sin_factura = self.filtered(lambda e: not e.factura_pdf)
-        ya_procesados = self.filtered(lambda e: e.factura_procesada)
-        
-        # Procesar cada expediente
-        for expediente in expedientes_a_procesar:
+        if not facturas:
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Sin facturas para procesar"),
+                    "message": _("No hay facturas pendientes para procesar."),
+                    "type": "info",
+                    "sticky": False,
+                },
+            }
+        facturas_procesadas = 0
+        for factura in facturas:
             try:
-                expediente.action_process_invoice_pdf()
-            except Exception as e:
-                _logger.exception("Error encolando procesamiento de factura para expediente %s: %s", expediente.name, e)
-                expediente.write({
-                    "factura_estado_procesamiento": "error",
-                    "factura_mensaje_error": _("Error al encolar procesamiento: %s") % str(e),
+                factura.write({
+                    "factura_estado_procesamiento": "en_cola",
+                    "factura_mensaje_error": _("Factura en cola para procesamiento en background"),
+                    "factura_en_cola_at": fields.Datetime.now(),
+                    "factura_procesada": False,
                 })
-        
-        # Construir mensaje de resultado
-        mensaje = _("Se han encolado %d expediente(s) para procesar sus facturas.") % len(expedientes_a_procesar)
-        
-        if sin_factura:
-            mensaje += "\n" + _("%d expediente(s) no tienen factura PDF adjunta.") % len(sin_factura)
-        
-        if ya_procesados:
-            mensaje += "\n" + _("%d expediente(s) ya tienen la factura procesada.") % len(ya_procesados)
+                factura.with_delay(
+                    description=_("Procesar factura PDF %s", factura.name),
+                    max_retries=3,
+                    identity_key=lambda job, rec_id=factura.id: f"process_pdf_factura_{rec_id}",
+                ).process_pdf_job()
+                facturas_procesadas += 1
+            except Exception as e:
+                _logger.exception("Error encolando factura %s: %s", factura.name, e)
+                factura.write({
+                    "factura_estado_procesamiento": "error",
+                    "factura_mensaje_error": _("Error al encolar: %s") % str(e),
+                })
         
         # Notificación
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
-                "title": _("Procesamiento en background"),
-                "message": mensaje,
+                "title": _("Procesamiento iniciado"),
+                "message": _("Se han encolado %d factura(s) para procesamiento en segundo plano. Puedes seguir trabajando, la vista se actualizará al terminar.") % facturas_procesadas,
                 "type": "success",
-                "sticky": True,
+                "sticky": False,
             },
         }
 
@@ -1344,17 +1428,34 @@ class AduanaExpediente(models.Model):
         return True
 
     def cron_process_invoice_pdf_queue(self, limit=2):
-        """Procesa en background las facturas encoladas para evitar timeouts HTTP."""
-        pending = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
-        for rec in pending:
+        """Procesa en background las facturas encoladas (expedientes con PDF directo y facturas del modelo factura)."""
+        # Expedientes con factura PDF directa (una sola factura en el expediente)
+        pending_exp = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
+        for rec in pending_exp:
             try:
                 rec.with_delay(
-                    description=f"Procesar factura PDF expediente {rec.name}",
+                    description=_("Procesar factura PDF expediente %s", rec.name),
                     max_retries=3,
                     identity_key=lambda job, rec_id=rec.id: f"process_pdf_{rec_id}",
                 ).process_pdf_job()
             except Exception as e:
                 _logger.exception("Error procesando factura en cola (expediente %s): %s", rec.id, e)
+        # Facturas (PDF) del expediente (modelo aduana.expediente.factura)
+        Factura = self.env["aduana.expediente.factura"]
+        pending_facturas = Factura.search(
+            [("factura_estado_procesamiento", "=", "en_cola")],
+            limit=limit,
+            order="factura_en_cola_at asc, id asc",
+        )
+        for factura in pending_facturas:
+            try:
+                factura.with_delay(
+                    description=_("Procesar factura PDF %s", factura.name),
+                    max_retries=3,
+                    identity_key=lambda job, fid=factura.id: f"process_pdf_factura_{fid}",
+                ).process_pdf_job()
+            except Exception as e:
+                _logger.exception("Error procesando factura en cola (factura %s): %s", factura.id, e)
         return True
 
     # Job encolado (configuración de canal/reintentos se gestiona en with_delay o via queue.job.function)
@@ -1370,21 +1471,42 @@ class AduanaExpediente(models.Model):
                 # Marcar estado de error con un único write final
                 msg = _("Error procesando factura en background: %s") % (str(e),)
                 ctx_no_mail = dict(self.env.context, mail_notrack=True, tracking_disable=True, prefetch_fields=False)
-                # Único write final para marcar error
-                rec.with_context(**ctx_no_mail).write({
-                    "factura_estado_procesamiento": "error",
-                    "factura_mensaje_error": msg,
-                })
-                _logger.exception("Error en job de factura expediente %s", rec.id)
+                
+                # Verificar si se está procesando una factura específica
+                factura_id = self.env.context.get('factura_id')
+                if factura_id:
+                    factura = self.env['aduana.expediente.factura'].browse(factura_id)
+                    if factura.exists():
+                        factura.with_context(**ctx_no_mail).write({
+                            "factura_estado_procesamiento": "error",
+                            "factura_mensaje_error": msg,
+                        })
+                        _logger.exception("Error en job de factura %s del expediente %s", factura_id, rec.id)
+                    else:
+                        # Si la factura no existe, actualizar el expediente (modo legacy)
+                        rec.with_context(**ctx_no_mail).write({
+                            "factura_estado_procesamiento": "error",
+                            "factura_mensaje_error": msg,
+                        })
+                        _logger.exception("Error en job de factura expediente %s (factura %s no existe)", rec.id, factura_id)
+                else:
+                    # Modo legacy: actualizar el expediente
+                    rec.with_context(**ctx_no_mail).write({
+                        "factura_estado_procesamiento": "error",
+                        "factura_mensaje_error": msg,
+                    })
+                    _logger.exception("Error en job de factura expediente %s", rec.id)
                 raise
+
+    def _process_factura_pdf_sync(self, factura):
+        """Procesa el PDF de una factura (aduana.expediente.factura) y rellena este expediente con las líneas."""
+        self.ensure_one()
+        return self.with_context(factura_id=factura.id)._process_invoice_pdf_sync()
 
     def _process_invoice_pdf_sync(self):
         """
         Procesa la factura PDF adjunta, extrae datos con OCR/IA y rellena la expedición.
-        (Lógica original síncrona extraída para ser usada por cron o modo forzado)
-        
-        IMPORTANTE: Este método NO debe hacer writes intermedios durante el procesamiento.
-        Todos los cambios se acumulan y se escriben en un único write final al final.
+        Si viene factura_id en el contexto, procesa esa factura (aduana.expediente.factura) del expediente.
         """
         for rec in self:
             # Desactivar notificaciones de email durante todo el proceso
@@ -1400,28 +1522,42 @@ class AduanaExpediente(models.Model):
                 'prefetch_fields': False,  # Evitar problemas de caché en transacciones largas
             })
             
-            # NO hacer write aquí - se hará al final con todos los cambios acumulados
-            # Todos los cambios se acumularán en cambios_finales y se escribirán al final
-            
-            if not rec.factura_pdf:
-                # Error inmediato - escribir y salir
-                rec.with_context(**ctx_no_mail).write({
-                    'factura_estado_procesamiento': 'error',
-                    'factura_mensaje_error': _("No hay factura PDF adjunta para procesar")
-                })
-                raise UserError(_("No hay factura PDF adjunta para procesar"))
+            # factura_id en contexto = procesar una factura (aduana.expediente.factura) del expediente
+            factura_id = self.env.context.get('factura_id')
+            factura = None
+            if factura_id:
+                factura = self.env['aduana.expediente.factura'].browse(factura_id)
+                if not factura.exists():
+                    raise UserError(_("La factura especificada no existe"))
+                pdf_data = factura.factura_pdf
+                if not pdf_data:
+                    factura.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': _("No hay factura PDF adjunta para procesar")
+                    })
+                    raise UserError(_("No hay factura PDF adjunta para procesar"))
+            else:
+                # Expediente con factura PDF directa (una sola factura en el expediente)
+                if not rec.factura_pdf:
+                    rec.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': _("No hay factura PDF adjunta para procesar")
+                    })
+                    raise UserError(_("No hay factura PDF adjunta para procesar"))
+                pdf_data = rec.factura_pdf
             
             # Obtener servicio OCR
             ocr_service = self.env["aduanas.invoice.ocr.service"]
             
             # Acumulador de cambios para el write final
             cambios_finales = {}
+            cambios_factura = {}  # Cambios para la factura específica si existe
             mensaje_chatter = None
             
-            # Extraer datos de la factura
+            # Extraer datos de la factura (pdf_data ya viene asignado arriba si hay factura)
             try:
-                # Asegurar que factura_pdf esté en el formato correcto
-                pdf_data = rec.factura_pdf
+                if not factura:
+                    pdf_data = rec.factura_pdf
                 if not pdf_data:
                     cambios_finales.update({
                         'factura_estado_procesamiento': 'error',
@@ -1439,12 +1575,19 @@ class AduanaExpediente(models.Model):
                 
                 # Validar que se extrajo texto
                 if invoice_data.get("error"):
-                    cambios_finales.update({
-                        'factura_estado_procesamiento': 'error',
-                        'factura_mensaje_error': invoice_data.get("error", _("Error desconocido al procesar el PDF"))
-                    })
-                    mensaje_chatter = _("❌ Error al procesar factura: %s") % invoice_data.get("error")
-                    raise UserError(_("Error al procesar el PDF: %s") % invoice_data.get("error"))
+                    error_msg = invoice_data.get("error", _("Error desconocido al procesar el PDF"))
+                    if factura:
+                        factura.with_context(**ctx_no_mail).write({
+                            'factura_estado_procesamiento': 'error',
+                            'factura_mensaje_error': error_msg
+                        })
+                    else:
+                        cambios_finales.update({
+                            'factura_estado_procesamiento': 'error',
+                            'factura_mensaje_error': error_msg
+                        })
+                    mensaje_chatter = _("❌ Error al procesar factura: %s") % error_msg
+                    raise UserError(_("Error al procesar el PDF: %s") % error_msg)
                 
                 # Validar datos mínimos extraídos
                 advertencias = []
@@ -1491,28 +1634,49 @@ class AduanaExpediente(models.Model):
                 else:
                     datos_extraidos.append(_("Líneas extraídas: %d") % len(invoice_data.get("lineas", [])))
                 
-                # Rellenar expediente con datos extraídos (sin notificaciones)
+                # Rellenar expediente; si hay factura (modelo factura), las líneas se crean en este expediente con factura_id
                 rec = rec.with_context(**ctx_no_mail)
-                ocr_service.fill_expediente_from_invoice(rec, invoice_data)
-                
-                # Acumular estado final en cambios_finales (NO escribir todavía)
+                if factura:
+                    ocr_service.fill_expediente_from_invoice(rec, invoice_data, factura=factura)
+                else:
+                    ocr_service.fill_expediente_from_invoice(rec, invoice_data)
+                expediente_con_lineas = rec
+                # Actualizar valor total con la suma de las líneas (el usuario puede editarlo después en Totales)
+                if expediente_con_lineas.line_ids:
+                    total_lineas = sum(expediente_con_lineas.line_ids.mapped("valor_linea") or [0])
+                    expediente_con_lineas.write({"valor_factura": total_lineas})
+
+                # Acumular estado final (en factura si existe, sino en expediente)
                 if advertencias:
-                    cambios_finales.update({
-                        'factura_estado_procesamiento': 'advertencia',
-                        'factura_mensaje_error': "\n".join([_("ADVERTENCIAS:")] + advertencias)
+                    estado_final = 'advertencia'
+                    mensaje_final = "\n".join([_("ADVERTENCIAS:")] + advertencias)
+                else:
+                    estado_final = 'completado'
+                    mensaje_final = False
+                
+                if factura:
+                    cambios_factura.update({
+                        'factura_estado_procesamiento': estado_final,
+                        'factura_mensaje_error': mensaje_final,
+                        'fecha_procesamiento': fields.Datetime.now(),
+                        'factura_procesada': True,
                     })
                 else:
+                    # Modo legacy: guardar en expediente
                     cambios_finales.update({
-                        'factura_estado_procesamiento': 'completado',
-                        'factura_mensaje_error': False
+                        'factura_estado_procesamiento': estado_final,
+                        'factura_mensaje_error': mensaje_final
                     })
                 
-                # Validación de coherencia y partidas con IA
+                # Validación de coherencia y partidas con IA (sobre el expediente que tiene las líneas)
                 ai_validation = None
                 ai_validation_error = None
                 lineas_result = []
                 try:
-                    ai_validation = ocr_service.validate_invoice_consistency(rec)
+                    ctx_validation = dict(ctx_no_mail)
+                    if factura:
+                        ctx_validation["factura_id"] = factura.id
+                    ai_validation = ocr_service.with_context(**ctx_validation).validate_invoice_consistency(expediente_con_lineas)
                     ai_validation_error = ai_validation.get("error") if ai_validation else None
                 except Exception as val_err:
                     ai_validation_error = str(val_err)
@@ -1523,7 +1687,9 @@ class AduanaExpediente(models.Model):
                 cambios_lineas = {}
                 if ai_validation and not ai_validation_error:
                     lineas_result = ai_validation.get("lineas", []) or []
-                    lines_sorted = rec.line_ids.sorted(lambda l: l.item_number or l.id)
+                    # Si procesamos una factura, solo las líneas de esa factura; si no, todas las del expediente
+                    lineas_a_validar = expediente_con_lineas.line_ids.filtered(lambda l: not factura or l.factura_id == factura)
+                    lines_sorted = lineas_a_validar.sorted(lambda l: l.item_number or l.id)
                     for res in lineas_result:
                         try:
                             idx = int(res.get("index", 0))
@@ -1553,7 +1719,7 @@ class AduanaExpediente(models.Model):
                                 partida_validada = str(partida_validada).strip() if partida_validada else None
                             # Normalizar a 10 dígitos (solo si es necesario, preserva códigos de 10 dígitos tal cual)
                             if partida_validada:
-                                partida_validada = rec._normalize_partida_arancelaria(partida_validada)
+                                partida_validada = expediente_con_lineas._normalize_partida_arancelaria(partida_validada)
                         
                         vals_linea = {
                             "verificacion_estado": estado,
@@ -1578,10 +1744,11 @@ class AduanaExpediente(models.Model):
                         # Acumular cambios de líneas en diccionario (se escribirán después del write principal)
                         cambios_lineas[line.id] = vals_linea
                 
-                # Normalizar partidas existentes a 10 dígitos
-                for line in rec.line_ids:
+                # Normalizar partidas existentes a 10 dígitos (solo las de esta factura si aplica)
+                lineas_a_normalizar = expediente_con_lineas.line_ids.filtered(lambda l: not factura or l.factura_id == factura)
+                for line in lineas_a_normalizar:
                     if line.partida:
-                        partida_normalizada = rec._normalize_partida_arancelaria(line.partida)
+                        partida_normalizada = expediente_con_lineas._normalize_partida_arancelaria(line.partida)
                         if partida_normalizada and partida_normalizada != line.partida:
                             if line.id not in cambios_lineas:
                                 cambios_lineas[line.id] = {}
@@ -1706,32 +1873,34 @@ class AduanaExpediente(models.Model):
                 elif ai_validation_error:
                     mensaje_chatter += "<br/>" + _("🤖 Verificación IA no disponible: %s<br/>") % ai_validation_error
                 
-                # Acumular factura_procesada en cambios finales
-                cambios_finales['factura_procesada'] = True
-                
                 # PASO 1: Escribir cambios de líneas primero (si hay cambios acumulados)
                 if cambios_lineas:
                     for line_id, vals_linea in cambios_lineas.items():
-                        line = rec.line_ids.browse(line_id)
+                        line = expediente_con_lineas.line_ids.browse(line_id)
                         if line.exists():
                             line.with_context(**ctx_no_mail).write(vals_linea)
                 
-                # PASO 2: ÚNICO WRITE FINAL con todos los cambios acumulados del expediente
-                if cambios_finales:
+                # PASO 2: ÚNICO WRITE FINAL con todos los cambios acumulados
+                if factura and cambios_factura:
+                    # Escribir cambios en la factura específica
+                    factura.with_context(**ctx_no_mail).write(cambios_factura)
+                elif cambios_finales:
+                    # Modo legacy: escribir cambios en el expediente
+                    cambios_finales['factura_procesada'] = True
+                    cambios_finales['fecha_procesamiento'] = fields.Datetime.now()
                     rec.with_context(**ctx_no_mail).write(cambios_finales)
                 
-                # PASO 3: Crear mensaje en el chatter SOLO AL FINAL (después del write)
+                # PASO 3: Crear mensaje en el chatter SOLO AL FINAL (después del write) en el expediente principal
                 if mensaje_chatter:
                     try:
-                        # Obtener el subtipo de mensaje
+                        chatter_expediente = expediente_con_lineas  # Mensaje en el expediente que tiene las líneas
                         subtype = self.env.ref('mail.mt_note', raise_if_not_found=False)
                         if not subtype:
                             subtype = self.env['mail.message.subtype'].search([('name', '=', 'Note')], limit=1)
                         
-                        # Crear mensaje directamente en mail.message sin validaciones de correo
                         self.env['mail.message'].sudo().create({
                             'model': 'aduana.expediente',
-                            'res_id': rec.id,
+                            'res_id': chatter_expediente.id,
                             'message_type': 'notification',
                             'subtype_id': subtype.id if subtype else False,
                             'body': mensaje_chatter,
@@ -1751,6 +1920,8 @@ class AduanaExpediente(models.Model):
                 
                 # Si la llamada es síncrona (botón forzado), devolver notificación+reload; si viene de cron, solo continuar
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
+                    # Mantener en el expediente principal (el que tiene las líneas) si procesamos una factura
+                    id_para_vista = expediente_con_lineas.id if (factura and factura.expediente_id) else rec.id
                     return {
                         "type": "ir.actions.client",
                         "tag": "display_notification",
@@ -1762,25 +1933,31 @@ class AduanaExpediente(models.Model):
                         },
                         "context": {
                             **self.env.context,
-                            "active_id": rec.id,
+                            "active_id": id_para_vista,
                             "active_model": "aduana.expediente",
                         },
                         "res_model": "aduana.expediente",
-                        "res_id": rec.id,
+                        "res_id": id_para_vista,
                         "view_mode": "form",
                         "target": "current",
                     }
             except UserError as ue:
                 # Acumular error en cambios finales y escribir al final
                 error_msg = str(ue)
-                cambios_finales.update({
-                    'factura_estado_procesamiento': 'error',
-                    'factura_mensaje_error': error_msg
-                })
                 mensaje_chatter = _("❌ Error al procesar factura: %s") % error_msg
-                # Escribir cambios acumulados antes de relanzar
-                if cambios_finales:
-                    rec.with_context(**ctx_no_mail).write(cambios_finales)
+                # Escribir error en factura específica si existe, sino en expediente
+                if factura:
+                    factura.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': error_msg
+                    })
+                else:
+                    cambios_finales.update({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': error_msg
+                    })
+                    if cambios_finales:
+                        rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
                     try:
@@ -1812,14 +1989,20 @@ class AduanaExpediente(models.Model):
                 # Acumular error en cambios finales y escribir al final
                 error_msg = str(e)
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
-                cambios_finales.update({
-                    'factura_estado_procesamiento': 'error',
-                    'factura_mensaje_error': mensaje_error_detallado
-                })
                 mensaje_chatter = _("❌ Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado)
-                # Escribir cambios acumulados antes de continuar
-                if cambios_finales:
-                    rec.with_context(**ctx_no_mail).write(cambios_finales)
+                # Escribir error en factura específica si existe, sino en expediente
+                if factura:
+                    factura.with_context(**ctx_no_mail).write({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': mensaje_error_detallado
+                    })
+                else:
+                    cambios_finales.update({
+                        'factura_estado_procesamiento': 'error',
+                        'factura_mensaje_error': mensaje_error_detallado
+                    })
+                    if cambios_finales:
+                        rec.with_context(**ctx_no_mail).write(cambios_finales)
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
                     try:
@@ -1900,6 +2083,8 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
     _order = "partida_arancelaria, mandatory desc, name"
     
     expediente_id = fields.Many2one("aduana.expediente", string="Expediente", required=True, ondelete="cascade", index=True)
+    factura_id = fields.Many2one("aduana.expediente.factura", string="Factura", ondelete="set null", index=True,
+                                 help="Factura del expediente asociada a este documento, si aplica")
     partida_arancelaria = fields.Char(string="Partida Arancelaria", required=True, index=True, help="Código de la partida arancelaria (8-10 dígitos)")
     codigo_documento = fields.Char(string="Código Documento", help="Código del documento según TARIC")
     name = fields.Char(string="Nombre del Documento", required=True, help="Nombre o descripción del documento requerido")

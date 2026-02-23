@@ -94,28 +94,71 @@
             </button>
           </div>
           
-          <!-- Campo computed necesario para los modificadores (invisible) -->
+          <!-- Campos necesarios para attrs del header (invisibles) -->
           <field name="dua_generado" invisible="1"/>
+          <field name="factura_procesada" invisible="1"/>
+          <field name="factura_pdf" invisible="1"/>
           
-          <!-- PROCESAR FACTURA PDF - FLUJO PRINCIPAL -->
-          <group string="Procesar factura PDF" col="2">
-            <group>
-              <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" 
-                     help="Sube la factura PDF. El sistema extraerá automáticamente todos los datos necesarios."/>
-              <field name="factura_pdf_filename" invisible="1"/>
-              <field name="factura_procesada" invisible="1"/>
-            </group>
-            <group>
-              <field name="factura_estado_procesamiento" widget="statusbar" 
-                     statusbar_visible="pendiente,procesando,completado,advertencia,error"
-                     options="{'statusbar_visible_fields': ['pendiente', 'procesando', 'completado', 'advertencia', 'error']}"/>
-            </group>
-          </group>
-          <group colspan="2" attrs="{'invisible': [('factura_mensaje_html', '=', False)]}">
-            <field name="factura_mensaje_html" nolabel="1" readonly="1" 
-                   widget="html"
-                   colspan="2"
-                   style="width: 100%;"/>
+          <!-- FACTURAS DEL EXPEDIENTE -->
+          <group string="Facturas" colspan="2">
+            <button name="action_subir_facturas" string="Subir facturas" type="object"
+                    class="oe_highlight"
+                    icon="fa-upload"
+                    help="Sube múltiples facturas PDF de golpe y las añade a este expediente"/>
+            <button name="action_procesar_todas_facturas" 
+                    string="Procesar facturas" 
+                    type="object"
+                    class="oe_highlight"
+                    icon="fa-cog"
+                    attrs="{'invisible': [('factura_ids', '=', [])]}"
+                    help="Procesa todas las facturas pendientes del expediente"/>
+            <field name="factura_ids" nolabel="1" colspan="2"
+                   context="{'default_expediente_id': id}">
+              <tree>
+                <field name="name"/>
+                <field name="factura_procesada" column_invisible="1"/>
+                <field name="factura_pdf_filename"/>
+                <field name="factura_estado_procesamiento" widget="badge"
+                       decoration-success="factura_estado_procesamiento == 'completado'"
+                       decoration-warning="factura_estado_procesamiento == 'advertencia'"
+                       decoration-info="factura_estado_procesamiento == 'procesando'"
+                       decoration-muted="factura_estado_procesamiento in ('sin_factura', 'pendiente')"
+                       decoration-danger="factura_estado_procesamiento == 'error'"/>
+                <field name="lineas_count" string="Nº Líneas"/>
+                <field name="fecha_procesamiento"/>
+                <button name="action_process_invoice_pdf" string="Procesar" type="object"
+                        attrs="{'invisible': ['|', ('factura_procesada', '=', True), ('factura_estado_procesamiento', '==', 'procesando')]}"
+                        icon="fa-play"/>
+                <button name="action_view_lineas" string="Ver Líneas" type="object"
+                        attrs="{'invisible': [('lineas_count', '=', 0)]}"
+                        icon="fa-list"/>
+              </tree>
+              <form>
+                <sheet>
+                  <group>
+                    <field name="name"/>
+                    <field name="expediente_id" readonly="1"/>
+                    <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1"/>
+                    <field name="factura_pdf_filename"/>
+                    <field name="factura_estado_procesamiento" widget="statusbar" 
+                           statusbar_visible="sin_factura,pendiente,procesando,completado,advertencia,error"/>
+                    <field name="factura_procesada" invisible="1"/>
+                    <field name="fecha_procesamiento" readonly="1"/>
+                  </group>
+                  <group colspan="2" attrs="{'invisible': [('factura_mensaje_html', '=', False)]}">
+                    <field name="factura_mensaje_html" nolabel="1" readonly="1" 
+                           widget="html"
+                           colspan="2"
+                           style="width: 100%;"/>
+                  </group>
+                  <group colspan="2" attrs="{'invisible': [('factura_mensaje_error', '=', False)]}">
+                    <field name="factura_mensaje_error" nolabel="1" readonly="1" 
+                           widget="text"
+                           colspan="2"/>
+                  </group>
+                </sheet>
+              </form>
+            </field>
           </group>
           
           <!-- RESUMEN VERIFICACIÓN IA -->
@@ -195,16 +238,20 @@
             <field name="last_response_date" readonly="1"/>
           </group>
           
-          <!-- Documentos -->
+          <!-- Documentos: facturas subidas + documentos adjuntos; se pueden subir más PDFs -->
           <group string="Documentos" colspan="2">
-            <field name="documento_ids" nolabel="1" colspan="2"
-                   context="{'default_res_model': 'aduana.expediente', 'default_res_id': id}">
-              <tree>
+            <group colspan="2">
+              <button name="action_anadir_documento" string="Subir documento (PDF u otro)" type="object"
+                      class="oe_highlight" icon="fa-upload"
+                      help="Añadir un nuevo documento PDF u otro archivo al expediente. Las facturas subidas en la pestaña Facturas también aparecen aquí."/>
+            </group>
+            <field name="documento_ids" nolabel="1" colspan="2">
+              <tree create="0" delete="1" string="Documentos y facturas">
                 <field name="name"/>
-                <field name="tipo_documento"/>
-                <field name="file_size"/>
-                <field name="create_date"/>
-                <field name="datas" filename="name" widget="binary"/>
+                <field name="tipo_documento" optional="show"/>
+                <field name="file_size" optional="show"/>
+                <field name="create_date" optional="show"/>
+                <field name="datas" filename="name" widget="binary" readonly="1"/>
               </tree>
               <form>
                 <sheet>
@@ -246,7 +293,9 @@
             <page string="Líneas">
               <field name="line_ids" limit="40">
                 <tree editable="bottom" default_order="item_number">
+                  <field name="expediente_id" column_invisible="1"/>
                   <field name="item_number"/>
+                  <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                   <field name="partida"/>
                   <field name="descripcion"/>
                   <field name="unidades" sum="Total"/>
@@ -256,7 +305,7 @@
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
                   <field name="valor_linea" sum="Total"/>
-                  <field name="verificacion_estado" widget="badge"
+                  <field name="verificacion_estado"
                          decoration-success="verificacion_estado == 'correcto'"
                          decoration-info="verificacion_estado == 'verificado'"
                          decoration-warning="verificacion_estado == 'sugerido'"
@@ -286,6 +335,8 @@
               </group>
               <field name="documento_requerido_ids">
                 <tree editable="bottom" create="0" delete="1">
+                  <field name="expediente_id" column_invisible="1"/>
+                  <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                   <field name="partida_arancelaria" readonly="1"/>
                   <field name="codigo_documento" readonly="1"/>
                   <field name="name" readonly="1"/>
@@ -312,6 +363,7 @@
                     <group>
                       <group>
                         <field name="expediente_id" readonly="1"/>
+                        <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                         <field name="partida_arancelaria" readonly="1"/>
                         <field name="codigo_documento" readonly="1"/>
                         <field name="name" readonly="1"/>
@@ -544,6 +596,28 @@ if records:
           </group>
         </sheet>
       </form>
+    </field>
+  </record>
+
+  <!-- Vista tree standalone para líneas de expediente (p. ej. desde "Ver Líneas" de una factura) -->
+  <record id="view_aduana_expediente_line_tree" model="ir.ui.view">
+    <field name="name">aduana.expediente.line.tree</field>
+    <field name="model">aduana.expediente.line</field>
+    <field name="arch" type="xml">
+      <tree string="Líneas de mercancía" default_order="item_number" editable="bottom">
+        <field name="item_number"/>
+        <field name="partida"/>
+        <field name="descripcion"/>
+        <field name="unidades" sum="Total"/>
+        <field name="bultos" sum="Total"/>
+        <field name="peso_bruto" sum="Total"/>
+        <field name="peso_neto" sum="Total"/>
+        <field name="precio_unitario"/>
+        <field name="descuento"/>
+        <field name="valor_linea" sum="Total"/>
+        <field name="verificacion_estado"/>
+        <field name="pais_origen"/>
+      </tree>
     </field>
   </record>
 

@@ -10,6 +10,11 @@ class SubirFacturasWizard(models.TransientModel):
     _name = "aduanas.subir.facturas.wizard"
     _description = "Wizard para subir múltiples facturas PDF y crear expediciones"
 
+    expediente_id = fields.Many2one(
+        "aduana.expediente",
+        string="Expediente",
+        help="Si se indica, las facturas se añaden a este expediente en lugar de crear expedientes nuevos.",
+    )
     factura_ids = fields.One2many(
         "aduanas.subir.facturas.wizard.line",
         "wizard_id",
@@ -43,14 +48,16 @@ class SubirFacturasWizard(models.TransientModel):
         return True
 
     def action_crear_expediciones(self):
-        """Crea expediciones desde los PDFs subidos"""
+        """Crea expediciones desde los PDFs subidos, o añade facturas al expediente indicado."""
         self.ensure_one()
         
         if not self.factura_ids:
             raise UserError(_("Debes subir al menos un archivo PDF"))
         
         expedientes_creados = []
+        facturas_creadas = 0
         errores = []
+        añadir_a_expediente = bool(self.expediente_id)
         
         for linea in self.factura_ids:
             if not linea.factura_pdf:
@@ -58,32 +65,46 @@ class SubirFacturasWizard(models.TransientModel):
                 continue
             
             try:
-                # Crear expedición (la secuencia se generará automáticamente en el método create)
-                expediente = self.env["aduana.expediente"].create({
-                    "direction": "export",  # Por defecto exportación
-                    "factura_pdf": linea.factura_pdf,
-                    "factura_pdf_filename": linea.factura_pdf_filename or linea.name,
-                    "factura_estado_procesamiento": "pendiente",  # Estado inicial
-                })
-                
-                expedientes_creados.append(expediente.id)
-                _logger.info("Expedición creada: %s desde archivo %s", expediente.name, linea.factura_pdf_filename)
-                
+                if añadir_a_expediente:
+                    self.env["aduana.expediente.factura"].create({
+                        "expediente_id": self.expediente_id.id,
+                        "name": linea.factura_pdf_filename or linea.name,
+                        "factura_pdf": linea.factura_pdf,
+                        "factura_pdf_filename": linea.factura_pdf_filename or linea.name,
+                        "factura_estado_procesamiento": "pendiente",
+                    })
+                    facturas_creadas += 1
+                    _logger.info(
+                        "Factura añadida al expediente %s: %s",
+                        self.expediente_id.name,
+                        linea.factura_pdf_filename,
+                    )
+                else:
+                    expediente = self.env["aduana.expediente"].create({
+                        "direction": "export",
+                        "factura_pdf": linea.factura_pdf,
+                        "factura_pdf_filename": linea.factura_pdf_filename or linea.name,
+                        "factura_estado_procesamiento": "pendiente",
+                    })
+                    expedientes_creados.append(expediente.id)
+                    _logger.info("Expedición creada: %s desde %s", expediente.name, linea.factura_pdf_filename)
             except Exception as e:
-                _logger.exception("Error creando expedición desde %s: %s", linea.factura_pdf_filename, e)
+                _logger.exception("Error creando desde %s: %s", linea.factura_pdf_filename, e)
                 errores.append(_("Error con %s: %s") % (linea.factura_pdf_filename or "archivo", str(e)))
         
-        # Mostrar resultado
-        if errores:
-            mensaje = _("Se crearon %d expedición(es) correctamente.\n\nErrores:\n%s") % (
-                len(expedientes_creados), "\n".join(errores)
-            )
-            tipo = "warning"
-        else:
-            mensaje = _("Se crearon %d expedición(es) correctamente.") % len(expedientes_creados)
-            tipo = "success"
+        if errores and not expedientes_creados and not facturas_creadas:
+            raise UserError(_("Errores al subir:\n%s") % "\n".join(errores))
         
-        # Abrir vista de expedientes creados
+        if añadir_a_expediente and facturas_creadas:
+            return {
+                "type": "ir.actions.act_window",
+                "name": _("Expediente"),
+                "res_model": "aduana.expediente",
+                "res_id": self.expediente_id.id,
+                "view_mode": "form",
+                "target": "current",
+                "context": {"form_view_initial_mode": "edit"},
+            }
         if expedientes_creados:
             return {
                 "type": "ir.actions.act_window",
@@ -92,12 +113,10 @@ class SubirFacturasWizard(models.TransientModel):
                 "domain": [("id", "in", expedientes_creados)],
                 "view_mode": "tree,form",
                 "target": "current",
-                "context": {
-                    "default_direction": "export",
-                }
+                "context": {"default_direction": "export"},
             }
-        else:
-            raise UserError(mensaje)
+        
+        raise UserError(_("No se pudo crear ninguna expedición."))
 
 
 class SubirFacturasWizardLine(models.TransientModel):
