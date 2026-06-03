@@ -1254,8 +1254,8 @@ class AduanaExpediente(models.Model):
 <cc5:modeOfTransportAtTheBorder>3</cc5:modeOfTransportAtTheBorder>
 <cc5:grossMass>%s</cc5:grossMass>
 %s
-</cc5:Consignment>
 %s
+</cc5:Consignment>
 %s
 </cc5:GoodsShipment>""" % (
             xml_escape(vat_no_prefix),
@@ -1274,8 +1274,8 @@ class AduanaExpediente(models.Model):
             incoterm,
             delivery_terms_extra,
             consignment_gross,
-            consignment_extra_after_gross,
             consignee_block,
+            consignment_extra_after_gross,
             goods_items_str,
         )
         return body
