@@ -634,13 +634,20 @@ class AduanaExpediente(models.Model):
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
         return {
-            "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c") or "",
-            "aeat_endpoint_cc511c": icp.get_param("aduanas_transport.endpoint.cc511c") or "",
-            "aeat_endpoint_ccaesc": icp.get_param("aduanas_transport.endpoint.ccaesc") or "",
-            "aeat_endpoint_cc507c": icp.get_param("aduanas_transport.endpoint.cc507c") or "",
-            "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl") or "",
-            "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja") or "",
-            "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615") or "",
+            "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c")
+            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
+            "aeat_endpoint_cc511c": icp.get_param("aduanas_transport.endpoint.cc511c")
+            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP",
+            "aeat_endpoint_ccaesc": icp.get_param("aduanas_transport.endpoint.ccaesc")
+            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP",
+            "aeat_endpoint_cc507c": icp.get_param("aduanas_transport.endpoint.cc507c")
+            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
+            "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl")
+            or "https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP",
+            "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja")
+            or "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP",
+            "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615")
+            or "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
         }
 
     def _attach_xml(self, filename, xml_text, mimetype="application/xml"):
