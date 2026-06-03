@@ -1110,20 +1110,23 @@ class AduanaExpediente(models.Model):
             raise UserError(_("Informe la matrícula del transporte para enviar CC515C."))
         transport_country = ((self.pais_transporte or "ES").strip().upper()[:2]) or "ES"
         transport_doc_ref = (self.referencia_transporte or self.lrn or self.name or "REF1").strip()[:35]
-        # Orden según XSD y ejemplos AEAT: LocationOfGoods, DepartureTransportMeans, routing,
-        # ActiveBorderTransportMeans y TransportDocument.
-        consignment_extra_after_gross = """<cc5:LocationOfGoods>
-<cc5:typeOfLocation>B</cc5:typeOfLocation>
-<cc5:qualifierOfIdentification>Y</cc5:qualifierOfIdentification>
-<cc5:authorisationNumber>%s</cc5:authorisationNumber>
-</cc5:LocationOfGoods>
-<cc5:DepartureTransportMeans>
+        departure_transport_xml = ""
+        if not is_direct_exit:
+            departure_transport_xml = """<cc5:DepartureTransportMeans>
 <cc5:sequenceNumber>1</cc5:sequenceNumber>
 <cc5:typeOfIdentification>30</cc5:typeOfIdentification>
 <cc5:identificationNumber>%s</cc5:identificationNumber>
 <cc5:nationality>%s</cc5:nationality>
 </cc5:DepartureTransportMeans>
-<cc5:CountryOfRoutingOfConsignment>
+""" % (xml_escape(transport_id), xml_escape(transport_country))
+        # Orden según XSD y ejemplos AEAT: LocationOfGoods, DepartureTransportMeans (solo salida indirecta),
+        # routing, ActiveBorderTransportMeans y TransportDocument.
+        consignment_extra_after_gross = """<cc5:LocationOfGoods>
+<cc5:typeOfLocation>B</cc5:typeOfLocation>
+<cc5:qualifierOfIdentification>Y</cc5:qualifierOfIdentification>
+<cc5:authorisationNumber>%s</cc5:authorisationNumber>
+</cc5:LocationOfGoods>
+%s<cc5:CountryOfRoutingOfConsignment>
 <cc5:sequenceNumber>1</cc5:sequenceNumber>
 <cc5:country>%s</cc5:country>
 </cc5:CountryOfRoutingOfConsignment>
@@ -1138,8 +1141,7 @@ class AduanaExpediente(models.Model):
 <cc5:referenceNumber>%s</cc5:referenceNumber>
 </cc5:TransportDocument>""" % (
             xml_escape(loc_auth),
-            xml_escape(transport_id),
-            xml_escape(transport_country),
+            departure_transport_xml,
             xml_escape(pais_dest or "AD"),
             xml_escape(transport_id),
             xml_escape(transport_country),
