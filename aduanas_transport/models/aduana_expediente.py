@@ -1149,7 +1149,7 @@ class AduanaExpediente(models.Model):
         factura_ref = (self.numero_factura or self.name or "FAC").strip()[:35]
         lines = (self.line_ids or self.env["aduana.expediente.line"]).sorted(key=lambda l: l.item_number or l.id or 0)
         tot_gross = sum((l.peso_bruto or 0) for l in lines) or 0.0
-        # Construir GoodsItem por línea. Nota: AEAT 1092 exige que Consignee no sea idéntico en todos los items; si aplica, usar distintos consignatarios por línea o consultar con AEAT.
+        # Construir GoodsItem por línea. El Consignee común va en Consignment, no repetido por partida.
         goods_items_xml = []
         for idx, line in enumerate(lines):
             item_num = line.item_number or (idx + 1)
