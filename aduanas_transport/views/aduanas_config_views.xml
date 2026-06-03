@@ -21,6 +21,8 @@
             <group string="Presentar DUA (exportación)">
               <field name="aeat_endpoint_cc515c" placeholder="https://..."/>
               <field name="aeat_endpoint_cc511c" placeholder="https://..."/>
+              <field name="aeat_endpoint_ccaesc" placeholder="https://..."/>
+              <field name="aeat_endpoint_cc507c" placeholder="https://..."/>
             </group>
             <group string="Importación (DUA)">
               <field name="aeat_endpoint_imp_decl" placeholder="https://..."/>

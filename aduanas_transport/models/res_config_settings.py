@@ -11,6 +11,16 @@ class ResConfigSettings(models.TransientModel):
         help="Preproducción por defecto. Cambiar a producción (www1.agenciatributaria.gob.es) cuando vaya a presentar DUAs reales.")
     aeat_endpoint_cc511c = fields.Char(string="Endpoint CC511C (Export)", config_parameter="aduanas_transport.endpoint.cc511c",
         default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP")
+    aeat_endpoint_ccaesc = fields.Char(
+        string="Endpoint consulta exportación (CCAESC)",
+        config_parameter="aduanas_transport.endpoint.ccaesc",
+        default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP",
+        help="Consulta completa de una declaración AES por MRN.")
+    aeat_endpoint_cc507c = fields.Char(
+        string="Endpoint llegada aduana salida (CC507C)",
+        config_parameter="aduanas_transport.endpoint.cc507c",
+        default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
+        help="Notificación de llegada de mercancías a la aduana de salida.")
     # Import
     aeat_endpoint_imp_decl = fields.Char(string="Endpoint Declaración Importación", config_parameter="aduanas_transport.endpoint.imp_decl",
         default="https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP")

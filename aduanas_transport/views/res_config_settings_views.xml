@@ -14,10 +14,12 @@
                         <div class="o_setting_left_pane">
                             <field name="aeat_endpoint_cc515c"/>
                             <field name="aeat_endpoint_cc511c"/>
+                            <field name="aeat_endpoint_ccaesc"/>
+                            <field name="aeat_endpoint_cc507c"/>
                         </div>
                         <div class="o_setting_right_pane">
                             <label for="aeat_endpoint_cc515c"/>
-                            <div class="text-muted">Presentar DUA (preproducción por defecto)</div>
+                            <div class="text-muted">Exportación AES: alta CC515C, consulta CCAESC y llegada CC507C (preproducción por defecto)</div>
                         </div>
                     </div>
 

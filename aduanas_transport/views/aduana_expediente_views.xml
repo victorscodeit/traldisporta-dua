@@ -28,6 +28,9 @@
         <field name="consignatario"/>
         <field name="oficina"/>
         <field name="mrn"/>
+        <field name="aes_estado"/>
+        <field name="aes_circuito"/>
+        <field name="iva_exportacion_exento" widget="boolean_toggle"/>
         <field name="state" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="create_date" string="Fecha creación"/>
       </tree>
@@ -60,9 +63,17 @@
                   help="Regenera el DUA de exportación (CUSDEC EX1)"/>
           <button name="action_send_cc515c" string="Presentar DUA a AEAT" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', '=', 'accepted')]}"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
                   help="Envía el DUA (CUSDEC EX1) al endpoint configurado. Por defecto preproducción. Configurar en Aduanas &gt; Configuración."/>
-          <button name="action_poll_bandeja" string="Consultar Bandeja" type="object" invisible="1"/>
+          <button name="action_consultar_estado_dua" string="Consultar Estado DUA" type="object"
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
+                  help="Consulta CCAESC/estado AES para obtener aceptación, circuito, levantes, errores y salida efectiva."/>
+          <button name="action_notificar_llegada_salida" string="Notificar Llegada Salida" type="object"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed'))]}"
+                  help="Envía CC507C: mercancía presentada en la aduana de salida."/>
+          <button name="action_poll_bandeja" string="Consultar Bandeja AEAT" type="object"
+                  attrs="{'invisible': [('mrn', '=', False)]}"
+                  help="Recoge comunicaciones AEAT por bandeja, incluidas levante de salida y salida efectiva (IE599/ComunicaResulSalida)."/>
           
           <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
@@ -192,6 +203,9 @@
               <field name="state" readonly="1"/>
               <field name="lrn"/>
               <field name="mrn"/>
+              <field name="aes_estado" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="aes_circuito" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="iva_exportacion_exento" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="exs_circuito" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="exs_tipo_declaracion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="exs_dec_csv" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
@@ -213,6 +227,9 @@
             <field name="fecha_salida_real"/>
             <field name="fecha_entrada_real"/>
             <field name="fecha_levante"/>
+            <field name="fecha_admision_aes" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_llegada_salida" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_levante_salida" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
             <field name="fecha_recepcion"/>
           </group>
           
@@ -414,7 +431,21 @@
             </page>
 
             <page string="Bandeja / Técnico">
-              <group>
+              <group string="Seguimiento AES Exportación" col="2" attrs="{'invisible': [('direction', '!=', 'export')]}">
+                <group>
+                  <field name="aes_estado" readonly="1"/>
+                  <field name="aes_circuito" readonly="1"/>
+                  <field name="aes_circuito_llegada" readonly="1"/>
+                  <field name="iva_exportacion_exento" readonly="1"/>
+                </group>
+                <group>
+                  <field name="aes_csv_declaracion" readonly="1"/>
+                  <field name="aes_csv_levante_exportacion" readonly="1"/>
+                  <field name="aes_csv_levante_salida" readonly="1"/>
+                  <field name="aes_csv_certificado_salida" readonly="1"/>
+                </group>
+              </group>
+              <group string="Bandeja AEAT" col="2">
                 <field name="bandeja_last_num"/>
                 <field name="last_response_date" readonly="1"/>
               </group>

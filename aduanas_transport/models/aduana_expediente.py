@@ -170,6 +170,22 @@ class AduanaExpediente(models.Model):
     error_message = fields.Text(string="Último Error", readonly=True)
     last_response_date = fields.Datetime(string="Última Respuesta", readonly=True)
 
+    # Seguimiento AES exportación (CC515C, CCAESC, CC507C y comunicaciones de bandeja)
+    aes_estado = fields.Char(string="Estado AES", readonly=True, tracking=True,
+                             help="Código de estado AES devuelto por AEAT (por ejemplo: DE, RE, PS, SA).")
+    aes_circuito = fields.Char(string="Circuito AES", readonly=True,
+                               help="Circuito de despacho/llegada: V=verde, N=naranja, R=rojo.")
+    aes_circuito_llegada = fields.Char(string="Circuito llegada salida", readonly=True)
+    aes_csv_declaracion = fields.Char(string="CSV declaración AES", readonly=True)
+    aes_csv_levante_exportacion = fields.Char(string="CSV levante exportación", readonly=True)
+    aes_csv_levante_salida = fields.Char(string="CSV levante salida", readonly=True)
+    aes_csv_certificado_salida = fields.Char(string="CSV certificado salida", readonly=True)
+    fecha_admision_aes = fields.Datetime(string="Fecha admisión AES", readonly=True)
+    fecha_llegada_salida = fields.Datetime(string="Fecha llegada aduana salida", readonly=True)
+    fecha_levante_salida = fields.Datetime(string="Fecha levante salida", readonly=True)
+    iva_exportacion_exento = fields.Boolean(string="IVA exportación exento", readonly=True, tracking=True,
+                                            help="Se marca cuando AEAT comunica salida efectiva (estado AES SA / IE599-equivalente).")
+
     # Respuesta EXS (IE615/IE628)
     exs_circuito = fields.Char(string="Circuito EXS", readonly=True, help="V=verde, N=naranja, R=rojo")
     exs_dec_csv = fields.Char(string="CSV declaración EXS", readonly=True)
@@ -606,6 +622,8 @@ class AduanaExpediente(models.Model):
         return {
             "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c") or "",
             "aeat_endpoint_cc511c": icp.get_param("aduanas_transport.endpoint.cc511c") or "",
+            "aeat_endpoint_ccaesc": icp.get_param("aduanas_transport.endpoint.ccaesc") or "",
+            "aeat_endpoint_cc507c": icp.get_param("aduanas_transport.endpoint.cc507c") or "",
             "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl") or "",
             "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja") or "",
             "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615") or "",
@@ -647,6 +665,103 @@ class AduanaExpediente(models.Model):
                 "mimetype": "application/pdf",
                 "datas": pdf_b64
             })
+
+    def _nif_core(self, value):
+        value = (value or "").replace(" ", "").replace(".", "").replace("-", "").strip().upper()
+        return value[2:] if len(value) > 2 and value[:2].isalpha() else value
+
+    def _get_aeat_message_sender(self):
+        """Identificador del firmante para cabecera MESSAGE (sin prefijo ES en los ejemplos AES)."""
+        self.ensure_one()
+        icp = self.env["ir.config_parameter"].sudo()
+        forced = icp.get_param("aduanas_transport.aeat_nif_firmante")
+        candidate = forced or (self.env.company.vat or "") or (self.remitente and self.remitente.vat) or ""
+        sender = self._nif_core(candidate)
+        if not sender:
+            raise UserError(_("Configure el NIF del firmante o el NIF/CIF de la compañía para usar servicios AES."))
+        return sender
+
+    def _get_exit_carrier_identification(self):
+        """EORI/NIF del declarante de llegada en CC507C. AEAT espera identificación con prefijo de país."""
+        self.ensure_one()
+        company_vat = (self.env.company.vat or "").replace(" ", "").strip().upper()
+        if company_vat:
+            return company_vat if company_vat[:2].isalpha() else "ES%s" % company_vat
+        sender = self._get_aeat_message_sender()
+        return sender if sender[:2].isalpha() else "ES%s" % sender
+
+    def _normalize_aes_office(self, raw_office=None):
+        raw_office = (raw_office or self.oficina or "0801").strip().replace(" ", "").upper()
+        if len(raw_office) >= 2 and raw_office[:2].isalpha():
+            raw_office = raw_office[2:]
+        raw_office = "".join(ch for ch in raw_office if ch.isalnum())
+        if not raw_office:
+            raw_office = "000001"
+        return "ES%s" % raw_office[:6].rjust(6, "0")
+
+    def _default_location_authorisation(self):
+        office = self._normalize_aes_office()
+        return "01%s01" % office[2:8]
+
+    def _to_odoo_datetime(self, value):
+        if not value:
+            return False
+        value = value.strip()
+        if len(value) == 10:
+            value = "%s 00:00:00" % value
+        return fields.Datetime.to_datetime(value.replace("T", " "))
+
+    def _apply_aeat_parsed_response(self, parsed, source="AEAT"):
+        self.ensure_one()
+        updates = {"last_response_date": fields.Datetime.now()}
+        if parsed.get("mrn"):
+            updates["mrn"] = parsed["mrn"]
+        mapping = {
+            "estado_aes": "aes_estado",
+            "circuito": "aes_circuito",
+            "circuito_llegada": "aes_circuito_llegada",
+            "csv_declaracion": "aes_csv_declaracion",
+            "csv_levante": "aes_csv_levante_exportacion",
+            "csv_levante_salida": "aes_csv_levante_salida",
+            "csv_certificado_salida": "aes_csv_certificado_salida",
+        }
+        for src, dst in mapping.items():
+            if parsed.get(src):
+                updates[dst] = parsed[src]
+        date_mapping = {
+            "fecha_admision": "fecha_admision_aes",
+            "fecha_levante": "fecha_levante",
+            "fecha_llegada": "fecha_llegada_salida",
+            "fecha_levante_salida": "fecha_levante_salida",
+            "fecha_salida_efectiva": "fecha_salida_real",
+        }
+        for src, dst in date_mapping.items():
+            if parsed.get(src):
+                updates[dst] = self._to_odoo_datetime(parsed[src])
+
+        estado = (parsed.get("estado_aes") or "").upper()
+        if parsed.get("exited") or estado == "SA":
+            updates["state"] = "exited"
+            updates["iva_exportacion_exento"] = True
+        elif parsed.get("released"):
+            if self.state not in ("exited", "closed"):
+                updates["state"] = "released"
+        elif parsed.get("accepted") or (
+            parsed.get("mrn") and self.state in ("draft", "predeclared", "presented", "error")
+        ):
+            updates["state"] = "accepted"
+        self.write(updates)
+
+        if updates.get("state") == "exited":
+            body = _("Salida efectiva confirmada por AEAT (%s). La exportación queda marcada como IVA exento.") % source
+        elif updates.get("state") == "released":
+            body = _("Levante confirmado por AEAT (%s).") % source
+        elif parsed.get("accepted"):
+            body = _("Estado DUA actualizado desde AEAT (%s).") % source
+        else:
+            body = False
+        if body:
+            self.with_context(mail_notrack=True).message_post(body=body, subtype_xmlid="mail.mt_note")
 
     def action_anadir_documento(self):
         """Abre el formulario para subir un nuevo documento (PDF u otro) al expediente."""
@@ -1015,34 +1130,182 @@ class AduanaExpediente(models.Model):
                     body=rec.error_message, subtype_xmlid="mail.mt_note"
                 )
                 return True
-            # Parsear respuesta mejorada
             parsed = parser.parse_aeat_response(resp_xml, "CC515C")
             rec.last_response_date = fields.Datetime.now()
-            
+            if parsed.get("incidencias"):
+                rec._procesar_incidencias(parsed["incidencias"], "cc515c")
             if parsed.get("success") and parsed.get("mrn"):
-                rec.mrn = parsed["mrn"]
-                rec.state = "accepted"
                 rec.error_message = False
-                if parsed.get("messages"):
-                    rec.with_context(mail_notrack=True).message_post(
-                        body=_("DUA aceptado. MRN: %s\nMensajes: %s") % (
-                            rec.mrn, "\n".join(parsed["messages"])
-                        ),
-                        subtype_xmlid='mail.mt_note'
-                    )
-                # Procesar incidencias si las hay
-                if parsed.get("incidencias"):
-                    rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
+                rec._apply_aeat_parsed_response(parsed, source="CC515C")
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("DUA presentado (CC515C). MRN: %s") % rec.mrn,
+                    subtype_xmlid="mail.mt_note",
+                )
             else:
                 rec.state = "error"
-                error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")
                 rec.error_message = error_msg
-                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar DUA (CC515C):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
-                # Procesar incidencias de error
+                tipo = parsed.get("tipo_respuesta") or ""
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("AEAT rechazó o no admitió el DUA (CC515C) [%s]:\n%s")
+                    % (tipo, error_msg),
+                    subtype_xmlid="mail.mt_note",
+                )
+        return True
+
+    def _build_ccaesc_soap_envelope(self):
+        """Consulta completa de exportación AES por MRN (CCAESCV1Ent)."""
+        self.ensure_one()
+        if not self.mrn:
+            raise UserError(_("Debe tener un MRN antes de consultar el estado del DUA."))
+        now = fields.Datetime.now()
+        prep_time = now.strftime("%Y-%m-%dT%H:%M:%S")
+        msg_id = "%s-CCAESC-%s" % ((self.name or self.mrn).replace(" ", "")[:20], now.strftime("%Y%m%d%H%M%S"))
+        sender = self._get_aeat_message_sender()
+        ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adex/jdit/ws/aes/CCAESCV1Ent.xsd"
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cc5="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<cc5:CCAESCV1Ent Id="%s">
+<cc5:CCAESC>
+<cc5:messageSender>%s</cc5:messageSender>
+<cc5:messageRecipient>NECA.ES</cc5:messageRecipient>
+<cc5:preparationDateAndTime>%s</cc5:preparationDateAndTime>
+<cc5:messageIdentification>%s</cc5:messageIdentification>
+<cc5:messageType>CCAESC</cc5:messageType>
+<cc5:ExportOperation>
+<cc5:MRN>%s</cc5:MRN>
+</cc5:ExportOperation>
+</cc5:CCAESC>
+</cc5:CCAESCV1Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (ns, xml_escape(msg_id[:40]), xml_escape(sender), prep_time, xml_escape(msg_id[:35]), xml_escape(self.mrn))
+
+    def action_consultar_estado_dua(self):
+        """Consulta CCAESC: MRN, estado AES, circuito, levantes, errores y salida efectiva."""
+        client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
+        for rec in self:
+            if rec.direction != "export":
+                raise UserError(_("La consulta CCAESC solo aplica a exportación."))
+            settings = rec._get_settings()
+            endpoint = settings.get("aeat_endpoint_ccaesc")
+            if not endpoint:
+                raise UserError(_("Configure el endpoint de consulta exportación (CCAESC) en Aduanas > Configuración."))
+            soap_payload = rec._build_ccaesc_soap_envelope()
+            rec._attach_xml("%s_CCAESC_request.xml" % rec.name, soap_payload)
+            status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="CCAESC", timeout=60)
+            rec._attach_xml("%s_CCAESC_response.xml" % rec.name, resp_xml or "")
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s al consultar CCAESC. Revisar adjunto de respuesta.") % status_code
+                rec.last_response_date = fields.Datetime.now()
+                raise UserError(rec.error_message)
+            parsed = parser.parse_aeat_response(resp_xml, "CCAESC")
+            if parsed.get("errors"):
+                rec.error_message = "\n".join(parsed.get("errors") or [])
                 if parsed.get("incidencias"):
-                    rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
-                # No hacer raise UserError: así la transacción no hace rollback y se conserva
-                # el adjunto DUA_CUSDEC_EX1_response.xml para poder revisar la respuesta de la AEAT.
+                    rec._procesar_incidencias(parsed["incidencias"], "ccaesc")
+                raise UserError(_("La consulta CCAESC devolvió errores:\n%s") % rec.error_message)
+            rec.error_message = False
+            rec._apply_aeat_parsed_response(parsed, source="CCAESC")
+        return True
+
+    def _build_cc507c_soap_envelope(self):
+        """Notificación de llegada de mercancías a aduana de salida (CC507C) sin discrepancias."""
+        self.ensure_one()
+        if not self.mrn:
+            raise UserError(_("Debe tener un MRN antes de notificar la llegada a la aduana de salida."))
+        now = fields.Datetime.now()
+        prep_time = now.strftime("%Y-%m-%dT%H:%M:%S")
+        msg_id = "%s-CC507C-%s" % ((self.name or self.mrn).replace(" ", "")[:20], now.strftime("%Y%m%d%H%M%S"))
+        sender = self._get_aeat_message_sender()
+        exit_carrier = self._get_exit_carrier_identification()
+        company = self.env.company
+        contact_name = (company.name or "Declarante").strip()[:70]
+        contact_phone = (company.phone or "N/A").strip()[:35]
+        contact_email = (company.email or "N/A").strip()[:80]
+        office = self._normalize_aes_office()
+        location_auth = self._default_location_authorisation()
+        ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adex/jdit/ws/aes/CC507CV1Ent.xsd"
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cc5="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<cc5:CC507CV1Ent Id="%s">
+<cc5:CC507C>
+<cc5:messageSender>%s</cc5:messageSender>
+<cc5:messageRecipient>NECA.ES</cc5:messageRecipient>
+<cc5:preparationDateAndTime>%s</cc5:preparationDateAndTime>
+<cc5:messageIdentification>%s</cc5:messageIdentification>
+<cc5:messageType>CC507C</cc5:messageType>
+<cc5:ExportOperation>
+<cc5:MRN>%s</cc5:MRN>
+<cc5:storingFlag>0</cc5:storingFlag>
+<cc5:discrepanciesExist>0</cc5:discrepanciesExist>
+</cc5:ExportOperation>
+<cc5:CustomsOfficeOfExitActual>
+<cc5:referenceNumber>%s</cc5:referenceNumber>
+</cc5:CustomsOfficeOfExitActual>
+<cc5:GoodsShipment>
+<cc5:Consignment>
+<cc5:ExitCarrier>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:ContactPerson>
+<cc5:name>%s</cc5:name>
+<cc5:phoneNumber>%s</cc5:phoneNumber>
+<cc5:eMailAddress>%s</cc5:eMailAddress>
+</cc5:ContactPerson>
+</cc5:ExitCarrier>
+<cc5:LocationOfGoods>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:typeOfLocation>B</cc5:typeOfLocation>
+<cc5:qualifierOfIdentification>Y</cc5:qualifierOfIdentification>
+<cc5:authorisationNumber>%s</cc5:authorisationNumber>
+</cc5:LocationOfGoods>
+</cc5:Consignment>
+</cc5:GoodsShipment>
+</cc5:CC507C>
+</cc5:CC507CV1Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (
+            ns, xml_escape(msg_id[:40]), xml_escape(sender), prep_time, xml_escape(msg_id[:35]),
+            xml_escape(self.mrn), xml_escape(office), xml_escape(exit_carrier), xml_escape(contact_name),
+            xml_escape(contact_phone), xml_escape(contact_email), xml_escape(location_auth)
+        )
+
+    def action_notificar_llegada_salida(self):
+        """Envía CC507C para declarar que la mercancía llegó a la aduana de salida."""
+        client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
+        for rec in self:
+            if rec.direction != "export":
+                raise UserError(_("La notificación CC507C solo aplica a exportación."))
+            settings = rec._get_settings()
+            endpoint = settings.get("aeat_endpoint_cc507c")
+            if not endpoint:
+                raise UserError(_("Configure el endpoint de llegada a aduana de salida (CC507C) en Aduanas > Configuración."))
+            soap_payload = rec._build_cc507c_soap_envelope()
+            rec._attach_xml("%s_CC507C_request.xml" % rec.name, soap_payload)
+            status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="CC507C", timeout=60)
+            rec._attach_xml("%s_CC507C_response.xml" % rec.name, resp_xml or "")
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s al enviar CC507C. Revisar adjunto de respuesta.") % status_code
+                rec.last_response_date = fields.Datetime.now()
+                raise UserError(rec.error_message)
+            parsed = parser.parse_aeat_response(resp_xml, "CC507C")
+            if parsed.get("errors"):
+                rec.state = "error"
+                rec.error_message = "\n".join(parsed.get("errors") or [])
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "cc507c")
+                raise UserError(_("La notificación CC507C devolvió errores:\n%s") % rec.error_message)
+            rec.error_message = False
+            rec._apply_aeat_parsed_response(parsed, source="CC507C")
+            if rec.state not in ("released", "exited", "closed"):
+                rec.state = "presented"
         return True
 
     def action_present_cc511c(self):
@@ -1442,27 +1705,43 @@ class AduanaExpediente(models.Model):
             if status_code != 200:
                 rec.error_message = _("Bandeja AEAT respondió HTTP %s.") % status_code
                 raise UserError(rec.error_message)
-            self._attach_xml(f"{rec.name}_BANDEJA_response_{rec.bandeja_last_num+1}.xml", resp or "")
-            # Usar parser mejorado
-            parsed = parser.parse_aeat_response(resp, "BANDEJA")
+            rec._attach_xml("%s_BANDEJA_response_%s.xml" % (rec.name, rec.bandeja_last_num + 1), resp or "")
+            bandeja = parser.parse_bandeja_response(resp or "")
             rec.last_response_date = fields.Datetime.now()
-            
-            if parsed.get("last_message_num"):
-                rec.bandeja_last_num = max(rec.bandeja_last_num, parsed["last_message_num"])
-            
-            if parsed.get("released") and rec.state not in ("released", "exited", "closed"):
-                rec.state = "released"
+            if bandeja.get("last_message_num"):
+                rec.bandeja_last_num = max(rec.bandeja_last_num, bandeja["last_message_num"])
+
+            for msg in bandeja.get("messages") or []:
+                mrn = msg.get("mrn")
+                if mrn and rec.mrn and mrn != rec.mrn:
+                    continue
+                parsed_msg = {
+                    "mrn": mrn or rec.mrn,
+                    "estado_aes": msg.get("estado_aes"),
+                    "circuito": msg.get("circuito"),
+                    "circuito_llegada": msg.get("circuito"),
+                    "csv_levante": msg.get("csv_levante_export"),
+                    "csv_levante_salida": msg.get("csv_levante_salida"),
+                    "fecha_salida_efectiva": msg.get("fecha_salida_efectiva"),
+                    "fecha_levante": msg.get("fecha_levante"),
+                }
+                tipo = (msg.get("message_type") or "").upper()
+                if tipo == "CLEVEX":
+                    parsed_msg["released"] = True
+                if tipo in ("CSALID", "RESUSA", "COMUNICARESULSALIDA") or msg.get("fecha_salida_efectiva"):
+                    parsed_msg["exited"] = True
+                rec._apply_aeat_parsed_response(parsed_msg, source="Bandeja %s" % (tipo or "AEAT"))
+                if tipo:
+                    rec.with_context(mail_notrack=True).message_post(
+                        body=_("Bandeja AEAT: mensaje %s (MRN %s).") % (tipo, mrn or rec.mrn or "-"),
+                        subtype_xmlid="mail.mt_note",
+                    )
+
+            if bandeja.get("errors"):
                 rec.with_context(mail_notrack=True).message_post(
-                    body=_("Levante confirmado desde bandeja AEAT"),
-                    subtype_xmlid='mail.mt_note'
+                    body=_("Errores al leer bandeja:\n%s") % "\n".join(bandeja["errors"]),
+                    subtype_xmlid="mail.mt_note",
                 )
-            
-            # Procesar incidencias detectadas
-            if parsed.get("incidencias"):
-                rec._procesar_incidencias(parsed["incidencias"], "bandeja")
-            
-            if parsed.get("errors"):
-                rec.with_context(mail_notrack=True).message_post(body=_("Errores en bandeja:\n%s") % "\n".join(parsed["errors"]), subtype_xmlid='mail.mt_note')
         return True
     
     def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
