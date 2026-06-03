@@ -651,8 +651,10 @@ class AduanaExpediente(models.Model):
 
     _CHATTER_XML_PREVIEW_MAX = 32000
 
-    def _post_chatter_soap_xml(self, service, endpoint, xml_text, filename=None):
-        """Publica en el chatter la petición SOAP (vista previa + adjunto descargable)."""
+    def _post_chatter_soap_xml(
+        self, service, endpoint, xml_text, filename=None, title=None, extra_html=None
+    ):
+        """Publica en el chatter un XML SOAP (vista previa + adjunto descargable)."""
         self.ensure_one()
         xml_text = xml_text or ""
         filename = filename or "%s_%s_request.xml" % (self.name or "EXP", service)
@@ -681,14 +683,16 @@ class AduanaExpediente(models.Model):
                 "<p><em>%s</em></p>"
                 % html_escape(_("Vista previa recortada; XML completo en el adjunto."))
             )
+        extra_block = extra_html or ""
         body = (
-            "<p><strong>%s</strong> — %s</p>%s"
+            "<p><strong>%s</strong> — %s</p>%s%s"
             '<pre style="white-space:pre-wrap;word-break:break-all;'
             'max-height:480px;overflow:auto;font-size:11px;">%s</pre>%s'
         ) % (
             html_escape(service),
-            html_escape(_("Petición enviada a AEAT")),
+            html_escape(title or _("Petición enviada a AEAT")),
             endpoint_block,
+            extra_block,
             html_escape(preview),
             truncate_note,
         )
@@ -765,45 +769,67 @@ class AduanaExpediente(models.Model):
         ) or "").lower()
         return "prewww" in url
 
+    def _aeat_preprod_test_office(self):
+        return (
+            self.env["ir.config_parameter"].sudo().get_param(
+                "aduanas_transport.aeat_preprod_test_office"
+            )
+            or "ES000101"
+        ).strip().upper()
+
     def _get_cc515c_office_codes(self):
-        """Oficina de exportación, oficina de salida declarada y base de 6 dígitos (sin ES)."""
+        """Oficinas AES para CC515C; en preprod sustituye por oficina de prueba AEAT."""
         self.ensure_one()
-        oficina_export = self._normalize_aes_office(self.oficina)
+        user_export = self._normalize_aes_office(self.oficina)
         if self.oficina_destino:
-            oficina_exit = self._normalize_aes_office(self.oficina_destino)
+            user_exit = self._normalize_aes_office(self.oficina_destino)
         else:
-            oficina_exit = oficina_export
-        return oficina_export, oficina_exit, oficina_export[2:]
+            user_exit = user_export
+        oficina_export = user_export
+        oficina_exit = user_exit
+        office_note = ""
+        if self._aeat_is_preproduction():
+            allow_real = (
+                self.env["ir.config_parameter"].sudo().get_param(
+                    "aduanas_transport.preprod_allow_real_office"
+                )
+                == "True"
+            )
+            if not allow_real:
+                test_office = self._aeat_preprod_test_office()
+                changes = []
+                if oficina_export != test_office:
+                    changes.append(
+                        _("exportación %s→%s") % (user_export, test_office)
+                    )
+                    oficina_export = test_office
+                if oficina_exit.startswith("ES") and oficina_exit != test_office:
+                    changes.append(
+                        _("salida %s→%s") % (user_exit, test_office)
+                    )
+                    oficina_exit = test_office
+                if changes:
+                    office_note = _(
+                        "Preproducción AEAT: en el XML se usa oficina de prueba (%s). "
+                        "Ajuste en expediente: %s."
+                    ) % (test_office, ", ".join(changes))
+        return oficina_export, oficina_exit, oficina_export[2:], office_note
 
     def _validate_cc515c_offices_before_send(self, settings=None):
-        """Evita envíos con códigos que AEAT rechaza (p. ej. ES0801 o oficina real en preprod)."""
+        """Evita envíos con códigos mal formados (p. ej. ES0801)."""
         self.ensure_one()
         settings = settings or self._get_settings()
-        export_office, exit_office, _base = self._get_cc515c_office_codes()
+        export_office, exit_office, _base, _note = self._get_cc515c_office_codes()
         if export_office in ("ES0801",) or len(export_office) != 8:
             raise UserError(
                 _("Código de oficina de exportación inválido: «%s». "
                   "Use 4 dígitos ECS (0801) o 8 caracteres AES (ES000801).")
                 % export_office
             )
-        endpoint = settings.get("aeat_endpoint_cc515c") or ""
-        if self._aeat_is_preproduction(endpoint):
-            allow_real = self.env["ir.config_parameter"].sudo().get_param(
-                "aduanas_transport.preprod_allow_real_office"
-            ) == "True"
-            if not allow_real and export_office != "ES000101":
-                raise UserError(
-                    _(
-                        "Entorno de PREPRODUCCIÓN AEAT: la oficina «%s» no existe en el sistema "
-                        "de pruebas (error «CustomsOfficeOfExport indicada no existe»).\n\n"
-                        "Para ensayos en preprod indique en Oficina Aduanas: ES000101 "
-                        "(Guía WEB Exp, cap. 25).\n"
-                        "En producción use códigos de la tabla TPROVINC (p. ej. 0801→ES000801, "
-                        "La Jonquera 1741→ES001741).\n"
-                        "Oficina de salida declarada en el XML: %s."
-                    )
-                    % (export_office, exit_office)
-                )
+        if len(exit_office) != 8:
+            raise UserError(
+                _("Código de oficina de salida inválido: «%s».") % exit_office
+            )
         return export_office, exit_office
 
     def _default_location_authorisation(self):
@@ -981,7 +1007,7 @@ class AduanaExpediente(models.Model):
         now = fields.Datetime.now()
         prep_time = now.strftime("%Y-%m-%dT%H:%M:%S") if now else ""
         msg_id = (self.name or lrn) + "-" + (now.strftime("%Y%m%d%H%M%S") if now else "")
-        oficina_export, oficina_exit, base_off = self._get_cc515c_office_codes()
+        oficina_export, oficina_exit, base_off, _office_note = self._get_cc515c_office_codes()
         moneda = self.moneda or "EUR"
         total_inv = "%.2f" % (self.valor_factura or 0.0)
         incoterm = self.incoterm or "DAP"
@@ -1208,11 +1234,27 @@ class AduanaExpediente(models.Model):
             settings = rec._get_settings()
             validator.validate_expediente_export(rec)
             rec._validate_cc515c_offices_before_send(settings)
+            export_office, exit_office, _base, office_note = rec._get_cc515c_office_codes()
             cc515c_body = rec._build_cc515c_native_body()
             soap_payload = rec._build_cc515c_soap_envelope(cc515c_body)
             endpoint = settings.get("aeat_endpoint_cc515c") or ""
+            offices_html = (
+                "<p>%s: <code>%s</code> — %s: <code>%s</code></p>"
+                % (
+                    html_escape(_("CustomsOfficeOfExport")),
+                    html_escape(export_office),
+                    html_escape(_("CustomsOfficeOfExitDeclared")),
+                    html_escape(exit_office),
+                )
+            )
+            if office_note:
+                offices_html += "<p><em>%s</em></p>" % html_escape(office_note)
             rec._post_chatter_soap_xml(
-                "CC515C", endpoint, soap_payload, filename="DUA_CC515C_soap.xml"
+                "CC515C",
+                endpoint,
+                soap_payload,
+                filename="DUA_CC515C_soap.xml",
+                extra_html=offices_html,
             )
             status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="CC515C")
             rec._attach_xml("DUA_CC515C_response.xml", resp_xml or "")
@@ -1249,10 +1291,21 @@ class AduanaExpediente(models.Model):
                 rec.error_message = error_msg
                 tipo = parsed.get("tipo_respuesta") or ""
                 rec.with_context(mail_notrack=True).message_post(
-                    body=_("AEAT rechazó o no admitió el DUA (CC515C) [%s]:\n%s")
-                    % (tipo, error_msg),
+                    body=_(
+                        "AEAT rechazó o no admitió el DUA (CC515C) [%s]:\n%s\n\n"
+                        "Oficinas en la petición — exportación: %s, salida: %s"
+                    )
+                    % (tipo, error_msg, export_office, exit_office),
                     subtype_xmlid="mail.mt_note",
                 )
+                if resp_xml:
+                    rec._post_chatter_soap_xml(
+                        "CC515C",
+                        endpoint,
+                        resp_xml,
+                        filename="DUA_CC515C_response.xml",
+                        title=_("Respuesta de AEAT"),
+                    )
         return True
 
     def _build_ccaesc_soap_envelope(self):

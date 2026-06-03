@@ -64,14 +64,6 @@ class AduanaValidator(models.AbstractModel):
             errors.append(_("La oficina aduanera debe ser 4 dígitos (ej: 0801) o código AES de 8 caracteres (ej: ES000801, ES001741)"))
         elif expediente.oficina_destino and not self.validate_oficina_aduana(expediente.oficina_destino):
             errors.append(_("La oficina de salida debe ser 4 dígitos (ej: 1741) o código AES de 8 caracteres (ej: ES001741)"))
-        else:
-            export_code = expediente._normalize_aes_office(expediente.oficina)
-            if getattr(expediente, '_aeat_is_preproduction', None) and expediente._aeat_is_preproduction():
-                if export_code != 'ES000101':
-                    errors.append(_(
-                        "PREPRODUCCIÓN AEAT: la oficina normalizada «%s» suele no existir en pruebas. "
-                        "Use ES000101 en el campo Oficina o cambie el endpoint a producción."
-                    ) % export_code)
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
