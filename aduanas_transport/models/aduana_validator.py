@@ -8,20 +8,37 @@ class AduanaValidator(models.AbstractModel):
     _description = "Validador de datos aduaneros"
 
     def validate_nif_cif(self, vat):
-        """Valida formato de NIF/CIF español"""
+        """Valida formato de NIF/CIF español (admite prefijo de país, ej. ESA58307836)."""
         if not vat:
             return False
         vat = vat.replace(' ', '').replace('-', '').upper()
-        # Patrón básico: 8 dígitos + letra o letra + 7 dígitos + letra/dígito
-        pattern = r'^[A-Z]?\d{7,8}[A-Z0-9]$'
-        return bool(re.match(pattern, vat))
+        # Quitar prefijo de país (p.ej. ES) si viene en el VAT de Odoo
+        if len(vat) > 2 and vat[:2].isalpha():
+            vat_core = vat[2:]
+        else:
+            vat_core = vat
+        # NIF: 8 dígitos + letra. CIF: letra + 7 dígitos + dígito control, o letra + 8 dígitos.
+        # Aceptamos: 8 dígitos + 1 alfanumérico, o 1 letra + 7–8 dígitos (+ opcional control)
+        if re.match(r'^\d{8}[A-Z0-9]$', vat_core):
+            return True
+        if re.match(r'^[A-Z]\d{7}[A-Z0-9]?$', vat_core):  # CIF 9 chars (A58307836) o 8
+            return True
+        if re.match(r'^[A-Z]\d{8}$', vat_core):
+            return True
+        return False
 
     def validate_oficina_aduana(self, oficina):
-        """Valida formato de oficina aduanera (4 dígitos)"""
+        """Valida oficina aduanera: 4 dígitos (0801) o formato ES + 6 alfanum (ES000701)."""
         if not oficina:
             return False
-        oficina = oficina.replace(' ', '')
-        return len(oficina) == 4 and oficina.isdigit()
+        oficina = oficina.replace(' ', '').upper()
+        # Solo 4 dígitos (ej. 0801)
+        if len(oficina) == 4 and oficina.isdigit():
+            return True
+        # Prefijo país + 6 caracteres alfanum (patrón AEAT [A-Z]{2}[A-Z0-9]{6})
+        if len(oficina) == 8 and oficina[:2].isalpha() and oficina[2:].isalnum():
+            return True
+        return False
 
     def validate_partida_arancelaria(self, partida):
         """Valida formato de partida arancelaria (10 dígitos)"""
@@ -44,7 +61,7 @@ class AduanaValidator(models.AbstractModel):
         if not expediente.oficina:
             errors.append(_("La oficina aduanera es obligatoria"))
         elif not self.validate_oficina_aduana(expediente.oficina):
-            errors.append(_("La oficina aduanera debe tener 4 dígitos (ej: 0801)"))
+            errors.append(_("La oficina aduanera debe ser 4 dígitos (ej: 0801) o código de 8 caracteres (ej: ES000701)"))
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
@@ -93,7 +110,7 @@ class AduanaValidator(models.AbstractModel):
         if not expediente.oficina:
             errors.append(_("La oficina aduanera es obligatoria"))
         elif not self.validate_oficina_aduana(expediente.oficina):
-            errors.append(_("La oficina aduanera debe tener 4 dígitos (ej: 0801)"))
+            errors.append(_("La oficina aduanera debe ser 4 dígitos (ej: 0801) o código de 8 caracteres (ej: ES000701)"))
         
         if not expediente.valor_factura or expediente.valor_factura <= 0:
             errors.append(_("El valor de la factura debe ser mayor que 0"))

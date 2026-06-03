@@ -163,3 +163,13 @@ class IrAttachment(models.Model):
             'target': 'new',
         }
 
+    def action_eliminar_documento(self):
+        """Elimina el/los documento(s) del expediente (usado desde la sección Documentos)."""
+        # Solo permitir eliminar adjuntos vinculados a expedientes para no tocar otros
+        allowed = self.filtered(
+            lambda a: a.res_model == "aduana.expediente" and a.res_id
+        )
+        if not allowed:
+            return
+        allowed.unlink()
+

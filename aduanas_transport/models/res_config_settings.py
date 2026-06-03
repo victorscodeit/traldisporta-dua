@@ -24,9 +24,30 @@ class ResConfigSettings(models.TransientModel):
         default="https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
         help="Presentación DUA EXS. Preproducción: prewww1.aeat.es; Producción: www1.agenciatributaria.gob.es")
 
-    # Certificado (pendiente firma XAdES)
-    cert_password = fields.Char(string="Password Certificado", config_parameter="aduanas_transport.cert_password")
-    cert_attachment_id = fields.Many2one("ir.attachment", string="Certificado P12/PFX (adjunto)")
+    # Certificado electrónico AEAT (autenticación cliente HTTPS; evita 403 en Presentar DUA)
+    cert_password = fields.Char(
+        string="Contraseña del certificado",
+        config_parameter="aduanas_transport.cert_password",
+        help="Contraseña del archivo P12/PFX. Obligatoria para que las peticiones a la AEAT usen el certificado."
+    )
+    cert_attachment_id = fields.Many2one(
+        "ir.attachment",
+        string="Certificado actual",
+        readonly=True,
+        help="Adjunto del certificado P12/PFX (se crea al subir un archivo abajo)."
+    )
+    cert_upload = fields.Binary(
+        string="Subir certificado P12/PFX",
+        help="Seleccione el archivo .p12 o .pfx de la AEAT. Al guardar se usará en las peticiones HTTPS."
+    )
+    cert_upload_filename = fields.Char(string="Nombre del archivo")
+
+    # NIF del firmante (certificado): por defecto = empresa si actúa como agente (representación directa), o remitente si autodespacho.
+    aeat_nif_firmante = fields.Char(
+        string="NIF del firmante (opcional)",
+        config_parameter="aduanas_transport.aeat_nif_firmante",
+        help="Dejar vacío: si la empresa (ej. Traldis Porta) es distinta del remitente (ej. Dorel), se envía representación directa y se firma con el certificado de la empresa (agente). Si empresa = remitente, autodespacho con certificado del remitente. Rellene solo para forzar otro NIF como firmante."
+    )
 
     # MSoft
     msoft_dsn = fields.Char(string="MSoft DSN/Host", config_parameter="aduanas_transport.msoft.dsn")
@@ -53,21 +74,28 @@ class ResConfigSettings(models.TransientModel):
         res = super().get_values()
         icp = self.env["ir.config_parameter"].sudo()
         attach_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
-        if attach_id:
-            # Convertir ID a recordset para Many2one
-            attachment = self.env["ir.attachment"].browse(attach_id)
-            if attachment.exists():
-                res.update(cert_attachment_id=attachment)
-            else:
-                res.update(cert_attachment_id=False)
-        else:
-            res.update(cert_attachment_id=False)
+        # Devolver siempre el ID (entero), no el recordset, para evitar "can't adapt type 'ir.attachment'" al guardar
+        res.update(cert_attachment_id=attach_id or False)
         return res
 
     def set_values(self):
         super().set_values()
         icp = self.env["ir.config_parameter"].sudo()
-        icp.set_param("aduanas_transport.cert_attachment_id", self.cert_attachment_id.id or 0)
+        if self.cert_upload:
+            name = self.cert_upload_filename or "cert_aeat.p12"
+            if not name.lower().endswith((".p12", ".pfx")):
+                name = name + ".p12" if "." not in name else name
+            attachment = self.env["ir.attachment"].sudo().create({
+                "name": name,
+                "datas": self.cert_upload,
+                "res_model": "res.config.settings",
+                "res_id": 0,
+                "mimetype": "application/x-pkcs12",
+            })
+            icp.set_param("aduanas_transport.cert_attachment_id", attachment.id)
+        else:
+            aid = (self.cert_attachment_id and self.cert_attachment_id.id) or 0
+            icp.set_param("aduanas_transport.cert_attachment_id", aid)
     
     @api.model
     def get_openai_api_key(self):

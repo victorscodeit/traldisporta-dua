@@ -107,6 +107,13 @@ class AduanaExpediente(models.Model):
     ], string="Incoterm", default="DAP", tracking=True)
     incoterm_info = fields.Html(string="Información Incoterm", compute="_compute_incoterm_info")
     oficina = fields.Char(string="Oficina Aduanas", help="Ej. 0801 Barcelona")
+    tipo_representacion = fields.Selection([
+        ("directa", "Representación directa"),
+        ("indirecta", "Representación indirecta"),
+    ], string="Tipo representación", default="indirecta",
+       help="Solo aplica cuando la empresa actúa como representante (remitente ≠ empresa). "
+            "Indirecta: Declarant = empresa (Traldis), Exporter = remitente (Dorel). "
+            "Directa: Exporter = Declarant = remitente (Dorel), Representative = empresa (Traldis).")
     transportista = fields.Char(string="Transportista")
     matricula = fields.Char(string="Matrícula")
     fecha_prevista = fields.Datetime()
@@ -141,6 +148,7 @@ class AduanaExpediente(models.Model):
     # Países
     pais_origen = fields.Char(default="ES")
     pais_destino = fields.Char(default="AD")
+    region_of_dispatch = fields.Char(string="Región de expedición", default="46", help="Código región española (ej. 46 Cataluña). Obligatorio cuando countryOfExport es ES (error 1877).")
 
     # Identificadores aduaneros
     lrn = fields.Char(string="LRN")
@@ -715,33 +723,300 @@ class AduanaExpediente(models.Model):
 
 
 
+    def _build_cc515c_native_body(self):
+        """Genera el contenido del mensaje CC515C en formato nativo AES según GuiaWEBExp (no CUSDEC)."""
+        self.ensure_one()
+        # Remitente = exportador (ej. Dorel Hispania). Empresa Odoo = agente (ej. Traldis Porta).
+        vat = (self.remitente and self.remitente.vat or "").replace(" ", "").strip() or ""
+        if not vat:
+            raise UserError(_("El expediente debe tener un Remitente con NIF/CIF para presentar el DUA."))
+        company = self.env.company
+        company_vat_raw = (company.vat or "").replace(" ", "").strip().upper()
+        remitente_vat_norm = vat.upper()
+        company_vat_norm = company_vat_raw
+        # Normalizar para comparar (sin prefijo país)
+        def _nif_core(n):
+            return n[2:] if len(n) > 2 and n[:2].isalpha() else n
+        remitente_core = _nif_core(remitente_vat_norm)
+        company_core = _nif_core(company_vat_norm) if company_vat_norm else ""
+        # ¿Actuamos como representante (empresa ≠ remitente) o autodespacho (empresa = remitente)?
+        es_representacion = bool(company_core and company_core != remitente_core)
+        if es_representacion and not (company_vat_raw or company_core):
+            raise UserError(_("Para presentar como representante (agente), la empresa actual debe tener NIF/CIF configurado."))
+        # Firmante = quien firma con el certificado (siempre la empresa cuando es representación; remitente en autodespacho). Override por config opcional.
+        icp = self.env["ir.config_parameter"].sudo()
+        nif_firmante_config = (icp.get_param("aduanas_transport.aeat_nif_firmante") or "").replace(" ", "").strip().upper()
+        if nif_firmante_config:
+            nif_firmante = nif_firmante_config
+        else:
+            nif_firmante = company_vat_raw if es_representacion else vat
+        vat_no_prefix = _nif_core(nif_firmante) if _nif_core(nif_firmante) else (nif_firmante[2:] if len(nif_firmante) > 2 and nif_firmante[:2].isalpha() else nif_firmante)
+        # Exporter siempre = remitente (Dorel). Declarant y Representative según tipo.
+        exporter_id = vat  # remitente (Dorel)
+        company_id = company_vat_raw or ("ES" + company_core)
+        # LRN único por declarante (guía: LRN + Declarant)
+        lrn = (self.lrn or self.name or "").strip() or ("EXP-%s" % (self.id or 0))
+        now = fields.Datetime.now()
+        prep_time = now.strftime("%Y-%m-%dT%H:%M:%S") if now else ""
+        msg_id = (self.name or lrn) + "-" + (now.strftime("%Y%m%d%H%M%S") if now else "")
+        # Código de oficina según patrón [A-Z]{2}[A-Z0-9]{6} (ej. ES000101). Tomamos dígitos de self.oficina y los normalizamos.
+        raw_office = (self.oficina or "0801").strip().replace(" ", "")
+        base_off = raw_office
+        if len(base_off) >= 2 and base_off[:2].isalpha():
+            base_off = base_off[2:]
+        base_off = "".join(ch for ch in base_off.upper() if ch.isalnum())
+        if not base_off:
+            base_off = "000001"
+        if len(base_off) > 6:
+            base_off = base_off[:6]
+        base_off = base_off.rjust(6, "0")
+        oficina = "ES" + base_off
+        moneda = self.moneda or "EUR"
+        total_inv = "%.2f" % (self.valor_factura or 0.0)
+        incoterm = self.incoterm or "DAP"
+        pais_exp = self.pais_origen or "ES"
+        pais_dest = self.pais_destino or "AD"
+        # Consignee identificationNumber debe cumplir patrón [A-Z]{2}[A-Z0-9-]{1,15} (EORI o EORI-alike)
+        consignee_vat = (self.consignatario and self.consignatario.vat or "").replace(" ", "").strip().upper()
+        consignee_country = ""
+        if self.consignatario and getattr(self.consignatario, "country_id", False) and self.consignatario.country_id:
+            consignee_country = (self.consignatario.country_id.code or "").upper()
+        if not consignee_country:
+            consignee_country = (pais_dest or "ES").upper()
+        core = "".join(ch for ch in consignee_vat if ch.isalnum() or ch == "-")
+        if not core:
+            core = "0000001"
+        if core.startswith(consignee_country) and len(core) > 2:
+            consignee_id = core[:17]  # ya tiene prefijo país, recortar por seguridad
+        else:
+            consignee_id = consignee_country + core[:15]
+        # ContactPerson: si se envía, phoneNumber es obligatorio (AEAT); usar "N/A" si está vacío
+        contact_remitente_name = (self.remitente and self.remitente.name or "") or "N/A"
+        contact_remitente_phone = (self.remitente and self.remitente.phone or "") or "N/A"
+        contact_remitente_email = (self.remitente and self.remitente.email or "") or "N/A"
+        contact_company_name = (company.name or "Declarante").strip()[:70]
+        contact_company_phone = (company.phone or "") or "N/A"
+        contact_company_email = (company.email or "") or "N/A"
+        # Exporter = siempre remitente (Dorel). Declarant y Representative según autodespacho vs representación (directa/indirecta).
+        if not es_representacion:
+            # Autodespacho: Exporter = Declarant = remitente, ContactPerson del remitente, sin Representative.
+            declarant_id = exporter_id
+            declarant_inner = """<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:ContactPerson><cc5:name>%s</cc5:name><cc5:phoneNumber>%s</cc5:phoneNumber><cc5:eMailAddress>%s</cc5:eMailAddress></cc5:ContactPerson>""" % (xml_escape(declarant_id), xml_escape(contact_remitente_name), xml_escape(contact_remitente_phone), xml_escape(contact_remitente_email))
+            representative_block = ""
+        elif self.tipo_representacion == "indirecta":
+            # Representación indirecta: Declarant = empresa (Traldis), ContactPerson empresa, sin Representative.
+            declarant_id = company_id
+            declarant_inner = """<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:ContactPerson><cc5:name>%s</cc5:name><cc5:phoneNumber>%s</cc5:phoneNumber><cc5:eMailAddress>%s</cc5:eMailAddress></cc5:ContactPerson>""" % (xml_escape(declarant_id), xml_escape(contact_company_name), xml_escape(contact_company_phone), xml_escape(contact_company_email))
+            representative_block = ""
+        else:
+            # Representación directa: Declarant = remitente (Dorel), Representative = empresa (Traldis) con ContactPerson.
+            declarant_id = exporter_id
+            declarant_inner = "<cc5:identificationNumber>%s</cc5:identificationNumber>" % xml_escape(declarant_id)
+            representative_block = """<cc5:Representative>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:ContactPerson>
+<cc5:name>%s</cc5:name>
+<cc5:phoneNumber>%s</cc5:phoneNumber>
+<cc5:eMailAddress>%s</cc5:eMailAddress>
+</cc5:ContactPerson>
+</cc5:Representative>""" % (xml_escape(company_id), xml_escape(contact_company_name), xml_escape(contact_company_phone), xml_escape(contact_company_email))
+        # DeliveryTerms: si incoterm != XXX, AEAT exige location+country o UNLocode (error 1384)
+        delivery_location = (self.consignatario and self.consignatario.city) or ("ANDORRA LA VELLA" if (pais_dest or "").upper() == "AD" else "N/A")
+        delivery_country = pais_dest or "AD"
+        delivery_terms_extra = ""
+        if (incoterm or "").upper() != "XXX":
+            delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (xml_escape(delivery_location[:35]), xml_escape(delivery_country))
+        # Consignment: obligatorios inlandModeOfTransport (1608), modeOfTransportAtTheBorder (1610), LocationOfGoods (1038), CountryOfRoutingOfConsignment (1020), TransportDocument (1681)
+        loc_auth = "01" + base_off + "01"  # Código ubicación tipo B (ej. 0100070101)
+        transport_doc_ref = (self.referencia_transporte or self.lrn or self.name or "REF1").strip()[:35]
+        # Orden según XSD: containerIndicator, inlandModeOfTransport, modeOfTransportAtTheBorder, grossMass, luego LocationOfGoods, CountryOfRoutingOfConsignment, TransportDocument
+        consignment_extra_after_gross = """<cc5:LocationOfGoods>
+<cc5:typeOfLocation>B</cc5:typeOfLocation>
+<cc5:qualifierOfIdentification>Y</cc5:qualifierOfIdentification>
+<cc5:authorisationNumber>%s</cc5:authorisationNumber>
+</cc5:LocationOfGoods>
+<cc5:CountryOfRoutingOfConsignment>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:country>%s</cc5:country>
+</cc5:CountryOfRoutingOfConsignment>
+<cc5:TransportDocument>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:type>N705</cc5:type>
+<cc5:referenceNumber>%s</cc5:referenceNumber>
+</cc5:TransportDocument>""" % (xml_escape(loc_auth), xml_escape(pais_dest or "AD"), xml_escape(transport_doc_ref))
+        region_dispatch = ((self.region_of_dispatch or "46").strip()[:2]).rjust(2, "0")
+        factura_ref = (self.numero_factura or self.name or "FAC").strip()[:35]
+        lines = (self.line_ids or self.env["aduana.expediente.line"]).sorted(key=lambda l: l.item_number or l.id or 0)
+        tot_gross = sum((l.peso_bruto or 0) for l in lines) or 0.0
+        # Construir GoodsItem por línea. Nota: AEAT 1092 exige que Consignee no sea idéntico en todos los items; si aplica, usar distintos consignatarios por línea o consultar con AEAT.
+        goods_items_xml = []
+        for idx, line in enumerate(lines):
+            item_num = line.item_number or (idx + 1)
+            partida = (line.partida or "0000000000").replace(" ", "")[:10].ljust(10, "0")
+            hs = partida[:6]
+            cn = partida[6:8] if len(partida) >= 8 else "00"
+            stat_val = "%.2f" % (line.valor_linea or 0.0)
+            gross = "%.2f" % (line.peso_bruto or 0.0)
+            net = "%.2f" % (line.peso_neto or 0.0)
+            bultos = line.bultos or 1
+            desc = xml_escape((line.descripcion or "")[:350])
+            pais_orig = line.pais_origen or pais_exp
+            shipping_marks = (getattr(line, "shipping_marks", None) or ("%s" % item_num))[:35]
+            goods_items_xml.append("""<cc5:GoodsItem>
+<cc5:declarationGoodsItemNumber>%s</cc5:declarationGoodsItemNumber>
+<cc5:statisticalValue>%s</cc5:statisticalValue>
+<cc5:Procedure>
+<cc5:requestedProcedure>10</cc5:requestedProcedure>
+<cc5:previousProcedure>00</cc5:previousProcedure>
+</cc5:Procedure>
+<cc5:Consignee>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+</cc5:Consignee>
+<cc5:Origin>
+<cc5:countryOfOrigin>%s</cc5:countryOfOrigin>
+<cc5:regionOfDispatch>%s</cc5:regionOfDispatch>
+</cc5:Origin>
+<cc5:Commodity>
+<cc5:descriptionOfGoods>%s</cc5:descriptionOfGoods>
+<cc5:CommodityCode>
+<cc5:harmonizedSystemSubHeadingCode>%s</cc5:harmonizedSystemSubHeadingCode>
+<cc5:combinedNomenclatureCode>%s</cc5:combinedNomenclatureCode>
+</cc5:CommodityCode>
+<cc5:GoodsMeasure>
+<cc5:grossMass>%s</cc5:grossMass>
+<cc5:netMass>%s</cc5:netMass>
+</cc5:GoodsMeasure>
+</cc5:Commodity>
+<cc5:Packaging>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:typeOfPackages>CT</cc5:typeOfPackages>
+<cc5:numberOfPackages>%s</cc5:numberOfPackages>
+<cc5:shippingMarks>%s</cc5:shippingMarks>
+</cc5:Packaging>
+<cc5:SupportingDocument>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:type>N380</cc5:type>
+<cc5:referenceNumber>%s</cc5:referenceNumber>
+<cc5:documentLineItemNumber>%s</cc5:documentLineItemNumber>
+</cc5:SupportingDocument>
+        </cc5:GoodsItem>""" % (item_num, stat_val, xml_escape(consignee_id), pais_orig, xml_escape(region_dispatch), desc, hs, cn, gross, net, bultos, xml_escape(shipping_marks), xml_escape(factura_ref), item_num))
+        goods_items_str = "\n".join(goods_items_xml)
+        if not goods_items_str:
+            raise UserError(_("Añada al menos una línea de mercancía al expediente para presentar el DUA."))
+        # Consignment mínimo (containerIndicator 0 = sin contenedor, grossMass total)
+        consignment_gross = "%.2f" % tot_gross if tot_gross else "0.00"
+        body = """<cc5:messageSender>%s</cc5:messageSender>
+<cc5:messageRecipient>NECA.ES</cc5:messageRecipient>
+<cc5:preparationDateAndTime>%s</cc5:preparationDateAndTime>
+<cc5:messageIdentification>%s</cc5:messageIdentification>
+<cc5:messageType>CC515C</cc5:messageType>
+<cc5:ExportOperation>
+<cc5:LRN>%s</cc5:LRN>
+<cc5:declarationType>EX</cc5:declarationType>
+<cc5:additionalDeclarationType>A</cc5:additionalDeclarationType>
+<cc5:security>2</cc5:security>
+<cc5:totalAmountInvoiced>%s</cc5:totalAmountInvoiced>
+<cc5:invoiceCurrency>%s</cc5:invoiceCurrency>
+</cc5:ExportOperation>
+<cc5:CustomsOfficeOfExport>
+<cc5:referenceNumber>%s</cc5:referenceNumber>
+</cc5:CustomsOfficeOfExport>
+<cc5:CustomsOfficeOfExitDeclared>
+<cc5:referenceNumber>%s</cc5:referenceNumber>
+</cc5:CustomsOfficeOfExitDeclared>
+<cc5:Exporter>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+</cc5:Exporter>
+<cc5:Declarant>
+%s
+</cc5:Declarant>
+%s
+<cc5:GoodsShipment>
+<cc5:natureOfTransaction>91</cc5:natureOfTransaction>
+<cc5:countryOfExport>%s</cc5:countryOfExport>
+<cc5:countryOfDestination>%s</cc5:countryOfDestination>
+<cc5:DeliveryTerms>
+<cc5:incotermCode>%s</cc5:incotermCode>%s
+</cc5:DeliveryTerms>
+<cc5:Consignment>
+<cc5:containerIndicator>0</cc5:containerIndicator>
+<cc5:inlandModeOfTransport>3</cc5:inlandModeOfTransport>
+<cc5:modeOfTransportAtTheBorder>3</cc5:modeOfTransportAtTheBorder>
+<cc5:grossMass>%s</cc5:grossMass>
+%s
+</cc5:Consignment>
+%s
+</cc5:GoodsShipment>""" % (
+            xml_escape(vat_no_prefix),
+            prep_time,
+            xml_escape(msg_id),
+            xml_escape(lrn),
+            total_inv,
+            moneda,
+            xml_escape(oficina or "ES0801"),
+            xml_escape(oficina or "ES0801"),
+            xml_escape(vat),
+            declarant_inner,
+            representative_block,
+            pais_exp,
+            pais_dest,
+            incoterm,
+            delivery_terms_extra,
+            consignment_gross,
+            consignment_extra_after_gross,
+            goods_items_str,
+        )
+        return body
+
+    def _build_cc515c_soap_envelope(self, cc515c_body, message_id=None):
+        """Envuelve el mensaje CC515C (formato nativo AES, GuiaWEBExp) en SOAP: CC515CV1Ent Id="..." > CC515C."""
+        ns_cc515 = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adex/jdit/ws/aes/CC515CV1Ent.xsd"
+        ent_id = message_id or (self.name or str(self.id or "")).replace(" ", "") + "-" + (fields.Datetime.now().strftime("%Y%m%d%H%M%S") if fields.Datetime.now() else "")
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cc5="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<cc5:CC515CV1Ent Id="%s">
+<cc5:CC515C>
+%s
+</cc5:CC515C>
+</cc5:CC515CV1Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (ns_cc515, xml_escape(ent_id), cc515c_body)
+
     def action_send_cc515c(self):
-        """Envía el DUA en formato CUSDEC EX1 a AEAT"""
+        """Envía el DUA a AEAT en formato nativo CC515C (GuiaWEBExp), no CUSDEC."""
         client = self.env["aduanas.aeat.client"]
         parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("DUA solo aplica a exportación"))
             settings = rec._get_settings()
-            # Buscar el archivo DUA_CUSDEC_EX1.xml
-            xmls = self.env["ir.attachment"].search([
-                ("res_model","=",rec._name),
-                ("res_id","=",rec.id),
-                ("name","=","DUA_CUSDEC_EX1.xml")
-            ], limit=1)
-            if not xmls:
-                rec.action_generate_cc515c()
-                xmls = self.env["ir.attachment"].search([
-                    ("res_model","=",rec._name),
-                    ("res_id","=",rec.id),
-                    ("name","=","DUA_CUSDEC_EX1.xml")
-                ], limit=1)
-            xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
-            resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), xml_content, service="CUSDEC_EX1")
+            cc515c_body = rec._build_cc515c_native_body()
+            soap_payload = rec._build_cc515c_soap_envelope(cc515c_body)
+            rec._attach_xml("DUA_CC515C_soap.xml", soap_payload)
+            status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), soap_payload, service="CC515C")
             rec._attach_xml("DUA_CUSDEC_EX1_response.xml", resp_xml or "")
-            
+            if status_code != 200:
+                rec.last_response_date = fields.Datetime.now()
+                rec.state = "error"
+                if status_code == 403:
+                    rec.error_message = _(
+                        "AEAT ha respondido 403 Forbidden. El servicio de preproducción/producción "
+                        "requiere certificado electrónico de la AEAT. Configure el certificado en "
+                        "Aduanas > Configuración (Certificado P12/PFX) y asegúrese de que el servidor "
+                        "use ese certificado en las peticiones HTTPS."
+                    )
+                else:
+                    rec.error_message = _("AEAT respondió con código HTTP %s. Revisar el adjunto de respuesta.") % status_code
+                rec.with_context(mail_notrack=True).message_post(
+                    body=rec.error_message, subtype_xmlid="mail.mt_note"
+                )
+                return True
             # Parsear respuesta mejorada
-            parsed = parser.parse_aeat_response(resp_xml, "CUSDEC_EX1")
+            parsed = parser.parse_aeat_response(resp_xml, "CC515C")
             rec.last_response_date = fields.Datetime.now()
             
             if parsed.get("success") and parsed.get("mrn"):
@@ -762,11 +1037,12 @@ class AduanaExpediente(models.Model):
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
                 rec.error_message = error_msg
-                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar DUA (CUSDEC EX1):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
+                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar DUA (CC515C):\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "cusdec_ex1")
-                raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
+                # No hacer raise UserError: así la transacción no hace rollback y se conserva
+                # el adjunto DUA_CUSDEC_EX1_response.xml para poder revisar la respuesta de la AEAT.
         return True
 
     def action_present_cc511c(self):
@@ -783,8 +1059,12 @@ class AduanaExpediente(models.Model):
             )
             rec._attach_xml(f"{rec.name}_CC511C.xml", xml)
             settings = rec._get_settings()
-            resp_xml = client.send_xml(settings.get("aeat_endpoint_cc511c"), xml, service="CC511C")
+            status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_cc511c"), xml, service="CC511C")
             rec._attach_xml(f"{rec.name}_CC511C_response.xml", resp_xml or "")
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                raise UserError(rec.error_message)
             
             # Parsear respuesta mejorada
             parsed = parser.parse_aeat_response(resp_xml, "CC511C")
@@ -1043,8 +1323,12 @@ class AduanaExpediente(models.Model):
             body = rec._build_ie615_body(preprod_maritimo=preprod_maritimo, preprod_doc_ref=preprod_doc_ref, preprod_doc_item=preprod_doc_item)
             rec._attach_xml("EXS_IE615_%s.xml" % rec.name, body)
             soap = rec._build_ie615_soap_envelope(body)
-            resp_xml = client.send_xml(endpoint, soap, service="IE615_EXS", timeout=60)
+            status_code, resp_xml = client.send_xml(endpoint, soap, service="IE615_EXS", timeout=60)
             rec._attach_xml("EXS_IE615_response_%s.xml" % rec.name, resp_xml or "")
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                raise UserError(rec.error_message)
             rec.last_response_date = fields.Datetime.now()
             parsed = parser.parse_ie615_response(resp_xml or "")
             rec.exs_circuito = parsed.get("exs_circuito")
@@ -1103,8 +1387,12 @@ class AduanaExpediente(models.Model):
                 rec.action_generate_imp_decl()
                 xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], limit=1)
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
-            resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
+            status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
             rec._attach_xml(f"{rec.name}_IMP_DECL_response.xml", resp_xml or "")
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                raise UserError(rec.error_message)
             
             # Parsear respuesta mejorada
             parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
@@ -1150,7 +1438,10 @@ class AduanaExpediente(models.Model):
                     "maxm": limit,
                 }
             )
-            resp = client.send_xml(settings.get("aeat_endpoint_bandeja"), xml, service="BANDEJA")
+            status_code, resp = client.send_xml(settings.get("aeat_endpoint_bandeja"), xml, service="BANDEJA")
+            if status_code != 200:
+                rec.error_message = _("Bandeja AEAT respondió HTTP %s.") % status_code
+                raise UserError(rec.error_message)
             self._attach_xml(f"{rec.name}_BANDEJA_response_{rec.bandeja_last_num+1}.xml", resp or "")
             # Usar parser mejorado
             parsed = parser.parse_aeat_response(resp, "BANDEJA")

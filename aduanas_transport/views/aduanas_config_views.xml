@@ -33,10 +33,18 @@
             </group>
           </group>
 
-          <group string="Certificado Digital">
+          <group string="Certificado electrónico AEAT">
             <group>
-              <field name="cert_attachment_id" widget="many2one"/>
-              <field name="cert_password" password="True" placeholder="Contraseña del certificado"/>
+              <field name="cert_attachment_id" readonly="1" optional="show"/>
+              <field name="cert_upload" filename="cert_upload_filename" string="Subir certificado .p12/.pfx"/>
+              <field name="cert_upload_filename" invisible="1"/>
+              <field name="cert_password" password="True" placeholder="Contraseña del .p12"/>
+              <field name="aeat_nif_firmante" placeholder="Opcional: solo si no firma el Exporter"/>
+              <div class="text-muted" style="margin-top: 8px;">
+                <strong>Para evitar 403 Forbidden</strong>: suba el .p12/.pfx de la AEAT y su contraseña.
+                Para autodespacho la AEAT exige que el certificado sea del Exporter (remitente); por defecto se usa su NIF como firmante.
+                Se usa <strong>cryptography</strong> (incluido en Odoo 16) para convertir a PEM y enviar con <strong>requests</strong>.
+              </div>
             </group>
           </group>
 

@@ -202,6 +202,7 @@
               <field name="remitente"/>
               <field name="consignatario"/>
               <field name="oficina"/>
+              <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
@@ -257,12 +258,13 @@
                       help="Añadir un nuevo documento PDF u otro archivo al expediente. Las facturas subidas en la pestaña Facturas también aparecen aquí."/>
             </group>
             <field name="documento_ids" nolabel="1" colspan="2">
-              <tree create="0" delete="1" string="Documentos y facturas">
+              <tree create="0" delete="0" string="Documentos y facturas" multi_edit="0">
                 <field name="name"/>
                 <field name="tipo_documento" optional="show"/>
                 <field name="file_size" optional="show"/>
                 <field name="create_date" optional="show"/>
                 <field name="datas" filename="name" widget="binary" readonly="1"/>
+                <button name="action_eliminar_documento" type="object" class="btn-link" icon="fa-trash-o" title="Eliminar documento"/>
               </tree>
               <form>
                 <sheet>
@@ -333,6 +335,7 @@
                 <field name="moneda"/>
                 <field name="pais_origen"/>
                 <field name="pais_destino"/>
+                <field name="region_of_dispatch" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               </group>
             </page>
             <page string="Documentos Requeridos" name="documentos_requeridos">

@@ -1,10 +1,40 @@
 # -*- coding: utf-8 -*-
 from odoo import models
 import logging
+import re
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import ParseError
 
 _logger = logging.getLogger(__name__)
+
+def _parse_with_lxml_recover(xml_text):
+    """Si lxml está disponible, parsea en modo recuperación y devuelve (root, True) o (None, False)."""
+    try:
+        from lxml import etree
+        parser = etree.XMLParser(recover=True, encoding="utf-8")
+        root = etree.fromstring(xml_text.encode("utf-8") if isinstance(xml_text, str) else xml_text, parser=parser)
+        return root, True
+    except Exception:
+        return None, False
+
+
+def _extract_mrn_from_raw_text(text):
+    """Intenta extraer MRN del texto cuando el XML no se puede parsear (respuesta mal formada)."""
+    if not text or not isinstance(text, str):
+        return None
+    # Patrones habituales: <MRN>valor</MRN> o <ns:MRN>valor</ns:MRN>
+    for pattern in (
+        r"<MRN>([^<]+)</MRN>",
+        r"<[^:>]*:?MRN[^>]*>([^<]+)</[^:>]*:?MRN",
+        r"<[^>]*MRN[^>]*>([^<]+)<",
+        r"(ES\d{2}[A-Z0-9]{14,22})",  # MRN típico: país + 2 dígitos + alfanumérico
+    ):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            val = (m.group(1) or "").strip()
+            if val and len(val) >= 10:
+                return val
+    return None
 
 class AduanaXmlParser(models.AbstractModel):
     _name = "aduanas.xml.parser"
@@ -160,18 +190,58 @@ class AduanaXmlParser(models.AbstractModel):
             return result
             
         except ParseError as e:
-            _logger.exception("Error parseando XML de %s", service_name)
+            _logger.warning("Error parseando XML de %s: %s. Intentando lxml recover o extracción por texto.", service_name, e)
+            # Intentar con lxml en modo recuperación (tolera XML mal formado)
+            root_recover, ok = _parse_with_lxml_recover(xml_text)
+            if ok and root_recover is not None:
+                mrn_el = root_recover.find(".//{*}MRN") or root_recover.find(".//MRN")
+                lrn_el = root_recover.find(".//{*}LRN") or root_recover.find(".//LRN")
+                mrn_val = (mrn_el.text or "").strip() if mrn_el is not None else None
+                lrn_val = (lrn_el.text or "").strip() if lrn_el is not None else None
+                if mrn_val:
+                    return {
+                        "success": True,
+                        "mrn": mrn_val,
+                        "lrn": lrn_val,
+                        "errors": [],
+                        "warnings": ["XML con errores de formato; MRN extraído con parser recuperación."],
+                        "messages": ["MRN obtenido correctamente."],
+                        "raw_xml": xml_text,
+                    }
+            mrn_fallback = _extract_mrn_from_raw_text(xml_text)
+            if mrn_fallback:
+                return {
+                    "success": True,
+                    "mrn": mrn_fallback,
+                    "lrn": None,
+                    "errors": [],
+                    "warnings": ["La respuesta no es XML válido pero se encontró MRN. Revisar adjunto DUA_CUSDEC_EX1_response.xml."],
+                    "messages": ["MRN extraído de la respuesta (formato de respuesta inesperado)."],
+                    "raw_xml": xml_text,
+                }
             return {
                 "success": False,
-                "error": f"Error parseando XML: {str(e)}",
-                "raw_xml": xml_text
+                "error": "La respuesta de la AEAT no es un XML válido (posible página de error o formato distinto). Revisar el adjunto de respuesta.",
+                "errors": ["mismatched tag o XML mal formado. Revisar DUA_CUSDEC_EX1_response.xml."],
+                "raw_xml": xml_text,
             }
         except Exception as e:
             _logger.exception("Error inesperado parseando XML de %s", service_name)
+            mrn_fallback = _extract_mrn_from_raw_text(xml_text)
+            if mrn_fallback:
+                return {
+                    "success": True,
+                    "mrn": mrn_fallback,
+                    "lrn": None,
+                    "errors": [],
+                    "warnings": ["Error al parsear pero se encontró MRN en la respuesta."],
+                    "messages": ["MRN extraído de la respuesta."],
+                    "raw_xml": xml_text,
+                }
             return {
                 "success": False,
-                "error": f"Error inesperado: {str(e)}",
-                "raw_xml": xml_text
+                "error": "Error inesperado: %s. Revisar el adjunto de respuesta." % str(e),
+                "raw_xml": xml_text,
             }
 
     def extract_mrn_from_xml(self, xml_text):

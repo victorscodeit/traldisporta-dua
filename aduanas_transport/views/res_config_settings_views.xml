@@ -53,12 +53,15 @@
 
                     <div class="col-12 col-lg-6 o_setting_box">
                         <div class="o_setting_left_pane">
-                            <field name="cert_attachment_id"/>
+                            <field name="cert_attachment_id" readonly="1"/>
+                            <field name="cert_upload" filename="cert_upload_filename"/>
+                            <field name="cert_upload_filename" invisible="1"/>
                             <field name="cert_password" password="True"/>
+                            <field name="aeat_nif_firmante" placeholder="Opcional"/>
                         </div>
                         <div class="o_setting_right_pane">
-                            <label for="cert_attachment_id"/>
-                            <div class="text-muted">Certificado P12/PFX para firma (cliente SOAP)</div>
+                            <label for="cert_upload"/>
+                            <div class="text-muted">Subir .p12/.pfx de la AEAT. Para autodespacho el certificado debe ser del Exporter (remitente); por defecto se usa su NIF.</div>
                         </div>
                     </div>
                 </div>
