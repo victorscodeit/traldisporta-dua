@@ -1018,7 +1018,39 @@ class AduanaExpediente(models.Model):
         incoterm = self.incoterm or "DAP"
         pais_exp = self.pais_origen or "ES"
         pais_dest = self.pais_destino or "AD"
-        # España -> Andorra estándar: no se declara Consignee ni a nivel Consignment ni GoodsItem.
+        consignee_country = ""
+        if self.consignatario and getattr(self.consignatario, "country_id", False) and self.consignatario.country_id:
+            consignee_country = (self.consignatario.country_id.code or "").upper()
+        if not consignee_country:
+            consignee_country = (pais_dest or "AD").upper()
+        consignee_name = ((self.consignatario and self.consignatario.name) or "CONSIGNEE")[:70]
+        consignee_street = " ".join(
+            p for p in [
+                self.consignatario and self.consignatario.street or "",
+                self.consignatario and self.consignatario.street2 or "",
+            ] if p
+        ) or "N/A"
+        consignee_postcode = (self.consignatario and self.consignatario.zip or "00000")[:17]
+        consignee_city = (
+            self.consignatario and self.consignatario.city
+            or ("ANDORRA LA VELLA" if consignee_country == "AD" else "N/A")
+        )[:35]
+        # AEAT exige Consignee si no va a nivel GoodsItem. Para AD usamos nombre+dirección, no EORI.
+        consignee_block = """<cc5:Consignee>
+<cc5:name>%s</cc5:name>
+<cc5:Address>
+<cc5:streetAndNumber>%s</cc5:streetAndNumber>
+<cc5:postcode>%s</cc5:postcode>
+<cc5:city>%s</cc5:city>
+<cc5:country>%s</cc5:country>
+</cc5:Address>
+</cc5:Consignee>""" % (
+            xml_escape(consignee_name),
+            xml_escape(consignee_street[:70]),
+            xml_escape(consignee_postcode),
+            xml_escape(consignee_city),
+            xml_escape(consignee_country),
+        )
         # ContactPerson: si se envía, phoneNumber es obligatorio (AEAT); usar "N/A" si está vacío
         contact_remitente_name = (self.remitente and self.remitente.name or "") or "N/A"
         contact_remitente_phone = (self.remitente and self.remitente.phone or "") or "N/A"
@@ -1057,8 +1089,11 @@ class AduanaExpediente(models.Model):
         delivery_terms_extra = ""
         if (incoterm or "").upper() != "XXX":
             delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (xml_escape(delivery_location[:35]), xml_escape(delivery_country))
-        # Consignment: obligatorios inlandModeOfTransport (1608), modeOfTransportAtTheBorder (1610),
-        # LocationOfGoods (1038), medios de transporte, CountryOfRoutingOfConsignment y TransportDocument.
+        # Consignment: en salida directa AEAT no permite inlandModeOfTransport (error 1763).
+        is_direct_exit = oficina_export == oficina_exit
+        inland_mode_xml = "" if is_direct_exit else "\n<cc5:inlandModeOfTransport>3</cc5:inlandModeOfTransport>"
+        # Resto de elementos: modeOfTransportAtTheBorder, LocationOfGoods, medios de transporte,
+        # CountryOfRoutingOfConsignment y TransportDocument.
         icp = self.env["ir.config_parameter"].sudo()
         loc_auth = (self.location_authorisation_number or "").strip().upper()
         if not loc_auth:
@@ -1203,9 +1238,10 @@ class AduanaExpediente(models.Model):
 </cc5:DeliveryTerms>
 <cc5:Consignment>
 <cc5:containerIndicator>0</cc5:containerIndicator>
-<cc5:inlandModeOfTransport>3</cc5:inlandModeOfTransport>
+%s
 <cc5:modeOfTransportAtTheBorder>3</cc5:modeOfTransportAtTheBorder>
 <cc5:grossMass>%s</cc5:grossMass>
+%s
 %s
 </cc5:Consignment>
 %s
@@ -1225,7 +1261,9 @@ class AduanaExpediente(models.Model):
             pais_dest,
             incoterm,
             delivery_terms_extra,
+            inland_mode_xml,
             consignment_gross,
+            consignee_block,
             consignment_extra_after_gross,
             goods_items_str,
         )
