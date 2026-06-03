@@ -238,8 +238,10 @@
             <group>
               <field name="referencia_transporte"/>
               <field name="matricula"/>
+              <field name="pais_transporte"/>
               <field name="transportista"/>
               <field name="remolque"/>
+              <field name="location_authorisation_number" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="codigo_transporte"/>
             </group>
             <group>

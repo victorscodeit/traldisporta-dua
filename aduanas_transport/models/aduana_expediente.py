@@ -121,6 +121,7 @@ class AduanaExpediente(models.Model):
             "Directa: Exporter = Declarant = remitente (Dorel), Representative = empresa (Traldis).")
     transportista = fields.Char(string="Transportista")
     matricula = fields.Char(string="Matrícula")
+    pais_transporte = fields.Char(string="País transporte", default="ES")
     fecha_prevista = fields.Datetime()
 
     # Totales factura (editable; se rellena con la suma de líneas al procesar facturas)
@@ -167,6 +168,10 @@ class AduanaExpediente(models.Model):
     fecha_recepcion = fields.Datetime(string="Fecha Recepción")
     numero_factura = fields.Char(string="Nº Factura Comercial")
     referencia_transporte = fields.Char(string="Referencia Transporte")
+    location_authorisation_number = fields.Char(
+        string="Recinto/ubicación AEAT",
+        help="LocationOfGoods/authorisationNumber. En preproducción AEAT se usa 010101DA11 por defecto.",
+    )
     conductor_nombre = fields.Char(string="Nombre Conductor")
     conductor_dni = fields.Char(string="DNI Conductor")
     remolque = fields.Char(string="Remolque")
@@ -1013,7 +1018,8 @@ class AduanaExpediente(models.Model):
         incoterm = self.incoterm or "DAP"
         pais_exp = self.pais_origen or "ES"
         pais_dest = self.pais_destino or "AD"
-        # Consignee identificationNumber debe cumplir patrón [A-Z]{2}[A-Z0-9-]{1,15} (EORI o EORI-alike)
+        # Consignee común al envío. Si se repite idéntico en todos los GoodsItem, AEAT devuelve 1092;
+        # por eso se declara a nivel GoodsShipment. Para terceros países sin EORI censado se usa nombre+dirección.
         consignee_vat = (self.consignatario and self.consignatario.vat or "").replace(" ", "").strip().upper()
         consignee_country = ""
         if self.consignatario and getattr(self.consignatario, "country_id", False) and self.consignatario.country_id:
@@ -1021,12 +1027,45 @@ class AduanaExpediente(models.Model):
         if not consignee_country:
             consignee_country = (pais_dest or "ES").upper()
         core = "".join(ch for ch in consignee_vat if ch.isalnum() or ch == "-")
-        if not core:
-            core = "0000001"
-        if core.startswith(consignee_country) and len(core) > 2:
-            consignee_id = core[:17]  # ya tiene prefijo país, recortar por seguridad
+        eu_countries = {
+            "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "EL", "ES", "FI", "FR",
+            "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO",
+            "SE", "SI", "SK",
+        }
+        if consignee_country in eu_countries and core:
+            if core.startswith(consignee_country) and len(core) > 2:
+                consignee_id = core[:17]  # ya tiene prefijo país, recortar por seguridad
+            else:
+                consignee_id = consignee_country + core[:15]
+            consignee_block = """<cc5:Consignee>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+</cc5:Consignee>""" % xml_escape(consignee_id)
         else:
-            consignee_id = consignee_country + core[:15]
+            consignee_name = ((self.consignatario and self.consignatario.name) or "CONSIGNEE")[:70]
+            street = " ".join(
+                p for p in [
+                    self.consignatario and self.consignatario.street or "",
+                    self.consignatario and self.consignatario.street2 or "",
+                ] if p
+            ) or "N/A"
+            postcode = (self.consignatario and self.consignatario.zip or "00000")[:17]
+            default_consignee_city = "ANDORRA LA VELLA" if consignee_country == "AD" else "N/A"
+            city = (self.consignatario and self.consignatario.city or default_consignee_city)[:35]
+            consignee_block = """<cc5:Consignee>
+<cc5:name>%s</cc5:name>
+<cc5:Address>
+<cc5:streetAndNumber>%s</cc5:streetAndNumber>
+<cc5:postcode>%s</cc5:postcode>
+<cc5:city>%s</cc5:city>
+<cc5:country>%s</cc5:country>
+</cc5:Address>
+</cc5:Consignee>""" % (
+                xml_escape(consignee_name),
+                xml_escape(street[:70]),
+                xml_escape(postcode),
+                xml_escape(city),
+                xml_escape(consignee_country or pais_dest or "AD"),
+            )
         # ContactPerson: si se envía, phoneNumber es obligatorio (AEAT); usar "N/A" si está vacío
         contact_remitente_name = (self.remitente and self.remitente.name or "") or "N/A"
         contact_remitente_phone = (self.remitente and self.remitente.phone or "") or "N/A"
@@ -1065,24 +1104,59 @@ class AduanaExpediente(models.Model):
         delivery_terms_extra = ""
         if (incoterm or "").upper() != "XXX":
             delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (xml_escape(delivery_location[:35]), xml_escape(delivery_country))
-        # Consignment: obligatorios inlandModeOfTransport (1608), modeOfTransportAtTheBorder (1610), LocationOfGoods (1038), CountryOfRoutingOfConsignment (1020), TransportDocument (1681)
-        loc_auth = "01" + base_off + "01"  # Código ubicación tipo B (ej. 0100070101)
+        # Consignment: obligatorios inlandModeOfTransport (1608), modeOfTransportAtTheBorder (1610),
+        # LocationOfGoods (1038), medios de transporte, CountryOfRoutingOfConsignment y TransportDocument.
+        icp = self.env["ir.config_parameter"].sudo()
+        loc_auth = (self.location_authorisation_number or "").strip().upper()
+        if not loc_auth:
+            loc_auth = (
+                icp.get_param("aduanas_transport.aeat_preprod_location_authorisation")
+                or "010101DA11"
+                if self._aeat_is_preproduction()
+                else "01" + base_off + "01"
+            )
+        transport_id = (
+            self.matricula or self.codigo_transporte or ("LKW52" if self._aeat_is_preproduction() else "")
+        ).strip()[:35]
+        if not transport_id:
+            raise UserError(_("Informe la matrícula del transporte para enviar CC515C."))
+        transport_country = ((self.pais_transporte or "ES").strip().upper()[:2]) or "ES"
         transport_doc_ref = (self.referencia_transporte or self.lrn or self.name or "REF1").strip()[:35]
-        # Orden según XSD: containerIndicator, inlandModeOfTransport, modeOfTransportAtTheBorder, grossMass, luego LocationOfGoods, CountryOfRoutingOfConsignment, TransportDocument
+        # Orden según XSD y ejemplos AEAT: LocationOfGoods, DepartureTransportMeans, routing,
+        # ActiveBorderTransportMeans y TransportDocument.
         consignment_extra_after_gross = """<cc5:LocationOfGoods>
 <cc5:typeOfLocation>B</cc5:typeOfLocation>
 <cc5:qualifierOfIdentification>Y</cc5:qualifierOfIdentification>
 <cc5:authorisationNumber>%s</cc5:authorisationNumber>
 </cc5:LocationOfGoods>
+<cc5:DepartureTransportMeans>
+<cc5:sequenceNumber>1</cc5:sequenceNumber>
+<cc5:typeOfIdentification>30</cc5:typeOfIdentification>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:nationality>%s</cc5:nationality>
+</cc5:DepartureTransportMeans>
 <cc5:CountryOfRoutingOfConsignment>
 <cc5:sequenceNumber>1</cc5:sequenceNumber>
 <cc5:country>%s</cc5:country>
 </cc5:CountryOfRoutingOfConsignment>
+<cc5:ActiveBorderTransportMeans>
+<cc5:typeOfIdentification>30</cc5:typeOfIdentification>
+<cc5:identificationNumber>%s</cc5:identificationNumber>
+<cc5:nationality>%s</cc5:nationality>
+</cc5:ActiveBorderTransportMeans>
 <cc5:TransportDocument>
 <cc5:sequenceNumber>1</cc5:sequenceNumber>
 <cc5:type>N705</cc5:type>
 <cc5:referenceNumber>%s</cc5:referenceNumber>
-</cc5:TransportDocument>""" % (xml_escape(loc_auth), xml_escape(pais_dest or "AD"), xml_escape(transport_doc_ref))
+</cc5:TransportDocument>""" % (
+            xml_escape(loc_auth),
+            xml_escape(transport_id),
+            xml_escape(transport_country),
+            xml_escape(pais_dest or "AD"),
+            xml_escape(transport_id),
+            xml_escape(transport_country),
+            xml_escape(transport_doc_ref),
+        )
         region_dispatch = ((self.region_of_dispatch or "46").strip()[:2]).rjust(2, "0")
         factura_ref = (self.numero_factura or self.name or "FAC").strip()[:35]
         lines = (self.line_ids or self.env["aduana.expediente.line"]).sorted(key=lambda l: l.item_number or l.id or 0)
@@ -1108,9 +1182,6 @@ class AduanaExpediente(models.Model):
 <cc5:requestedProcedure>10</cc5:requestedProcedure>
 <cc5:previousProcedure>00</cc5:previousProcedure>
 </cc5:Procedure>
-<cc5:Consignee>
-<cc5:identificationNumber>%s</cc5:identificationNumber>
-</cc5:Consignee>
 <cc5:Origin>
 <cc5:countryOfOrigin>%s</cc5:countryOfOrigin>
 <cc5:regionOfDispatch>%s</cc5:regionOfDispatch>
@@ -1138,7 +1209,7 @@ class AduanaExpediente(models.Model):
 <cc5:referenceNumber>%s</cc5:referenceNumber>
 <cc5:documentLineItemNumber>%s</cc5:documentLineItemNumber>
 </cc5:SupportingDocument>
-        </cc5:GoodsItem>""" % (item_num, stat_val, xml_escape(consignee_id), pais_orig, xml_escape(region_dispatch), desc, hs, cn, gross, net, bultos, xml_escape(shipping_marks), xml_escape(factura_ref), item_num))
+        </cc5:GoodsItem>""" % (item_num, stat_val, pais_orig, xml_escape(region_dispatch), desc, hs, cn, gross, net, bultos, xml_escape(shipping_marks), xml_escape(factura_ref), item_num))
         goods_items_str = "\n".join(goods_items_xml)
         if not goods_items_str:
             raise UserError(_("Añada al menos una línea de mercancía al expediente para presentar el DUA."))
@@ -1177,6 +1248,7 @@ class AduanaExpediente(models.Model):
 <cc5:DeliveryTerms>
 <cc5:incotermCode>%s</cc5:incotermCode>%s
 </cc5:DeliveryTerms>
+%s
 <cc5:Consignment>
 <cc5:containerIndicator>0</cc5:containerIndicator>
 <cc5:inlandModeOfTransport>3</cc5:inlandModeOfTransport>
@@ -1201,6 +1273,7 @@ class AduanaExpediente(models.Model):
             pais_dest,
             incoterm,
             delivery_terms_extra,
+            consignee_block,
             consignment_gross,
             consignment_extra_after_gross,
             goods_items_str,
