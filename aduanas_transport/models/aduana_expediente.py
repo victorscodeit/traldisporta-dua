@@ -1748,7 +1748,18 @@ class AduanaExpediente(models.Model):
         """Procesa y crea incidencias desde datos parseados de AEAT"""
         self.ensure_one()
         Incidencia = self.env["aduana.incidencia"]
-        
+        origen_field = Incidencia._fields["origen"]
+        selection = origen_field.selection
+        if callable(selection):
+            selection = selection(Incidencia)
+        valid_origenes = {key for key, _label in (selection or [])}
+        if origen not in valid_origenes:
+            _logger.warning(
+                "Origen de incidencia no reconocido %r en expediente %s; se usa 'manual'.",
+                origen, self.name,
+            )
+            origen = "manual"
+
         for inc_data in incidencias_data:
             # Determinar prioridad según tipo
             prioridad_map = {
