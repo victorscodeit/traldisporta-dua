@@ -1951,10 +1951,14 @@ class AduanaExpediente(models.Model):
             if bandeja.get("last_message_num"):
                 rec.bandeja_last_num = max(rec.bandeja_last_num, bandeja["last_message_num"])
 
+            processed_count = 0
+            skipped_count = 0
             for msg in bandeja.get("messages") or []:
                 mrn = msg.get("mrn")
                 if mrn and rec.mrn and mrn != rec.mrn:
+                    skipped_count += 1
                     continue
+                processed_count += 1
                 parsed_msg = {
                     "mrn": mrn or rec.mrn,
                     "estado_aes": msg.get("estado_aes"),
@@ -1976,6 +1980,15 @@ class AduanaExpediente(models.Model):
                         body=_("Bandeja AEAT: mensaje %s (MRN %s).") % (tipo, mrn or rec.mrn or "-"),
                         subtype_xmlid="mail.mt_note",
                     )
+
+            if not processed_count and not bandeja.get("errors"):
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_(
+                        "Bandeja AEAT consultada: no hay comunicaciones nuevas para este MRN. "
+                        "Último número procesado: %s. Mensajes de otros MRN ignorados: %s."
+                    ) % (rec.bandeja_last_num, skipped_count),
+                    subtype_xmlid="mail.mt_note",
+                )
 
             if bandeja.get("errors"):
                 rec.with_context(mail_notrack=True).message_post(
