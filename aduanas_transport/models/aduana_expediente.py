@@ -1452,8 +1452,14 @@ class AduanaExpediente(models.Model):
         contact_name = (company.name or "Declarante").strip()[:70]
         contact_phone = (company.phone or "N/A").strip()[:35]
         contact_email = (company.email or "N/A").strip()[:80]
-        office = self._normalize_aes_office()
-        location_auth = self._default_location_authorisation()
+        _export_office, office, _base, _office_note = self._get_cc515c_office_codes()
+        location_auth = (
+            (self.location_authorisation_number or "").strip().upper()
+            or self.env["ir.config_parameter"].sudo().get_param(
+                "aduanas_transport.aeat_preprod_location_authorisation"
+            )
+            or ("010101DA11" if self._aeat_is_preproduction() else self._default_location_authorisation())
+        )
         ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adex/jdit/ws/aes/CC507CV1Ent.xsd"
         return """<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cc5="%s">
@@ -1512,6 +1518,14 @@ class AduanaExpediente(models.Model):
             endpoint = settings.get("aeat_endpoint_cc507c")
             if not endpoint:
                 raise UserError(_("Configure el endpoint de llegada a aduana de salida (CC507C) en Aduanas > Configuración."))
+            export_office, exit_declared_office, _base, _note = rec._get_cc515c_office_codes()
+            if export_office == exit_declared_office and not rec.oficina_destino:
+                raise UserError(_(
+                    "No corresponde enviar CC507C para una salida directa: la aduana de exportación "
+                    "y la aduana de salida declarada son la misma (%s). Use Consultar Estado DUA o "
+                    "Consultar Bandeja AEAT. Solo use CC507C si la salida real es otra aduana española; "
+                    "en ese caso informe 'Oficina aduanas de salida' antes de notificar llegada."
+                ) % exit_declared_office)
             soap_payload = rec._build_cc507c_soap_envelope()
             rec._attach_xml("%s_CC507C_request.xml" % rec.name, soap_payload)
             status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="CC507C", timeout=60)
