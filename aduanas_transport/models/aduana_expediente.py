@@ -1,5 +1,6 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import html_escape
 import base64
 import logging
 import time
@@ -106,7 +107,11 @@ class AduanaExpediente(models.Model):
         ("DDP", "DDP – Delivered Duty Paid"),
     ], string="Incoterm", default="DAP", tracking=True)
     incoterm_info = fields.Html(string="Información Incoterm", compute="_compute_incoterm_info")
-    oficina = fields.Char(string="Oficina Aduanas", help="Ej. 0801 Barcelona")
+    oficina = fields.Char(
+        string="Oficina Aduanas (exportación)",
+        help="Código ECS de 4 dígitos (0801) o AES de 8 (ES000801). En preprod AEAT use ES000101. "
+             "La Jonquera (salida hacia Andorra): 1741 o ES001741 en «Oficina destino».",
+    )
     tipo_representacion = fields.Selection([
         ("directa", "Representación directa"),
         ("indirecta", "Representación indirecta"),
@@ -219,7 +224,11 @@ class AduanaExpediente(models.Model):
     referencia_proveedor = fields.Char(string="Referencia Proveedor")
     
     # Oficinas adicionales
-    oficina_destino = fields.Char(string="Oficina Aduanas Destino")
+    oficina_destino = fields.Char(
+        string="Oficina aduanas de salida",
+        help="CustomsOfficeOfExitDeclared. Si vacío, coincide con la oficina de exportación. "
+             "España→Andorra por carretera: 1741 o ES001741 (La Jonquera).",
+    )
     
     # Factura PDF y procesamiento IA (FLUJO PRINCIPAL)
     factura_pdf = fields.Binary(string="Factura PDF", help="Sube la factura PDF para extraer datos automáticamente. Este es el punto de partida del expediente.")
@@ -639,7 +648,57 @@ class AduanaExpediente(models.Model):
                 "mimetype": mimetype,
                 "datas": base64.b64encode((xml_text or "").encode("utf-8"))
             })
-    
+
+    _CHATTER_XML_PREVIEW_MAX = 32000
+
+    def _post_chatter_soap_xml(self, service, endpoint, xml_text, filename=None):
+        """Publica en el chatter la petición SOAP (vista previa + adjunto descargable)."""
+        self.ensure_one()
+        xml_text = xml_text or ""
+        filename = filename or "%s_%s_request.xml" % (self.name or "EXP", service)
+        attachment = self.env["ir.attachment"].create({
+            "name": filename,
+            "res_model": self._name,
+            "res_id": self.id,
+            "type": "binary",
+            "mimetype": "application/xml",
+            "datas": base64.b64encode(xml_text.encode("utf-8")),
+        })
+        preview = xml_text
+        truncated = False
+        if len(preview) > self._CHATTER_XML_PREVIEW_MAX:
+            preview = preview[: self._CHATTER_XML_PREVIEW_MAX]
+            truncated = True
+        endpoint_block = ""
+        if endpoint:
+            endpoint_block = (
+                "<p>%s: <code>%s</code></p>"
+                % (html_escape(_("Endpoint")), html_escape(endpoint))
+            )
+        truncate_note = ""
+        if truncated:
+            truncate_note = (
+                "<p><em>%s</em></p>"
+                % html_escape(_("Vista previa recortada; XML completo en el adjunto."))
+            )
+        body = (
+            "<p><strong>%s</strong> — %s</p>%s"
+            '<pre style="white-space:pre-wrap;word-break:break-all;'
+            'max-height:480px;overflow:auto;font-size:11px;">%s</pre>%s'
+        ) % (
+            html_escape(service),
+            html_escape(_("Petición enviada a AEAT")),
+            endpoint_block,
+            html_escape(preview),
+            truncate_note,
+        )
+        self.with_context(mail_notrack=True).message_post(
+            body=body,
+            attachment_ids=[attachment.id],
+            subtype_xmlid="mail.mt_note",
+        )
+        return attachment
+
     def _attach_pdf(self, filename, pdf_data):
         """Adjunta un PDF como documento al expediente"""
         for rec in self:
@@ -691,6 +750,7 @@ class AduanaExpediente(models.Model):
         return sender if sender[:2].isalpha() else "ES%s" % sender
 
     def _normalize_aes_office(self, raw_office=None):
+        """Convierte código ECS (0801) o AES (ES000801) al patrón [A-Z]{2}[A-Z0-9]{6}."""
         raw_office = (raw_office or self.oficina or "0801").strip().replace(" ", "").upper()
         if len(raw_office) >= 2 and raw_office[:2].isalpha():
             raw_office = raw_office[2:]
@@ -698,6 +758,53 @@ class AduanaExpediente(models.Model):
         if not raw_office:
             raw_office = "000001"
         return "ES%s" % raw_office[:6].rjust(6, "0")
+
+    def _aeat_is_preproduction(self, endpoint_url=None):
+        url = (endpoint_url or self.env["ir.config_parameter"].sudo().get_param(
+            "aduanas_transport.endpoint.cc515c"
+        ) or "").lower()
+        return "prewww" in url
+
+    def _get_cc515c_office_codes(self):
+        """Oficina de exportación, oficina de salida declarada y base de 6 dígitos (sin ES)."""
+        self.ensure_one()
+        oficina_export = self._normalize_aes_office(self.oficina)
+        if self.oficina_destino:
+            oficina_exit = self._normalize_aes_office(self.oficina_destino)
+        else:
+            oficina_exit = oficina_export
+        return oficina_export, oficina_exit, oficina_export[2:]
+
+    def _validate_cc515c_offices_before_send(self, settings=None):
+        """Evita envíos con códigos que AEAT rechaza (p. ej. ES0801 o oficina real en preprod)."""
+        self.ensure_one()
+        settings = settings or self._get_settings()
+        export_office, exit_office, _base = self._get_cc515c_office_codes()
+        if export_office in ("ES0801",) or len(export_office) != 8:
+            raise UserError(
+                _("Código de oficina de exportación inválido: «%s». "
+                  "Use 4 dígitos ECS (0801) o 8 caracteres AES (ES000801).")
+                % export_office
+            )
+        endpoint = settings.get("aeat_endpoint_cc515c") or ""
+        if self._aeat_is_preproduction(endpoint):
+            allow_real = self.env["ir.config_parameter"].sudo().get_param(
+                "aduanas_transport.preprod_allow_real_office"
+            ) == "True"
+            if not allow_real and export_office != "ES000101":
+                raise UserError(
+                    _(
+                        "Entorno de PREPRODUCCIÓN AEAT: la oficina «%s» no existe en el sistema "
+                        "de pruebas (error «CustomsOfficeOfExport indicada no existe»).\n\n"
+                        "Para ensayos en preprod indique en Oficina Aduanas: ES000101 "
+                        "(Guía WEB Exp, cap. 25).\n"
+                        "En producción use códigos de la tabla TPROVINC (p. ej. 0801→ES000801, "
+                        "La Jonquera 1741→ES001741).\n"
+                        "Oficina de salida declarada en el XML: %s."
+                    )
+                    % (export_office, exit_office)
+                )
+        return export_office, exit_office
 
     def _default_location_authorisation(self):
         office = self._normalize_aes_office()
@@ -874,18 +981,7 @@ class AduanaExpediente(models.Model):
         now = fields.Datetime.now()
         prep_time = now.strftime("%Y-%m-%dT%H:%M:%S") if now else ""
         msg_id = (self.name or lrn) + "-" + (now.strftime("%Y%m%d%H%M%S") if now else "")
-        # Código de oficina según patrón [A-Z]{2}[A-Z0-9]{6} (ej. ES000101). Tomamos dígitos de self.oficina y los normalizamos.
-        raw_office = (self.oficina or "0801").strip().replace(" ", "")
-        base_off = raw_office
-        if len(base_off) >= 2 and base_off[:2].isalpha():
-            base_off = base_off[2:]
-        base_off = "".join(ch for ch in base_off.upper() if ch.isalnum())
-        if not base_off:
-            base_off = "000001"
-        if len(base_off) > 6:
-            base_off = base_off[:6]
-        base_off = base_off.rjust(6, "0")
-        oficina = "ES" + base_off
+        oficina_export, oficina_exit, base_off = self._get_cc515c_office_codes()
         moneda = self.moneda or "EUR"
         total_inv = "%.2f" % (self.valor_factura or 0.0)
         incoterm = self.incoterm or "DAP"
@@ -1070,8 +1166,8 @@ class AduanaExpediente(models.Model):
             xml_escape(lrn),
             total_inv,
             moneda,
-            xml_escape(oficina or "ES0801"),
-            xml_escape(oficina or "ES0801"),
+            xml_escape(oficina_export),
+            xml_escape(oficina_exit),
             xml_escape(vat),
             declarant_inner,
             representative_block,
@@ -1105,15 +1201,21 @@ class AduanaExpediente(models.Model):
         """Envía el DUA a AEAT en formato nativo CC515C (GuiaWEBExp), no CUSDEC."""
         client = self.env["aduanas.aeat.client"]
         parser = self.env["aduanas.xml.parser"]
+        validator = self.env["aduanas.validator"]
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("DUA solo aplica a exportación"))
             settings = rec._get_settings()
+            validator.validate_expediente_export(rec)
+            rec._validate_cc515c_offices_before_send(settings)
             cc515c_body = rec._build_cc515c_native_body()
             soap_payload = rec._build_cc515c_soap_envelope(cc515c_body)
-            rec._attach_xml("DUA_CC515C_soap.xml", soap_payload)
-            status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_cc515c"), soap_payload, service="CC515C")
-            rec._attach_xml("DUA_CUSDEC_EX1_response.xml", resp_xml or "")
+            endpoint = settings.get("aeat_endpoint_cc515c") or ""
+            rec._post_chatter_soap_xml(
+                "CC515C", endpoint, soap_payload, filename="DUA_CC515C_soap.xml"
+            )
+            status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="CC515C")
+            rec._attach_xml("DUA_CC515C_response.xml", resp_xml or "")
             if status_code != 200:
                 rec.last_response_date = fields.Datetime.now()
                 rec.state = "error"

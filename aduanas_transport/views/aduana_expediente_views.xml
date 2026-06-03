@@ -216,6 +216,7 @@
               <field name="remitente"/>
               <field name="consignatario"/>
               <field name="oficina"/>
+              <field name="oficina_destino" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
