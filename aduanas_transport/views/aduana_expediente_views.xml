@@ -24,10 +24,17 @@
                invisible="context.get('hide_verificacion_ia', False)"/>
         <field name="matricula"/>
         <field name="direction"/>
+        <field name="export_destination_type"/>
         <field name="remitente"/>
         <field name="consignatario"/>
         <field name="oficina"/>
         <field name="mrn"/>
+        <field name="levante_estado_color" widget="badge"
+               decoration-muted="levante_estado_color == 'pendiente'"
+               decoration-info="levante_estado_color in ('admitido', 'control')"
+               decoration-warning="levante_estado_color == 'levante'"
+               decoration-success="levante_estado_color in ('salida', 'cerrado')"
+               decoration-danger="levante_estado_color == 'error'"/>
         <field name="aes_estado"/>
         <field name="aes_circuito"/>
         <field name="iva_exportacion_exento" widget="boolean_toggle"/>
@@ -94,6 +101,9 @@
                   attrs="{'invisible': [('direction', '!=', 'import')]}"/>
           <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+          <button name="action_consultar_estado_importacion" string="(Import) Consultar Estado" type="object"
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
+                  help="Consulta importación CAU/H1 por MRN mediante ConsultaImportacionV3."/>
           <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
                   attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
 
@@ -200,9 +210,17 @@
             <group>
               <field name="name"/>
               <field name="direction"/>
+              <field name="export_destination_type" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="state" readonly="1"/>
               <field name="lrn"/>
               <field name="mrn"/>
+              <field name="levante_estado_color" widget="badge"
+                     decoration-muted="levante_estado_color == 'pendiente'"
+                     decoration-info="levante_estado_color in ('admitido', 'control')"
+                     decoration-warning="levante_estado_color == 'levante'"
+                     decoration-success="levante_estado_color in ('salida', 'cerrado')"
+                     decoration-danger="levante_estado_color == 'error'"
+                     attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="aes_estado" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="aes_circuito" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="iva_exportacion_exento" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
@@ -354,7 +372,9 @@
                 <field name="valor_factura"/>
                 <field name="moneda"/>
                 <field name="pais_origen"/>
-                <field name="pais_destino"/>
+                <field name="pais_destino"
+                       string="País destino (ISO)"
+                       attrs="{'readonly': [('direction', '=', 'export'), ('export_destination_type', '=', 'andorra')]}"/>
                 <field name="region_of_dispatch" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               </group>
             </page>

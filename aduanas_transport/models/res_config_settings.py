@@ -24,6 +24,12 @@ class ResConfigSettings(models.TransientModel):
     # Import
     aeat_endpoint_imp_decl = fields.Char(string="Endpoint Declaración Importación", config_parameter="aduanas_transport.endpoint.imp_decl",
         default="https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP")
+    aeat_endpoint_imp_query = fields.Char(
+        string="Endpoint consulta importación (V3)",
+        config_parameter="aduanas_transport.endpoint.imp_query",
+        default="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
+        help="Consulta completa de importación CAU/H1 por MRN. Preproducción: prewww1; producción: www1.agenciatributaria.gob.es.",
+    )
     # Bandeja
     aeat_endpoint_bandeja = fields.Char(string="Endpoint Bandeja", config_parameter="aduanas_transport.endpoint.bandeja",
         default="https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP")

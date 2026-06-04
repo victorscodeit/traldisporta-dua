@@ -172,6 +172,10 @@ class AduanaXmlParser(models.AbstractModel):
             error_elements = (
                 root.findall(".//Error") + 
                 root.findall(".//{*}Error") +
+                root.findall(".//FunctionalError") +
+                root.findall(".//{*}FunctionalError") +
+                root.findall(".//XMLError") +
+                root.findall(".//{*}XMLError") +
                 root.findall(".//ERROR") +
                 root.findall(".//{*}ERROR") +
                 root.findall(".//CodigoError") +
@@ -214,7 +218,12 @@ class AduanaXmlParser(models.AbstractModel):
                 
                 # Buscar más información en elementos hijos
                 for child in err:
-                    if child.tag.endswith("Tipo") or child.tag.endswith("Type"):
+                    local_child = self._local_name(child.tag)
+                    if local_child in ("errorDescription", "errorText"):
+                        incidencia_data["mensaje"] = child.text or incidencia_data["mensaje"]
+                    elif local_child in ("errorCode", "errorReason"):
+                        incidencia_data["codigo"] = child.text or incidencia_data["codigo"]
+                    elif child.tag.endswith("Tipo") or child.tag.endswith("Type"):
                         incidencia_data["tipo"] = child.text or incidencia_data["tipo"]
                     elif child.tag.endswith("Descripcion") or child.tag.endswith("Description"):
                         incidencia_data["mensaje"] = child.text or incidencia_data["mensaje"]

@@ -90,9 +90,13 @@ class AduanaExpediente(models.Model):
 
     name = fields.Char(string="Referencia", required=True, copy=False, readonly=True, default=lambda self: _("Nuevo"))
     direction = fields.Selection([
-        ("export", "España → Andorra (Exportación)"),
+        ("export", "España → país tercero (Exportación)"),
         ("import", "Andorra → España (Importación)"),
     ], string="Sentido", required=True, default="export", tracking=True)
+    export_destination_type = fields.Selection([
+        ("andorra", "España → Andorra"),
+        ("other", "España → otro país"),
+    ], string="Destino exportación", default="andorra", tracking=True)
 
     # Datos clave (ingresan desde MSoft)
     remitente = fields.Many2one("res.partner", string="Remitente")
@@ -153,7 +157,10 @@ class AduanaExpediente(models.Model):
 
     # Países
     pais_origen = fields.Char(default="ES")
-    pais_destino = fields.Char(default="AD")
+    pais_destino = fields.Char(
+        default="AD",
+        help="Código ISO del país destino. En exportación a otro país, indique el país tercero (ej. CH, GB, MA).",
+    )
     region_of_dispatch = fields.Char(string="Región de expedición", default="46", help="Código región española (ej. 46 Cataluña). Obligatorio cuando countryOfExport es ES (error 1877).")
 
     # Identificadores aduaneros
@@ -195,6 +202,15 @@ class AduanaExpediente(models.Model):
     fecha_levante_salida = fields.Datetime(string="Fecha levante salida", readonly=True)
     iva_exportacion_exento = fields.Boolean(string="IVA exportación exento", readonly=True, tracking=True,
                                             help="Se marca cuando AEAT comunica salida efectiva (estado AES SA / IE599-equivalente).")
+    levante_estado_color = fields.Selection([
+        ("pendiente", "Pendiente"),
+        ("admitido", "Admitido / MRN"),
+        ("control", "En control"),
+        ("levante", "Levante"),
+        ("salida", "Salida efectiva"),
+        ("cerrado", "Cerrado"),
+        ("error", "Error"),
+    ], string="Estado levante/salida", compute="_compute_levante_estado_color", store=True)
 
     # Respuesta EXS (IE615/IE628)
     exs_circuito = fields.Char(string="Circuito EXS", readonly=True, help="V=verde, N=naranja, R=rojo")
@@ -447,6 +463,39 @@ class AduanaExpediente(models.Model):
         ("error","Error"),
     ], default="draft", tracking=True)
 
+    @api.depends("state", "aes_estado", "mrn", "fecha_levante", "fecha_salida_real", "iva_exportacion_exento")
+    def _compute_levante_estado_color(self):
+        for rec in self:
+            aes_estado = (rec.aes_estado or "").upper()
+            if rec.state == "error":
+                rec.levante_estado_color = "error"
+            elif rec.state == "closed":
+                rec.levante_estado_color = "cerrado"
+            elif rec.state == "exited" or rec.iva_exportacion_exento or aes_estado in ("SA", "SE"):
+                rec.levante_estado_color = "salida"
+            elif rec.state == "released" or rec.fecha_levante or aes_estado in ("DE", "DS", "PS"):
+                rec.levante_estado_color = "levante"
+            elif aes_estado in ("PL", "RE", "RQ") or rec.state == "presented":
+                rec.levante_estado_color = "control"
+            elif rec.mrn or rec.state == "accepted":
+                rec.levante_estado_color = "admitido"
+            else:
+                rec.levante_estado_color = "pendiente"
+
+    @api.onchange("direction", "export_destination_type")
+    def _onchange_export_destination_type(self):
+        for rec in self:
+            if rec.direction == "export" and rec.export_destination_type == "andorra":
+                rec.pais_origen = "ES"
+                rec.pais_destino = "AD"
+            elif rec.direction == "export" and rec.export_destination_type == "other":
+                rec.pais_origen = "ES"
+                if (rec.pais_destino or "").upper() == "AD":
+                    rec.pais_destino = False
+            elif rec.direction == "import":
+                rec.pais_origen = "AD"
+                rec.pais_destino = "ES"
+
     @api.depends("incidencia_ids", "incidencia_ids.state")
     def _compute_incidencias_count(self):
         """Calcula número de incidencias"""
@@ -644,6 +693,8 @@ class AduanaExpediente(models.Model):
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
             "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl")
             or "https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP",
+            "aeat_endpoint_imp_query": icp.get_param("aduanas_transport.endpoint.imp_query")
+            or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
             "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja")
             or "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP",
             "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615")
@@ -1926,6 +1977,74 @@ class AduanaExpediente(models.Model):
                 raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
         return True
 
+    def _build_imp_query_v3_soap_envelope(self):
+        """Consulta completa de importación CAU/H1 por MRN (ConsultaImportacionV3Ent)."""
+        self.ensure_one()
+        if not self.mrn:
+            raise UserError(_("Debe tener un MRN antes de consultar el estado de importación."))
+        now = fields.Datetime.now()
+        prep_time = now.strftime("%Y-%m-%dT%H:%M:%S")
+        msg_id = "%s-IMPQ3-%s" % ((self.name or self.mrn).replace(" ", "")[:20], now.strftime("%Y%m%d%H%M%S"))
+        ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ConsultaImportacionV3Ent.xsd"
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:imp="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<imp:ConsultaImportacionV3Ent>
+<Message>
+<messageIdentification>%s</messageIdentification>
+<preparationDateAndTime>%s</preparationDateAndTime>
+</Message>
+<ConsultaCompleta>
+<MRN>%s</MRN>
+</ConsultaCompleta>
+</imp:ConsultaImportacionV3Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (ns, xml_escape(msg_id[:40]), prep_time, xml_escape(self.mrn))
+
+    def action_consultar_estado_importacion(self):
+        """Consulta importación CAU/H1 por MRN mediante ConsultaImportacionV3."""
+        client = self.env["aduanas.aeat.client"]
+        parser = self.env["aduanas.xml.parser"]
+        for rec in self:
+            if rec.direction != "import":
+                raise UserError(_("La consulta de importación solo aplica a expedientes de importación."))
+            settings = rec._get_settings()
+            endpoint = settings.get("aeat_endpoint_imp_query")
+            if not endpoint:
+                raise UserError(_("Configure el endpoint de consulta importación en Aduanas > Configuración."))
+            soap_payload = rec._build_imp_query_v3_soap_envelope()
+            rec._attach_xml("%s_IMP_QUERY_V3_request.xml" % rec.name, soap_payload)
+            rec._post_chatter_soap_xml(
+                "ConsultaImportacionV3",
+                endpoint,
+                soap_payload,
+                filename="%s_IMP_QUERY_V3_request.xml" % rec.name,
+            )
+            status_code, resp_xml = client.send_xml(endpoint, soap_payload, service="IMP_QUERY_V3", timeout=60)
+            rec._attach_xml("%s_IMP_QUERY_V3_response.xml" % rec.name, resp_xml or "")
+            rec.last_response_date = fields.Datetime.now()
+            if status_code != 200:
+                rec.state = "error"
+                rec.error_message = _("AEAT respondió HTTP %s al consultar importación. Revisar adjunto de respuesta.") % status_code
+                raise UserError(rec.error_message)
+            parsed = parser.parse_aeat_response(resp_xml or "", "IMP_QUERY_V3")
+            if parsed.get("errors"):
+                rec.error_message = "\n".join(parsed.get("errors") or [])
+                if parsed.get("incidencias"):
+                    rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
+                raise UserError(_("La consulta de importación devolvió errores:\n%s") % rec.error_message)
+            if parsed.get("mrn"):
+                rec.mrn = parsed["mrn"]
+            rec.error_message = False
+            if rec.state in ("draft", "predeclared", "presented"):
+                rec.state = "accepted"
+            rec.with_context(mail_notrack=True).message_post(
+                body=_("Consulta importación V3 realizada correctamente para MRN %s.") % (rec.mrn or "-"),
+                subtype_xmlid="mail.mt_note",
+            )
+        return True
+
     # ===== Bandeja AEAT (común) =====
     def action_poll_bandeja(self, limit=50):
         client = self.env["aduanas.aeat.client"]
@@ -1941,11 +2060,14 @@ class AduanaExpediente(models.Model):
                     "maxm": limit,
                 }
             )
-            status_code, resp = client.send_xml(settings.get("aeat_endpoint_bandeja"), xml, service="BANDEJA")
+            endpoint = settings.get("aeat_endpoint_bandeja")
+            ultimo_inicial = rec.bandeja_last_num
+            status_code, resp = client.send_xml(endpoint, xml, service="BANDEJA")
             if status_code != 200:
                 rec.error_message = _("Bandeja AEAT respondió HTTP %s.") % status_code
                 raise UserError(rec.error_message)
-            rec._attach_xml("%s_BANDEJA_response_%s.xml" % (rec.name, rec.bandeja_last_num + 1), resp or "")
+            response_filename = "%s_BANDEJA_response_%s.xml" % (rec.name, rec.bandeja_last_num + 1)
+            rec._attach_xml(response_filename, resp or "")
             bandeja = parser.parse_bandeja_response(resp or "")
             rec.last_response_date = fields.Datetime.now()
             if bandeja.get("last_message_num"):
@@ -1984,9 +2106,21 @@ class AduanaExpediente(models.Model):
             if not processed_count and not bandeja.get("errors"):
                 rec.with_context(mail_notrack=True).message_post(
                     body=_(
-                        "Bandeja AEAT consultada: no hay comunicaciones nuevas para este MRN. "
-                        "Último número procesado: %s. Mensajes de otros MRN ignorados: %s."
-                    ) % (rec.bandeja_last_num, skipped_count),
+                        "Bandeja AEAT consultada correctamente (HTTP %s).<br/>"
+                        "Endpoint: <code>%s</code><br/>"
+                        "Bandeja: <code>%s</code>. Desde mensaje: %s. Último número procesado: %s.<br/>"
+                        "Mensajes AEAT encontrados para este MRN: 0. Mensajes de otros MRN ignorados: %s.<br/>"
+                        "Respuesta adjunta: <code>%s</code> (%s bytes)."
+                    ) % (
+                        status_code,
+                        endpoint or "-",
+                        codigo,
+                        ultimo_inicial,
+                        rec.bandeja_last_num,
+                        skipped_count,
+                        response_filename,
+                        len(resp or ""),
+                    ),
                     subtype_xmlid="mail.mt_note",
                 )
 

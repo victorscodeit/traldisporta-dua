@@ -64,6 +64,13 @@ class AduanaValidator(models.AbstractModel):
             errors.append(_("La oficina aduanera debe ser 4 dígitos (ej: 0801) o código AES de 8 caracteres (ej: ES000801, ES001741)"))
         elif expediente.oficina_destino and not self.validate_oficina_aduana(expediente.oficina_destino):
             errors.append(_("La oficina de salida debe ser 4 dígitos (ej: 1741) o código AES de 8 caracteres (ej: ES001741)"))
+
+        if expediente.direction == "export":
+            pais_destino = (expediente.pais_destino or "").strip().upper()
+            if not re.match(r"^[A-Z]{2}$", pais_destino):
+                errors.append(_("El país destino debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
+            elif expediente.export_destination_type == "other" and pais_destino == "AD":
+                errors.append(_("Para 'España → otro país', el país destino no puede ser AD. Seleccione Andorra o indique otro código ISO."))
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
