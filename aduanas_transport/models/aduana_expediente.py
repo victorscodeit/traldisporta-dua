@@ -808,23 +808,27 @@ class AduanaExpediente(models.Model):
 
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
-        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl") or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
+        company = self.env.company
+        def _company_or_param(company_field, param_key, default):
+            return (getattr(company, company_field, False) or icp.get_param(param_key) or default)
+        def _endpoint_imp_decl():
+            endpoint = _company_or_param(
+                "aeat_endpoint_imp_decl",
+                "aduanas_transport.endpoint.imp_decl",
+                "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP",
+            )
+            if "ADIM-JDIT/ws/imp/DeclaracionSOAP" in endpoint:
+                return "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
+            return endpoint
         return {
-            "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c")
-            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
-            "aeat_endpoint_cc511c": icp.get_param("aduanas_transport.endpoint.cc511c")
-            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP",
-            "aeat_endpoint_ccaesc": icp.get_param("aduanas_transport.endpoint.ccaesc")
-            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP",
-            "aeat_endpoint_cc507c": icp.get_param("aduanas_transport.endpoint.cc507c")
-            or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
-            "aeat_endpoint_imp_decl": imp_decl_endpoint,
-            "aeat_endpoint_imp_query": icp.get_param("aduanas_transport.endpoint.imp_query")
-            or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
-            "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja")
-            or "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP",
-            "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615")
-            or "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
+            "aeat_endpoint_cc515c": _company_or_param("aeat_endpoint_cc515c", "aduanas_transport.endpoint.cc515c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP"),
+            "aeat_endpoint_cc511c": _company_or_param("aeat_endpoint_cc511c", "aduanas_transport.endpoint.cc511c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP"),
+            "aeat_endpoint_ccaesc": _company_or_param("aeat_endpoint_ccaesc", "aduanas_transport.endpoint.ccaesc", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP"),
+            "aeat_endpoint_cc507c": _company_or_param("aeat_endpoint_cc507c", "aduanas_transport.endpoint.cc507c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP"),
+            "aeat_endpoint_imp_decl": _endpoint_imp_decl(),
+            "aeat_endpoint_imp_query": _company_or_param("aeat_endpoint_imp_query", "aduanas_transport.endpoint.imp_query", "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"),
+            "aeat_endpoint_bandeja": _company_or_param("aeat_endpoint_bandeja", "aduanas_transport.endpoint.bandeja", "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP"),
+            "aeat_endpoint_ie615": _company_or_param("aeat_endpoint_ie615", "aduanas_transport.endpoint.ie615", "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP"),
         }
 
     def _attach_xml(self, filename, xml_text, mimetype="application/xml"):
@@ -926,7 +930,7 @@ class AduanaExpediente(models.Model):
         """Identificador del firmante para cabecera MESSAGE (sin prefijo ES en los ejemplos AES)."""
         self.ensure_one()
         icp = self.env["ir.config_parameter"].sudo()
-        forced = icp.get_param("aduanas_transport.aeat_nif_firmante")
+        forced = self.env.company.aeat_nif_firmante or icp.get_param("aduanas_transport.aeat_nif_firmante")
         candidate = forced or (self.env.company.vat or "") or (self.remitente and self.remitente.vat) or ""
         sender = self._nif_core(candidate)
         if not sender:
@@ -1182,7 +1186,9 @@ class AduanaExpediente(models.Model):
             raise UserError(_("Para presentar como representante (agente), la empresa actual debe tener NIF/CIF configurado."))
         # Firmante = quien firma con el certificado (siempre la empresa cuando es representación; remitente en autodespacho). Override por config opcional.
         icp = self.env["ir.config_parameter"].sudo()
-        nif_firmante_config = (icp.get_param("aduanas_transport.aeat_nif_firmante") or "").replace(" ", "").strip().upper()
+        nif_firmante_config = (
+            company.aeat_nif_firmante or icp.get_param("aduanas_transport.aeat_nif_firmante") or ""
+        ).replace(" ", "").strip().upper()
         if nif_firmante_config:
             nif_firmante = nif_firmante_config
         else:

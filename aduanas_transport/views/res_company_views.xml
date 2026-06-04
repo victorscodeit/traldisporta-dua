@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="view_company_form_aduanas_aeat" model="ir.ui.view">
+    <field name="name">res.company.form.aduanas.aeat</field>
+    <field name="model">res.company</field>
+    <field name="inherit_id" ref="base.view_company_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//notebook" position="inside">
+        <page string="Aduanas AEAT" name="aduanas_aeat">
+          <group string="Endpoints AEAT">
+            <group string="Exportación AES">
+              <field name="aeat_endpoint_cc515c"/>
+              <field name="aeat_endpoint_cc511c"/>
+              <field name="aeat_endpoint_ccaesc"/>
+              <field name="aeat_endpoint_cc507c"/>
+            </group>
+            <group string="Importación H1">
+              <field name="aeat_endpoint_imp_decl"/>
+              <field name="aeat_endpoint_imp_query"/>
+            </group>
+            <group string="Bandeja y EXS">
+              <field name="aeat_endpoint_bandeja"/>
+              <field name="aeat_endpoint_ie615"/>
+            </group>
+          </group>
+          <group string="Certificado electrónico AEAT">
+            <group>
+              <field name="aeat_cert_attachment_id" readonly="1"/>
+              <field name="aeat_cert_upload" filename="aeat_cert_upload_filename"/>
+              <field name="aeat_cert_upload_filename" invisible="1"/>
+              <field name="aeat_cert_password" password="True"/>
+              <field name="aeat_nif_firmante" placeholder="Opcional"/>
+            </group>
+            <group>
+              <div class="text-muted">
+                Suba el certificado .p12/.pfx y su contraseña para que las llamadas AEAT usen certificado cliente.
+                Los endpoints vienen configurados en preproducción y pueden modificarse aquí si AEAT los cambia.
+              </div>
+            </group>
+          </group>
+        </page>
+      </xpath>
+    </field>
+  </record>
+</odoo>

@@ -12,6 +12,7 @@
         "security/ir.model.access.csv",
         "data/ir_sequence.xml",
         "views/res_config_settings_views.xml",
+        "views/res_company_views.xml",
         "views/aduanas_config_views.xml",
         "views/aduana_expediente_views.xml",
         "views/aduana_incidencia_views.xml",

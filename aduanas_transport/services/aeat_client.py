@@ -91,9 +91,13 @@ class AduanasAeatClient(models.AbstractModel):
         Obtiene (cert_pem_path, key_pem_path) para requests usando el P12 configurado.
         Convierte P12 a PEM con cryptography. Retorna (None, None) si no hay cert o falla.
         """
+        company = self.env.company
         icp = self.env["ir.config_parameter"].sudo()
-        attach_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
-        password = (icp.get_param("aduanas_transport.cert_password") or "").strip()
+        attach_id = (
+            company.aeat_cert_attachment_id.id
+            or int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
+        )
+        password = (company.aeat_cert_password or icp.get_param("aduanas_transport.cert_password") or "").strip()
         if not attach_id or not password:
             return None, None
         attachment = self.env["ir.attachment"].sudo().browse(attach_id)

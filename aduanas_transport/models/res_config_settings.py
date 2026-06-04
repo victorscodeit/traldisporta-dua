@@ -93,6 +93,11 @@ class ResConfigSettings(models.TransientModel):
     def get_values(self):
         res = super().get_values()
         icp = self.env["ir.config_parameter"].sudo()
+        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl") or ""
+        if "ADIM-JDIT/ws/imp/DeclaracionSOAP" in imp_decl_endpoint:
+            imp_decl_endpoint = "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
+            icp.set_param("aduanas_transport.endpoint.imp_decl", imp_decl_endpoint)
+            res["aeat_endpoint_imp_decl"] = imp_decl_endpoint
         attach_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
         # Devolver siempre el ID (entero), no el recordset, para evitar "can't adapt type 'ir.attachment'" al guardar
         res.update(cert_attachment_id=attach_id or False)
@@ -101,6 +106,12 @@ class ResConfigSettings(models.TransientModel):
     def set_values(self):
         super().set_values()
         icp = self.env["ir.config_parameter"].sudo()
+        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl") or ""
+        if "ADIM-JDIT/ws/imp/DeclaracionSOAP" in imp_decl_endpoint:
+            icp.set_param(
+                "aduanas_transport.endpoint.imp_decl",
+                "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP",
+            )
         if self.cert_upload:
             name = self.cert_upload_filename or "cert_aeat.p12"
             if not name.lower().endswith((".p12", ".pfx")):
