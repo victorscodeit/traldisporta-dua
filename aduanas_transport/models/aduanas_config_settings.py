@@ -13,6 +13,7 @@ class AduanasConfigSettings(models.TransientModel):
     aeat_endpoint_imp_query = fields.Char(string="Endpoint consulta importación (V3)")
     aeat_endpoint_bandeja = fields.Char(string="Endpoint Bandeja")
     aeat_endpoint_ie615 = fields.Char(string="Endpoint EXS (IE615 V5)")
+    aeat_endpoint_g4_dec = fields.Char(string="Endpoint G4 depósito temporal (G4Dec)")
 
     cert_attachment_id = fields.Many2one("ir.attachment", string="Certificado actual", readonly=True)
     cert_upload = fields.Binary(string="Subir certificado P12/PFX")
@@ -35,6 +36,7 @@ class AduanasConfigSettings(models.TransientModel):
         "aeat_endpoint_imp_query": ("aduanas_transport.endpoint.imp_query", "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"),
         "aeat_endpoint_bandeja": ("aduanas_transport.endpoint.bandeja", "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP"),
         "aeat_endpoint_ie615": ("aduanas_transport.endpoint.ie615", "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP"),
+        "aeat_endpoint_g4_dec": ("aduanas_transport.endpoint.g4_dec", "https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP"),
         "cert_password": ("aduanas_transport.cert_password", ""),
         "aeat_nif_firmante": ("aduanas_transport.aeat_nif_firmante", ""),
         "msoft_dsn": ("aduanas_transport.msoft.dsn", ""),

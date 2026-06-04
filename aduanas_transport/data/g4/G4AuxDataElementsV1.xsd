@@ -1,0 +1,780 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:bt="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxBasicTypesV1.xsd" xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" elementFormDefault="qualified" attributeFormDefault="qualified" version="1.0">
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxBasicTypesV1.xsd" schemaLocation="G4AuxBasicTypesV1.xsd"/>
+	<xs:annotation>
+		<xs:documentation xml:lang="en">G4 data elements</xs:documentation>
+		<xs:documentation xml:lang="es">Elementos de datos del G4
+			v0.1 	Versión inicial desarrollo
+			v0.4 	SpecificCircumstanceTd cambia de formato de AlphaNumUp_3 a AlphaNumUpMax_3
+					LocationOfGoodsTd.LocAddId cambia de formato de TokenMax_4 a TokenMax_8
+			v0.5 	PrevDocRef se marca como opcional (minOccurs="0"), funcionalmente será condicional controlado por el PrevDocType
+			v0.6	Cambio de nombre del tipo "DeclarationSimpTd" a "DeclarationRevokeTd"
+					Creación de nuevo tipo "DeclarationSimpTd" para nuevo web service G4SimpV1.wsdl
+					Modificación de elemento no usado "MasterConsignmentSimpTd"
+					Eliminación de elementos no usados "HouseConsignmentSimpTd" y "ItemSimpTd"
+					Creación de nuevo tipo "PreviousDocumentSimpTd" para el "MasterConsignmentSimpTd"
+			v1.0	CommodityCode en tipo CommodityTd se marca como opcional (minOccurs="0")
+		</xs:documentation>
+	</xs:annotation>
+	<!-- **** REQUEST messages groups **** -->
+	<!-- MENSAGE  petition data type -->
+	<xs:complexType name="MessageTd">
+		<xs:sequence>
+			<xs:element name="Sender" type="ActorIdTd"/>
+			<xs:element name="Recipient" type="ExecEnvironmentTd"/>
+			<xs:element name="MessageId" type="MessageIdTd"/>
+			<xs:element name="PreparationDateAndTime" type="DateTime19"/>
+			<xs:element name="TestIndicator" type="TestIndicatorTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- DECLARATION petition data type -->
+	<xs:complexType name="DeclarationTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="LRN_Td"/>
+			<xs:element name="SupervisingCustomsOffice" type="CustomsOfficeTd"/>
+			<xs:element name="EstimatedDateAndTimeOfArrival" type="DateTime19"/>
+			<xs:element name="Declarant" type="DeclarantTd"/>
+			<xs:element name="Representative" type="RepresentativeTd" minOccurs="0"/>
+			<xs:element name="SpecificCircumstance" type="SpecificCircumstanceTd" minOccurs="0"/>
+			<xs:element name="Authorisation" type="AuthorisationTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="HolderTransitProcedure" type="DeclarantTd" minOccurs="0"/>
+			<xs:element name="DepartureCustomsOffice" type="CustomsOfficeTd" minOccurs="0"/>
+			<xs:element name="MC_MasterConsignment" type="MasterConsignmentTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- MASTER CONSIGNMENT petition data type -->
+	<xs:complexType name="MasterConsignmentTd">
+		<xs:sequence>
+			<xs:element name="TransportDocument" type="TransportDocumentTd" minOccurs="0"/>
+			<xs:element name="UCR" type="UCR_Td" minOccurs="0"/>
+			<xs:element name="ArrivalTransportMeans" type="TransportMeansTd" minOccurs="0"/>
+			<xs:element name="PlaceOfLoading" type="PlaceTd" minOccurs="0"/>
+			<xs:element name="PlaceOfUnloading" type="PlaceTd" minOccurs="0"/>
+			<xs:element name="LocationOfGoods" type="LocationOfGoodsTd" minOccurs="0"/>
+			<xs:element name="Warehouse" type="WarehouseTd" minOccurs="0"/>
+			<xs:element name="Consignor" type="ActorTd" minOccurs="0"/>
+			<xs:element name="Consignee" type="ActorTd" minOccurs="0"/>
+			<xs:element name="NotifyParty" type="ActorTd" minOccurs="0"/>
+			<xs:element name="TotalGrossMass" type="GrossMassTd" minOccurs="0"/>
+			<xs:element name="TransportEquipment" type="TransportEquipmentTd" minOccurs="0" maxOccurs="9999"/>
+			<xs:element name="Receptacle" type="ReceptacleTd" minOccurs="0" maxOccurs="9999"/>
+			<xs:element name="PreviousDocument" type="PreviousDocumentTd" minOccurs="0" maxOccurs="9999"/>
+			<xs:element name="SupportingDocument" type="SupportingDocumentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="AdditionalInformationTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalSupplyChainActor" type="AdditionalSupplyChainActorTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="DeclarationType" type="DeclarationTypeTd" minOccurs="0"/>
+			<xs:element name="DestinationCountry" type="CountryTd" minOccurs="0"/>
+			<xs:element name="MI_MasterConsignment_Item" type="ItemTd" minOccurs="0" maxOccurs="9999"/>
+			<xs:element name="HC_HouseConsignment" type="HouseConsignmentTd" minOccurs="0" maxOccurs="99999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- HOUSE CONSIGNMENT petition data type -->
+	<xs:complexType name="HouseConsignmentTd">
+		<xs:sequence>
+			<xs:element name="TransportDocument" type="TransportDocumentTd"/>
+			<xs:element name="UCR" type="UCR_Td" minOccurs="0"/>
+			<xs:element name="Consignor" type="ActorTd"/>
+			<xs:element name="Consignee" type="ActorTd"/>
+			<xs:element name="NotifyParty" type="ActorTd" minOccurs="0"/>
+			<xs:element name="TotalGrossMass" type="GrossMassTd"/>
+			<xs:element name="TransportEquipment" type="TransportEquipmentTd" minOccurs="0" maxOccurs="9999"/>
+			<xs:element name="PreviousDocument" type="PreviousDocumentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="SupportingDocumentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="AdditionalReferenceTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="AdditionalInformationTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalSupplyChainActor" type="AdditionalSupplyChainActorTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="DeclarationType" type="DeclarationTypeTd" minOccurs="0"/>
+			<xs:element name="DestinationCountry" type="CountryTd" minOccurs="0"/>
+			<xs:element name="HI_HouseConsignment_Item" type="ItemTd" minOccurs="1" maxOccurs="9999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- ITEM petition data type -->
+	<xs:complexType name="ItemTd">
+		<xs:sequence>
+			<xs:element name="GoodsItemNumber" type="GoodsItemNumberTd"/>
+			<xs:element name="DeclarationGoodsItemNumber" type="GoodsItemNumberTd" minOccurs="0"/>
+			<xs:element name="Commodity" type="CommodityTd"/>
+			<xs:element name="GrossMass" type="GrossMassTd"/>
+			<xs:element name="Packaging" type="PackagingTd" minOccurs="1" maxOccurs="99"/>
+			<xs:element name="TransportEquipment" type="TransportEquipmentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="PreviousDocumentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="SupportingDocumentTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="AdditionalReferenceTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="AdditionalInformationTd" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalSupplyChainActor" type="AdditionalSupplyChainActorTd" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- DECLARATION SIMPLIFIED petition data type -->
+	<xs:complexType name="DeclarationSimpTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="LRN_Td"/>
+			<xs:element name="SupervisingCustomsOffice" type="CustomsOfficeTd"/>
+			<xs:element name="EstimatedDateAndTimeOfArrival" type="DateTime19"/>
+			<xs:element name="Declarant" type="DeclarantTd"/>
+			<xs:element name="Representative" type="RepresentativeTd" minOccurs="0"/>
+			<xs:element name="MC_MasterConsignment" type="MasterConsignmentSimpTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- MASTER CONSIGNMENT SIMPLIFIED petition data type -->
+	<xs:complexType name="MasterConsignmentSimpTd">
+		<xs:sequence>
+			<xs:element name="TransportDocument" type="TransportDocumentTd" minOccurs="0"/>
+			<xs:element name="LocationOfGoods" type="LocationOfGoodsTd"/>
+			<xs:element name="Warehouse" type="WarehouseTd" minOccurs="0"/>
+			<xs:element name="PreviousDocument" type="PreviousDocumentSimpTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- PREVIOUS DOCUMENT SIMPLIFIED petition data type -->
+	<xs:complexType name="PreviousDocumentSimpTd">
+		<xs:sequence>
+			<xs:element name="PrevDocType" type="DocType4"/>
+			<xs:element name="PrevDocRef" type="DocRefLongTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- DECLARATION REVOKE petition data type -->
+	<xs:complexType name="DeclarationRevokeTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="LRN_Td"/>
+			<xs:element name="SupervisingCustomsOffice" type="CustomsOfficeTd"/>
+			<xs:element name="Declarant" type="DeclarantTd"/>
+			<xs:element name="Representative" type="RepresentativeTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- NOTIFICATION ATM petition data type -->
+	<xs:complexType name="NotifATMTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="LRN_Td"/>
+			<xs:element name="ArrivalCustomsOffice" type="CustomsOfficeTd"/>
+			<xs:element name="ArrivalTransportMeans" type="TransportMeansTd"/>
+			<xs:element name="Declarant" type="DeclarantTd"/>
+			<xs:element name="Representative" type="RepresentativeTd" minOccurs="0"/>
+			<xs:element name="EstimatedDateAndTimeOfArrival" type="DateTime19" minOccurs="0"/>
+			<xs:element name="CountriesRoutingTransportMeans" type="CountriesRoutingTransportMeansTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- DECLARATION RESPONSE petition data type -->
+	<xs:complexType name="DeclarationSalTd">
+		<xs:sequence>
+			<xs:element name="Declarant" type="DeclarantTd"/>
+			<xs:element name="Representative" type="RepresentativeTd" minOccurs="0"/>
+			<xs:element name="SpecificCircumstance" type="SpecificCircumstanceTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- ///////////////// MESSAGE data types ///////////////// -->
+	<xs:simpleType name="MessageIdTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Unique Id of the message. Must be unique for each sending. The sender must guarantee uniqueness.</xs:documentation>
+			<xs:documentation xml:lang="es">Identificador único del mensaje. Debe ser único para cada envío. El remitente deberá garantizar la unicidad.</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:TokenMax_40">
+			<xs:minLength value="5"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TestIndicatorTd">
+		<xs:annotation>
+			<xs:documentation>Indicador de Test</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:length value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="ExecEnvironmentTd">
+		<xs:annotation>
+			<xs:documentation>Remitente del mensaje de respuesta</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="ES.AEAT">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Fixed value for production environment (when the End Point of real sendings is used)</xs:documentation>
+					<xs:documentation xml:lang="es">Valor fijo para el entorno de Producción (cuando se usa el End Point principal de envíos reales)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PRE.AEAT">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Fixed value for test environment (when the End Point of test sendings is used)</xs:documentation>
+					<xs:documentation xml:lang="es">Valor fijo para el entorno de Preproducción (cuando se usa el End Point de Pruebas)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DES.AEAT">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Fixed value for developing environment (not used for any End Point published)</xs:documentation>
+					<xs:documentation xml:lang="es">Valor fijo para el entorno de Desarrollo (no utilizado para ningún End Point publicado)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DateTime14">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Date-time in format YYYYMMDDhhmmss</xs:documentation>
+			<xs:documentation xml:lang="es">Fecha-hora en formato YYYYMMDDhhmmss</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:DateTime14"/>
+	</xs:simpleType>
+	<xs:simpleType name="DateTime19">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Date-time in format YYYY-MM-DDThh:mm:ss</xs:documentation>
+			<xs:documentation xml:lang="es">Fecha-hora en formato YYYY-MM-DDThh:mm:ss</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:DateTime19"/>
+	</xs:simpleType>
+	<!-- ///////////////// DECLARATION data types ///////////////// -->
+	<xs:simpleType name="LRN_Td">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Local Reference Number. Any reference number unique in the Declarant information systems for every G4 goods presentation</xs:documentation>
+			<xs:documentation xml:lang="es">Número de Refernencia Local. Cualquier número de referencia único en los sistemas de información del declarante por cada presentación de mercancías G4</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:TokenMax_22"/>
+	</xs:simpleType>
+	<xs:simpleType name="VisitIdTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Scale number assgined to the vessel</xs:documentation>
+			<xs:documentation xml:lang="es">Número de escala asignado al buque</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:token">
+			<xs:length value="12"/>
+			<xs:pattern value="[0-9]{12}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="CustomsOfficeTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Customs office (COL code as published in CS/RD2). E.g..: ES002801</xs:documentation>
+			<xs:documentation xml:lang="es">Recinto aduanero (código de las COL publicado en CS/RD2). Ej.: ES002801</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:token">
+			<xs:length value="8"/>
+			<xs:pattern value="[A-Z]{2}[A-Z0-9]{6}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="SpecificCircumstanceTd">
+		<xs:restriction base="bt:AlphaNumUpMax_3"/>
+	</xs:simpleType>
+	<!-- ///////////////// ACTORS data types ///////////////// -->
+	<xs:complexType name="DeclarantTd">
+		<xs:sequence>
+			<xs:element name="Id" type="ActorIdTd"/>
+			<xs:element name="Name" type="bt:TokenMax_70"/>
+			<xs:element name="FullAddress" type="FullAddressTd"/>
+			<xs:element name="Communication" type="CommunicationTd" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="FullAddressTd">
+		<xs:sequence>
+			<xs:element name="Street" type="bt:TokenMax_70" minOccurs="0"/>
+			<xs:element name="StreetAdditionalLine" type="bt:TokenMax_70" minOccurs="0"/>
+			<xs:element name="Number" type="bt:TokenMax_35" minOccurs="0"/>
+			<xs:element name="POBox" type="bt:TokenMax_70" minOccurs="0"/>
+			<xs:element name="SubDivision" type="bt:TokenMax_35" minOccurs="0"/>
+			<xs:element name="Country" type="CountryTd"/>
+			<xs:element name="PostCode" type="bt:TokenMax_17" minOccurs="0"/>
+			<xs:element name="City" type="bt:TokenMax_35"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RepresentativeTd">
+		<xs:sequence>
+			<xs:element name="Id" type="ActorIdTd"/>
+			<xs:element name="Status" type="StatusTd"/>
+			<xs:element name="Name" type="bt:TokenMax_70"/>
+			<xs:element name="FullAddress" type="FullAddressTd"/>
+			<xs:element name="Communication" type="CommunicationTd" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ActorTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Information on actor (natural or legal person) participating in the G4 declaration</xs:documentation>
+			<xs:documentation xml:lang="es">Información de actor (persona física o jurídica) participante en la declaración G4</xs:documentation>
+		</xs:annotation>
+		<xs:group ref="ActorInfoGroup"/>
+	</xs:complexType>
+	<xs:group name="ActorInfoGroup">
+		<xs:sequence>
+			<xs:element name="Id" type="ActorIdTd" minOccurs="0"/>
+			<xs:element name="TypeOfPerson" type="TypeOfPersonTd"/>
+			<xs:element name="Name" type="bt:TokenMax_70"/>
+			<xs:element name="FullAddress" type="FullAddressTd"/>
+			<xs:element name="Communication" type="CommunicationTd" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:group>
+	<xs:simpleType name="ActorIdTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">EORI or National or another personal Id</xs:documentation>
+			<xs:documentation xml:lang="es">Código del NIF, EORI o número de identificación</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:token">
+			<xs:minLength value="9"/>
+			<xs:maxLength value="17"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="TypeOfPersonTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Check allowed codes in CL729 codelist</xs:documentation>
+			<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la lista de códigos CL729</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:Numeric_1">
+			<xs:enumeration value="1">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Natural person</xs:documentation>
+					<xs:documentation xml:lang="es">Persona física</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="2">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Legal person</xs:documentation>
+					<xs:documentation xml:lang="es">Persona jurídica</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="3">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Association of persons</xs:documentation>
+					<xs:documentation xml:lang="es">Asociación de personas</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="StatusTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Status of the representative (type of representation)</xs:documentation>
+			<xs:documentation xml:lang="es">Estatuto del representante (tipo de representación)</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:Numeric_1">
+			<xs:enumeration value="2">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Direct representation within the meaning of Article 18(1) of the Code.</xs:documentation>
+					<xs:documentation xml:lang="es">Representación directa a tenor del artículo 18, apartado 1, del Código</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="3">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Indirect representation within the meaning of Article 18(1) of the Code.</xs:documentation>
+					<xs:documentation xml:lang="es">Representación indirecta a tenor del artículo 18, apartado 1, del Código.</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="CommunicationTd">
+		<xs:sequence>
+			<xs:element name="CommType" type="bt:TokenMax_3">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Check allowed codes in CL441 codelist</xs:documentation>
+					<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la lista de códigos CL441</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="CommId" type="DescriptionTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AdditionalSupplyChainActorTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">@TODO</xs:documentation>
+			<xs:documentation xml:lang="es">@TODO</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="AscaRole" type="bt:AlphaNumUpMax_3"/>
+			<xs:element name="Id" type="ActorIdTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- ///////////////// DOCUMENTS data types ///////////////// -->
+	<xs:simpleType name="DescriptionTd">
+		<xs:restriction base="bt:TokenMax_512"/>
+	</xs:simpleType>
+	<xs:simpleType name="DocType4">
+		<xs:restriction base="bt:AlphaNumUp_4"/>
+	</xs:simpleType>
+	<xs:simpleType name="DocTypeMax4">
+		<xs:restriction base="bt:AlphaNumUpMax_4"/>
+	</xs:simpleType>
+	<xs:simpleType name="DocType5">
+		<xs:restriction base="bt:AlphaNumUp_5"/>
+	</xs:simpleType>
+	<xs:simpleType name="DocRefLongTd">
+		<xs:restriction base="bt:TokenMax_70"/>
+	</xs:simpleType>
+	<xs:simpleType name="DocRefShortTd">
+		<xs:restriction base="bt:TokenMax_35"/>
+	</xs:simpleType>
+	<xs:simpleType name="TransDocRefTd">
+		<xs:restriction base="bt:AlphaNumUpMax_70"/>
+	</xs:simpleType>
+	<xs:complexType name="TransportDocumentTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Transport document</xs:documentation>
+			<xs:documentation xml:lang="es">Documento de transporte</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="TransDocType" type="DocType4">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Check allowed codes in the G4 web services technical guide</xs:documentation>
+					<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la guía técnica de servicios web G4</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="TransDocRef" type="TransDocRefTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="UCR_Td">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">This entry concerns the unique commercial reference number assigned by the person concerned to the consignment in question. It may take the form of WCO (ISO 15459) codes or equivalent. It provides access to underlying commercial data of interest to customs.</xs:documentation>
+			<xs:documentation xml:lang="es">Número de referencia/ RUE. Este elemento de dato podrá adoptar la forma de los códigos OMA (ISO 15459) o equivalentes.</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="DocRefShortTd"/>
+	</xs:simpleType>
+	<xs:complexType name="PreviousDocumentTd">
+		<xs:sequence>
+			<xs:element name="PrevDocType" type="DocType4">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Check allowed codes in the G4 web services technical guide</xs:documentation>
+					<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la guía técnica de servicios web G4</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="PrevDocRef" type="DocRefLongTd" minOccurs="0"/>
+			<xs:element name="PrevDocGoodsItem" type="GoodsItemNumberTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AdditionalInformationTd">
+		<xs:sequence>
+			<xs:element name="AddInfoCode" type="DocType5" minOccurs="0"/>
+			<xs:element name="AddInfoText" type="DescriptionTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AdditionalReferenceTd">
+		<xs:sequence>
+			<xs:element name="AddRefType" type="DocType4">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">The list of admissible codes is contained in the TARIC database</xs:documentation>
+					<xs:documentation xml:lang="es">La lista de códigos admisible figura en la base de datos TARIC</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="SupportingDocumentTd">
+		<xs:sequence>
+			<xs:element name="SupDocType" type="DocType4">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">The list of admissible codes is contained in the TARIC database</xs:documentation>
+					<xs:documentation xml:lang="es">La lista de códigos admisible figura en la base de datos TARIC</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="SupDocRef" type="DocRefLongTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AuthorisationTd">
+		<xs:sequence>
+			<xs:element name="AuthType" type="DocTypeMax4">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Check allowed codes in the G4 web services technical guide</xs:documentation>
+					<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la guía técnica de servicios web G4</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="AuthRef" type="DocRefLongTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- ///////////////// PLACES data types ///////////////// -->
+	<xs:simpleType name="CountryTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">UN location code</xs:documentation>
+			<xs:documentation xml:lang="es">Código de localización de Naciones Unidas</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaUp_2"/>
+	</xs:simpleType>
+	<xs:complexType name="WarehouseTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Temporary storage warehouse authorization reference number</xs:documentation>
+			<xs:documentation xml:lang="es">Código de autorización para la explotación de instalaciones ADT</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="WarehouseType" type="bt:AlphaUp_1"/>
+			<xs:element name="WarehouseId" type="bt:TokenMax_35"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PlaceTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Place identification</xs:documentation>
+			<xs:documentation xml:lang="es">Identificador de lugar</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:choice>
+				<xs:element name="UNLocCode">
+					<xs:annotation>
+						<xs:documentation xml:lang="en">UN location code</xs:documentation>
+						<xs:documentation xml:lang="es">Código de localización de Naciones Unidas</xs:documentation>
+					</xs:annotation>
+					<xs:simpleType>
+						<xs:restriction base="bt:TokenMax_17"/>
+					</xs:simpleType>
+				</xs:element>
+				<xs:sequence>
+					<xs:element name="Country" type="CountryTd"/>
+					<xs:element name="Location">
+						<xs:annotation>
+							<xs:documentation xml:lang="en">UN location code</xs:documentation>
+							<xs:documentation xml:lang="es">Código de localización de Naciones Unidas</xs:documentation>
+						</xs:annotation>
+						<xs:simpleType>
+							<xs:restriction base="bt:TokenMax_35"/>
+						</xs:simpleType>
+					</xs:element>
+				</xs:sequence>
+			</xs:choice>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="LocationOfGoodsTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Location of goods</xs:documentation>
+			<xs:documentation xml:lang="es">Localización de las mercancías</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="LocType" type="bt:AlphaUp_1"/>
+			<xs:element name="LocQualifier" type="bt:AlphaUp_1"/>
+			<xs:choice>
+				<xs:element name="LocCoded">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:choice>
+								<xs:element name="LocUNLocCode">
+									<xs:annotation>
+										<xs:documentation xml:lang="en">UN location code</xs:documentation>
+										<xs:documentation xml:lang="es">Código de localización de Naciones Unidas</xs:documentation>
+									</xs:annotation>
+									<xs:simpleType>
+										<xs:restriction base="bt:TokenMax_17"/>
+									</xs:simpleType>
+								</xs:element>
+								<xs:element name="LocCustomsOffice">
+									<xs:complexType>
+										<xs:sequence>
+											<xs:element name="Reference" type="bt:TokenMax_17">
+												<xs:annotation>
+													<xs:documentation xml:lang="en">Customs office reference number</xs:documentation>
+													<xs:documentation xml:lang="es">Código de aduana</xs:documentation>
+												</xs:annotation>
+											</xs:element>
+										</xs:sequence>
+									</xs:complexType>
+								</xs:element>
+								<xs:element name="LocGPS">
+									<xs:annotation>
+										<xs:documentation xml:lang="en">GPS coordinates. Decimal degrees with negative numbers for South and West. Examples:  40.462974°/-3.669839° or  59.435962°/ 24.752662°</xs:documentation>
+										<xs:documentation xml:lang="es">Coordenadas GPS. Se emplearán grados decimales y número negativos para el Sur y el Oeste. Ejemplos:  40.462974°/-3.669839° or  59.435962°/ 24.752662°</xs:documentation>
+									</xs:annotation>
+									<xs:complexType>
+										<xs:sequence>
+											<xs:element name="Latitude" type="bt:TokenMax_17"/>
+											<xs:element name="Longitude" type="bt:TokenMax_17"/>
+										</xs:sequence>
+									</xs:complexType>
+								</xs:element>
+								<xs:element name="LocEconomicOperator">
+									<xs:complexType>
+										<xs:sequence>
+											<xs:element name="LocEcoOpId" type="bt:TokenMax_17">
+												<xs:annotation>
+													<xs:documentation xml:lang="en">EORI or other Id number</xs:documentation>
+													<xs:documentation xml:lang="es">EORI u otro identificador</xs:documentation>
+												</xs:annotation>
+											</xs:element>
+										</xs:sequence>
+									</xs:complexType>
+								</xs:element>
+								<xs:element name="LocAuthNumber" type="bt:TokenMax_35">
+									<xs:annotation>
+										<xs:documentation xml:lang="en">Number assigned to the location according to the customs codification</xs:documentation>
+										<xs:documentation xml:lang="es">Número asignado a la ubicación según la codificación de la aduana</xs:documentation>
+									</xs:annotation>
+								</xs:element>
+							</xs:choice>
+							<xs:element name="LocAddId" type="bt:TokenMax_8" minOccurs="0"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="LocAddress">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="LocStreetAndNumber" type="bt:TokenMax_70"/>
+							<xs:element name="LocPostCode" type="bt:AlphaNumUpMax_17"/>
+							<xs:element name="LocCity" type="bt:TokenMax_35"/>
+							<xs:element name="LocCountry" type="bt:AlphaUp_2"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="LocPostCodeAddress">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="LocPostCode" type="bt:AlphaNumUpMax_17"/>
+							<xs:element name="LocHouseNumber" type="bt:TokenMax_35"/>
+							<xs:element name="LocCountry" type="bt:AlphaUp_2"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+			</xs:choice>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- ///////////////// GOODS ITEMS data types ///////////////// -->
+	<xs:simpleType name="GoodsItemNumberTd">
+		<xs:restriction base="bt:Integer_5"/>
+	</xs:simpleType>
+	<xs:complexType name="CommodityTd">
+		<xs:sequence>
+			<xs:element name="CommodityCode" type="CommodityCodeTd" minOccurs="0"/>
+			<xs:element name="CusCode" type="CusCodeTd" minOccurs="0"/>
+			<xs:element name="DescriptionOfGoods" type="DescriptionOfGoodsTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="PackagingTd">
+		<xs:annotation>
+			<xs:documentation>
+				Bultos
+			</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="PackagingType" type="bt:AlphaNumUp_2">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Type of packages. The code-list corresponds to the latest version of UN/ECE Recommendations nº 21</xs:documentation>
+					<xs:documentation xml:lang="es">Tipo de bultos. La lista de códigos corresponde a la última versión de la Recomendación nº 21 de la CEPE/NU</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="NumberOfPackages" type="bt:Integer_8" minOccurs="0">
+				<xs:annotation>
+					<xs:documentation>
+						Número de bultos
+						Number of packages
+						Number of packages
+					</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="ShippingMarks" type="DescriptionTd" minOccurs="0">
+				<xs:annotation>
+					<xs:documentation>
+						Marcas de expedición
+						Shipping marks
+					</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="GrossMassTd">
+		<xs:restriction base="xs:decimal">
+			<xs:totalDigits value="16"/>
+			<xs:fractionDigits value="6"/>
+			<xs:minInclusive value="0"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="CommodityCodeTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Commodity code</xs:documentation>
+			<xs:documentation xml:lang="es">Código de mercancía</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="HarmonizedSystem" type="bt:AlphaNumUp_6"/>
+			<xs:element name="CombinedNomenclature" type="bt:AlphaNumUp_2" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="DescriptionOfGoodsTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Description of goods</xs:documentation>
+			<xs:documentation xml:lang="es">Descripción de las mercancías</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="DescriptionTd"/>
+	</xs:simpleType>
+	<xs:simpleType name="CusCodeTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">The Customs Union and Statistics (CUS) number is the Id assigned within the European Customs Inventory of Chemical Substances (ECICS) to mainly chemical substances and preparations. The declarant may provide this code on a voluntary basis where no TARIC measure exists for the goods concerned, i.e. where providing this code would represent a lesser burden than a full textual description of the product.</xs:documentation>
+			<xs:documentation xml:lang="es">Descripción de las mercancías</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUp_9"/>
+	</xs:simpleType>
+	<!-- G4+D3 -->
+	<xs:simpleType name="DeclarationTypeTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Declaration type</xs:documentation>
+			<xs:documentation xml:lang="es">Tipo de declaración</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUpMax_5"/>
+	</xs:simpleType>
+	<!-- ///////////////// TRANSPORT MEANS AND EQUIPMENTS data types ///////////////// -->
+	<xs:complexType name="TransportMeansTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Id of the means of transport to be used for the movement of goods</xs:documentation>
+			<xs:documentation xml:lang="es">Identificador del medio de transporte que se empleará para el movimiento de la mercancía</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element name="TransportMeansType" type="bt:Numeric_2">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Check allowed codes in CL803 codelist.</xs:documentation>
+					<xs:documentation xml:lang="es">Comprobar los códigos permitidos en la lista de códigos CL803</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="TransportMeansId" type="bt:TokenMax_35"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="CountriesRoutingTransportMeansTd">
+		<xs:sequence>
+			<xs:element name="Country" type="CountryTd" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="ReceptacleTd">
+		<xs:restriction base="bt:TokenMax_35"/>
+	</xs:simpleType>
+	<xs:complexType name="TransportEquipmentTd">
+		<xs:sequence>
+			<xs:element name="ContId" type="bt:AlphaNumUpMax_17"/>
+			<xs:element name="ContPackedStatus" type="bt:AlphaNumUpMax_3" minOccurs="0"/>
+			<xs:element name="NumberOfSeals" type="bt:Integer_2" minOccurs="0"/>
+			<xs:sequence>
+				<xs:element name="SealId" type="bt:AlphaNumUpMax_20" minOccurs="0" maxOccurs="99"/>
+			</xs:sequence>
+		</xs:sequence>
+	</xs:complexType>
+	<!-- RESPONSE messages data types -->
+	<xs:simpleType name="ResponseCodeTd">
+		<xs:annotation>
+			<xs:documentation>Petición aceptada/rechazada</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUp_2">
+			<xs:length value="2"/>
+			<xs:enumeration value="AC">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Accepted request</xs:documentation>
+					<xs:documentation xml:lang="es">Petición aceptada</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="RE">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Rejected request</xs:documentation>
+					<xs:documentation xml:lang="es">Petición rechazada</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="ReleaseCodeTd">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Release code of the goods</xs:documentation>
+			<xs:documentation xml:lang="es">Código de levante de las mercancías</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUp_2"/>
+	</xs:simpleType>
+	<xs:simpleType name="CSV_Td">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Secure Verification Code</xs:documentation>
+			<xs:documentation xml:lang="es">Código Seguro de Verificación</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:token">
+			<xs:length value="16"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="MRN_Td">
+		<xs:annotation>
+			<xs:documentation xml:lang="en">Movement Reference Number (MRN) used for MRN of G4</xs:documentation>
+			<xs:documentation xml:lang="es">Movement Reference Number (MRN) empleado para el MRN del G4</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:token">
+			<xs:length value="18"/>
+			<xs:pattern value="[0-9]{2}[A-Z]{2}[A-Z0-9]{14}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="PackagesTd">
+		<xs:annotation>
+			<xs:documentation>
+						Número de bultos
+						Number of packages
+					</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:Integer_8"/>
+	</xs:simpleType>
+</xs:schema>

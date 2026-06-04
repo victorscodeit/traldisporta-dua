@@ -27,6 +27,7 @@
             <group string="Importación (DUA)">
               <field name="aeat_endpoint_imp_decl" placeholder="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"/>
               <field name="aeat_endpoint_imp_query" placeholder="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"/>
+              <field name="aeat_endpoint_g4_dec" placeholder="https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP"/>
             </group>
             <group string="Bandeja AEAT">
               <field name="aeat_endpoint_bandeja" placeholder="https://..."/>

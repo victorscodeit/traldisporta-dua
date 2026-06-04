@@ -14,9 +14,10 @@
           <field name="state" widget="statusbar" statusbar_visible="draft,generated,presented,accepted,error"/>
         </header>
         <sheet>
-          <div class="alert alert-warning" role="alert">
-            Servicio G4 separado de CC415A/H1. La presentación automática se implementará en una fase posterior.
-            Puede registrar aquí el MRN obtenido externamente y pulsar «Aplicar MRN al expediente».
+          <div class="alert alert-info" role="alert">
+            Servicio <strong>G4Dec</strong> (depósito temporal), endpoint distinto de CC415A/H1.
+            Flujo: Generar XML → Presentar G4 → si AEAT acepta, el MRN se aplica al expediente (mrn_ddt).
+            También puede pegar un MRN obtenido fuera y usar «Aplicar MRN al expediente».
           </div>
           <group>
             <field name="expediente_id" readonly="1"/>
@@ -26,6 +27,14 @@
             <field name="endpoint_url"/>
             <field name="error_message" readonly="1"/>
           </group>
+          <notebook>
+            <page string="XML petición" attrs="{'invisible': [('request_xml', '=', False)]}">
+              <field name="request_xml" nolabel="1" readonly="1"/>
+            </page>
+            <page string="XML respuesta" attrs="{'invisible': [('response_xml', '=', False)]}">
+              <field name="response_xml" nolabel="1" readonly="1"/>
+            </page>
+          </notebook>
         </sheet>
       </form>
     </field>

@@ -28,6 +28,7 @@
                         <div class="o_setting_left_pane">
                             <field name="aeat_endpoint_imp_decl"/>
                             <field name="aeat_endpoint_imp_query"/>
+                            <field name="aeat_endpoint_g4_dec"/>
                         </div>
                         <div class="o_setting_right_pane">
                             <label for="aeat_endpoint_imp_decl"/>

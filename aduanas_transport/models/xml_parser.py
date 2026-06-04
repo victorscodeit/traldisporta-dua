@@ -67,6 +67,9 @@ class AduanaXmlParser(models.AbstractModel):
             aes = self.parse_aes_export_response(xml_text, service_name)
             return self._aes_to_legacy_parse(aes)
 
+        if service_name == "G4_DEC":
+            return self.parse_g4_dec_response(xml_text)
+
         if service_name == "BANDEJA":
             bandeja = self.parse_bandeja_response(xml_text)
             legacy = {"success": True, "messages": [], "errors": bandeja.get("errors") or [], "incidencias": []}
@@ -388,6 +391,56 @@ class AduanaXmlParser(models.AbstractModel):
         """Extrae MRN de una respuesta XML (método legacy para compatibilidad)"""
         parsed = self.parse_aeat_response(xml_text)
         return parsed.get("mrn")
+
+    def parse_g4_dec_response(self, xml_text):
+        """Parsea respuesta G4DecV1Sal (aceptación AC / rechazo RE)."""
+        if not xml_text or not xml_text.strip():
+            return {"success": False, "errors": [_("Respuesta vacía")], "mrn": None, "lrn": None}
+        try:
+            root, _used_lxml = _parse_with_lxml_recover(xml_text)
+            if root is None:
+                root = ET.fromstring(xml_text)
+            response_code = self._find_first_text(root, "ResponseCode")
+            mrn = self._find_first_text(root, "MRN")
+            lrn = self._find_first_text(root, "LRN")
+            if not mrn:
+                mrn = _extract_mrn_from_raw_text(xml_text)
+            errors = []
+            for code in self._find_all_text(root, "ErrorCode"):
+                desc = ""
+                errors.append(code)
+            for desc in self._find_all_text(root, "ErrorDescription"):
+                if desc:
+                    errors.append(desc)
+            for info in self._find_all_text(root, "ErrorInfo"):
+                if info and info not in errors:
+                    errors.append(info)
+            if not errors and response_code == "RE":
+                errors.append(_("Rechazo G4 sin detalle en la respuesta"))
+            success = (response_code or "").upper() == "AC" or (
+                not errors and bool(mrn) and (response_code or "").upper() != "RE"
+            )
+            return {
+                "success": success,
+                "mrn": mrn,
+                "lrn": lrn,
+                "response_code": response_code,
+                "errors": errors,
+                "raw_xml": xml_text if not success else None,
+            }
+        except ParseError as e:
+            mrn = _extract_mrn_from_raw_text(xml_text)
+            if mrn:
+                return {"success": True, "mrn": mrn, "lrn": None, "errors": [], "response_code": "AC"}
+            return {
+                "success": False,
+                "errors": [_("Error parseando XML G4: %s") % str(e)],
+                "mrn": None,
+                "lrn": None,
+            }
+        except Exception as e:
+            _logger.exception("Error parseando respuesta G4Dec")
+            return {"success": False, "errors": [str(e)], "mrn": None, "lrn": None}
 
     def parse_ie615_response(self, xml_text):
         """

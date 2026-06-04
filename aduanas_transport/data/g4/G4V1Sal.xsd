@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4V1Sal.xsd" xmlns:bt="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxBasicTypesV1.xsd" xmlns:de="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4V1Sal.xsd" elementFormDefault="qualified" attributeFormDefault="qualified" version="0.1">
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" schemaLocation="G4AuxDataElementsV1.xsd"/>
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxBasicTypesV1.xsd" schemaLocation="G4AuxBasicTypesV1.xsd"/>
+	<xs:annotation>
+		<xs:documentation xml:lang="en">G4 shipping notification response message schema</xs:documentation>
+		<xs:documentation xml:lang="es">Esquema del mensaje de respuesta de la notificación de expedición de G4
+v0.1 Versión inicial desarrollo		
+		</xs:documentation>
+	</xs:annotation>
+	<!-- Respuesta estándar -->
+	<xs:complexType name="G4Sal">
+		<xs:sequence>
+			<xs:element name="Message" type="MessageSalTd"/>
+			<xs:element name="ResponseCode" type="de:ResponseCodeTd"/>
+			<xs:choice>
+				<xs:sequence>
+					<xs:element name="Accepted" type="AcceptedSalTd"/>
+					<xs:element name="ReleaseInfo" type="ReleaseInfoTd" minOccurs="0"/>
+					<xs:element name="InfoGIs" type="InfoGIsTd" minOccurs="0"/>
+				</xs:sequence>
+				<xs:element name="Rejected" type="RejectedSalTd"/>
+			</xs:choice>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MessageSalTd">
+		<xs:sequence>
+			<xs:element name="Sender" type="de:ExecEnvironmentTd"/>
+			<xs:element name="Recipient" type="de:ActorIdTd"/>
+			<xs:element name="MessageId" type="de:MessageIdTd"/>
+			<xs:element name="CorrId" type="de:MessageIdTd"/>
+			<xs:element name="PreparationDateAndTime" type="de:DateTime19"/>
+			<xs:element name="TestIndicator" type="de:TestIndicatorTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AcceptedSalTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="de:LRN_Td"/>
+			<xs:element name="MRN" type="de:MRN_Td"/>
+			<xs:element name="MRN_Aux" type="de:MRN_Td" minOccurs="0"/>
+			<xs:element name="DeclarationCSV" type="de:CSV_Td"/>
+			<xs:element name="Warnings" type="WarningsTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ReleaseInfoTd">
+		<xs:sequence>
+			<xs:element name="ReleaseCode" type="de:ReleaseCodeTd" minOccurs="0"/>
+			<xs:element name="MC_MasterConsignment" type="MasterConsignmentPresSalTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MasterConsignmentPresSalTd">
+		<xs:sequence>
+			<xs:element name="TransportDocument" type="de:TransportDocumentTd" minOccurs="0"/>
+			<xs:element name="ReleaseCode" type="de:ReleaseCodeTd" minOccurs="0"/>
+			<xs:element name="HC_HouseConsignment" type="HouseConsignmentPresSalTd" minOccurs="0" maxOccurs="99999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="HouseConsignmentPresSalTd">
+		<xs:sequence>
+			<xs:element name="TransportDocument" type="de:TransportDocumentTd"/>
+			<xs:element name="ReleaseCode" type="de:ReleaseCodeTd" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RejectedSalTd">
+		<xs:sequence>
+			<xs:element name="LRN" type="de:LRN_Td" minOccurs="0"/>
+			<xs:element name="MRN" type="de:MRN_Td" minOccurs="0"/>
+			<xs:element name="Errors" type="ErrorsTd"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ErrorsTd">
+		<xs:sequence>
+			<xs:element name="Error" type="ErrorTd" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ErrorTd">
+		<xs:sequence>
+			<xs:element name="ErrorCode" type="bt:Integer_4"/>
+			<xs:element name="ErrorTransDocRef" type="de:DocRefLongTd" minOccurs="0"/>
+			<xs:element name="ErrorGoodsItemNumber" type="de:GoodsItemNumberTd" minOccurs="0"/>
+			<xs:element name="ErrorPointer" type="bt:TokenMax_512" minOccurs="0"/>
+			<xs:element name="ErrorDescription" type="bt:TokenMax_2048" minOccurs="0"/>
+			<xs:element name="ErrorInfo" type="bt:TokenMax_2048" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="WarningsTd">
+		<xs:sequence>
+			<xs:element name="Warning" type="WarningTd" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="WarningTd">
+		<xs:sequence>
+			<xs:element name="WarningCode" type="bt:Integer_4"/>
+			<xs:element name="WarningTransDocRef" type="de:DocRefLongTd" minOccurs="0"/>
+			<xs:element name="WarningGoodsItemNumber" type="de:GoodsItemNumberTd" minOccurs="0"/>
+			<xs:element name="WarningPointer" type="bt:TokenMax_512" minOccurs="0"/>
+			<xs:element name="WarningDescription" type="bt:TokenMax_2048" minOccurs="0"/>
+			<xs:element name="WarningInfo" type="bt:TokenMax_2048" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="PCOCustomsResolutionTd">
+		<xs:annotation>
+			<xs:documentation>Resolución de la aduana</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUp_2">
+			<xs:length value="2"/>
+			<xs:enumeration value="AC">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Correction proposal accepted</xs:documentation>
+					<xs:documentation xml:lang="es">Propuesta de corrección aceptada</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="RE">
+				<xs:annotation>
+					<xs:documentation xml:lang="en">Correction proposal rejected</xs:documentation>
+					<xs:documentation xml:lang="es">Propuesta de corrección rechazada</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="PCORejectReasonTd">
+		<xs:annotation>
+			<xs:documentation>Motivo de rechazo de PCO</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="bt:AlphaNumUp_2">
+			<xs:length value="2"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<!-- Grupo información de partidas de G4 -->
+	<xs:complexType name="InfoGIsTd">
+		<xs:sequence>
+			<xs:element name="GoodsItem" minOccurs="1" maxOccurs="99999">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="DeclarationGoodsItemNumber" type="de:GoodsItemNumberTd"/>
+						<xs:element name="TransDocRef" type="de:TransDocRefTd"/>
+						<xs:element name="GoodsItemNumber" type="de:GoodsItemNumberTd"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+</xs:schema>

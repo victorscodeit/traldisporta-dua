@@ -794,7 +794,7 @@ class AduanaExpediente(models.Model):
         )
 
     def action_abrir_g4_ddt(self):
-        """Abre el registro stub G4 (presentación futura, MRN manual hoy)."""
+        """Abre el registro G4 (G4Dec) vinculado al expediente de importación."""
         self.ensure_one()
         if self.direction != "import":
             raise UserError(_("Solo en expedientes de importación."))
@@ -857,7 +857,7 @@ class AduanaExpediente(models.Model):
                 icon = "✅" if ok else "⬜"
                 rows.append("<li>%s %s</li>" % (icon, html_escape(label)))
             ddt_step = (
-                "<li><strong>Si requiere DDT:</strong> presentar G4/DDT (botón G4, integración futura) "
+                "<li><strong>Si requiere DDT:</strong> presentar G4/DDT (botón «0. G4 / DDT» → Generar y Presentar G4) "
                 "o indicar <strong>MRN DDT</strong> obtenido externamente.</li>"
                 if rec.requiere_ddt
                 else "<li><strong>Sin DDT previo:</strong> puede ir directo a CC415A (no marque «Requiere DDT»).</li>"
@@ -1097,6 +1097,8 @@ class AduanaExpediente(models.Model):
             "aeat_endpoint_imp_query": icp.get_param("aduanas_transport.endpoint.imp_query") or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
             "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja") or "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP",
             "aeat_endpoint_ie615": icp.get_param("aduanas_transport.endpoint.ie615") or "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
+            "aeat_endpoint_g4_dec": icp.get_param("aduanas_transport.endpoint.g4_dec")
+            or "https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP",
         }
 
     def _attach_xml(self, filename, xml_text, mimetype="application/xml"):

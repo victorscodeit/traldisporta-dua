@@ -28,6 +28,7 @@ def migrate_aeat_config_to_companies(env):
         ("aeat_endpoint_imp_query", "aduanas_transport.endpoint.imp_query", "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"),
         ("aeat_endpoint_bandeja", "aduanas_transport.endpoint.bandeja", "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP"),
         ("aeat_endpoint_ie615", "aduanas_transport.endpoint.ie615", "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP"),
+        ("aeat_endpoint_g4_dec", "aduanas_transport.endpoint.g4_dec", "https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP"),
     ]
 
     attach_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)

@@ -13,6 +13,7 @@ class ResCompany(models.Model):
         "aeat_endpoint_imp_query": "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
         "aeat_endpoint_bandeja": "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP",
         "aeat_endpoint_ie615": "https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
+        "aeat_endpoint_g4_dec": "https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP",
         "aeat_cert_password": "",
         "aeat_nif_firmante": "",
     }
@@ -25,6 +26,7 @@ class ResCompany(models.Model):
         "aeat_endpoint_imp_query": "aduanas_transport.endpoint.imp_query",
         "aeat_endpoint_bandeja": "aduanas_transport.endpoint.bandeja",
         "aeat_endpoint_ie615": "aduanas_transport.endpoint.ie615",
+        "aeat_endpoint_g4_dec": "aduanas_transport.endpoint.g4_dec",
         "aeat_cert_attachment_id": "aduanas_transport.cert_attachment_id",
         "aeat_cert_password": "aduanas_transport.cert_password",
         "aeat_nif_firmante": "aduanas_transport.aeat_nif_firmante",
@@ -79,6 +81,13 @@ class ResCompany(models.Model):
         compute="_compute_aeat_config",
         inverse="_inverse_aeat_config",
         readonly=False,
+    )
+    aeat_endpoint_g4_dec = fields.Char(
+        string="Endpoint G4 depósito temporal (G4Dec)",
+        compute="_compute_aeat_config",
+        inverse="_inverse_aeat_config",
+        readonly=False,
+        help="Alta DDT/G4 (G4DecV1SOAP, ADDS-JDIT). Distinto de CC415A importación.",
     )
 
     aeat_cert_attachment_id = fields.Many2one(

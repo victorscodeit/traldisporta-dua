@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4DecV1Sal.xsd" xmlns:sal="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4V1Sal.xsd" targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4DecV1Sal.xsd" elementFormDefault="qualified" attributeFormDefault="qualified" version="0.1">
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4V1Sal.xsd" schemaLocation="G4V1Sal.xsd"/>
+	<xs:annotation>
+		<xs:documentation xml:lang="en">G4 shipping notification response message schema</xs:documentation>
+		<xs:documentation xml:lang="es">Esquema del mensaje de respuesta de la notificación de expedición de G4
+			v0.1 Versión inicial desarrollo
+			v0.4 Elemento ErrorInfo y WarningInfo añadidos
+		</xs:documentation>
+	</xs:annotation>
+	<xs:element name="G4DecV1Sal" type="sal:G4Sal"/>
+</xs:schema>

@@ -43,6 +43,19 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="aduanas_transport.endpoint.ie615",
         default="https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP",
         help="Presentación DUA EXS. Preproducción: prewww1.aeat.es; Producción: www1.agenciatributaria.gob.es")
+    aeat_endpoint_g4_dec = fields.Char(
+        string="Endpoint G4 depósito temporal (G4Dec)",
+        config_parameter="aduanas_transport.endpoint.g4_dec",
+        default="https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP",
+        help="Alta DDT/G4 (G4DecV1SOAP). No confundir con CC415A (ADIP-JDIT).",
+    )
+
+    aeat_endpoint_g4_dec = fields.Char(
+        string="Endpoint G4 depósito temporal (G4Dec)",
+        config_parameter="aduanas_transport.endpoint.g4_dec",
+        default="https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP",
+        help="Alta DDT/G4 (G4DecV1SOAP). No confundir con CC415A (ADIP-JDIT).",
+    )
 
     # Certificado electrónico AEAT (autenticación cliente HTTPS; evita 403 en Presentar DUA)
     cert_password = fields.Char(

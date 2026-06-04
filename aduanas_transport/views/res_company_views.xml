@@ -19,6 +19,7 @@
             <group string="Importación H1">
               <field name="aeat_endpoint_imp_decl"/>
               <field name="aeat_endpoint_imp_query"/>
+              <field name="aeat_endpoint_g4_dec"/>
             </group>
             <group string="Bandeja y EXS">
               <field name="aeat_endpoint_bandeja"/>

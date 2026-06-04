@@ -84,7 +84,7 @@
           <!-- Importación H1 -->
           <button name="action_abrir_g4_ddt" string="0. G4 / DDT (MRN)" type="object"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="Registro G4 separado de CC415A. Integración AEAT pendiente; puede aplicar MRN manual al expediente."/>
+                  help="G4Dec (depósito temporal): generar y presentar DDT/G4; el MRN se copia a «MRN DDT/G4» del expediente."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
                   help="Comprueba datos obligatorios antes de generar CC415A."/>

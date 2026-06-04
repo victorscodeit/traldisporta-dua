@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4DecV1Ent.xsd" xmlns:de="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4DecV1Ent.xsd" elementFormDefault="qualified" attributeFormDefault="unqualified" version="0.1">
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adds/jdit/g4/ws/G4AuxDataElementsV1.xsd" schemaLocation="G4AuxDataElementsV1.xsd"/>
+	<xs:annotation>
+		<xs:documentation xml:lang="en">G4 request message schema for temporary storage of goods
+		</xs:documentation>
+		<xs:documentation xml:lang="es">Esquema del mensaje G4 de declaración de depósito temporal de mercancías
+		v0.1 Versión inicial desarrollo
+		v0.2 HCs fuera del MC y cuando desconsolidan se envían referencia simple al conocimiento del MC y los HC completos
+		v0.4 SpecificCircumstanceTd cambia de formato de AlphaNumUp_3 a AlphaNumUpMax_3
+			 LocationOfGoodsTd.LocAddId cambia de formato de TokenMax_4 a TokenMax_8
+		</xs:documentation>
+	</xs:annotation>
+	<xs:element name="G4DecV1Ent">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="MES_Message" type="de:MessageTd"/>
+				<xs:element name="DEC_Declaration" type="de:DeclarationTd"/>
+			</xs:sequence>
+			<xs:attribute name="endPoint" type="xs:string" use="optional"/>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>

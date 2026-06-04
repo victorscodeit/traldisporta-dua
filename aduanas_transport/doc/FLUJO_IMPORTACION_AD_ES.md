@@ -4,7 +4,7 @@
 
 | Servicio | Modelo Odoo (stub/real) | Endpoint típico | XML raíz |
 |----------|-------------------------|-----------------|----------|
-| **G4 / depósito temporal** | `aeat.import.g4.temporary.storage` | Propio G4 (futuro) | Propio G4 |
+| **G4 / depósito temporal** | `aeat.import.g4.temporary.storage` | G4DecV1SOAP | G4DecV1SOAP |
 | **G3 presentación** | `aeat.import.g3.presentation` | Propio G3 (futuro) | Propio G3 |
 | **Importación H1** | `aduana.expediente` (CC415A) | `CC415AV1SOAP` | `CC415AV1Ent` |
 
@@ -29,9 +29,9 @@ No se genera bloque `PreviousDocument` N337 en el XML.
 
 ### Con DDT previo (`requiere_ddt = true`)
 
-1. **0. G4 / DDT** — abre registro stub G4 (presentación AEAT pendiente).
-   - Hoy: registrar MRN manualmente en el formulario G4 y **Aplicar MRN al expediente**.
-   - Futuro: **Generar XML G4** → **Presentar G4** (endpoint propio).
+1. **0. G4 / DDT** — registro G4: **Generar XML G4** → **Presentar G4** (endpoint `G4DecV1SOAP`).
+   - Si AEAT acepta, el MRN se aplica al expediente (`mrn_ddt`).
+   - Alternativa: MRN manual en el formulario G4 → **Aplicar MRN al expediente**.
 2. Completar `mrn_ddt`, tipo DSDT/G4, partidas DDT en líneas.
 3. **1. Validar** → **2. Generar CC415A** (incluye N337 por partida) → **4. Presentar**.
 4. Guardar `mrn` importación → consultar estado y bandeja.
