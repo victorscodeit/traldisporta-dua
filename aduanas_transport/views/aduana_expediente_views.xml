@@ -233,6 +233,7 @@
               <field name="oficina_destino" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>
+              <field name="import_delivery_location" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
           </group>
@@ -344,6 +345,7 @@
                   <field name="item_number"/>
                   <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                   <field name="partida"/>
+                  <field name="taric_completo"/>
                   <field name="descripcion"/>
                   <field name="unidades" sum="Total"/>
                   <field name="bultos" sum="Total"/>

@@ -4,6 +4,7 @@ from odoo.tools import html_escape
 import base64
 import logging
 import time
+import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 _logger = logging.getLogger(__name__)
 
@@ -30,6 +31,10 @@ class AduanaExpedienteLine(models.Model):
                                  help="Factura del expediente de la que proviene esta línea, si aplica")
     item_number = fields.Integer(string="Nº línea", default=1)
     partida = fields.Char(string="Partida arancelaria (NC)")
+    taric_completo = fields.Char(
+        string="TARIC completo",
+        help="Código TARIC de 10 dígitos que se enviará en importación H1. Si está vacío se usará la partida arancelaria.",
+    )
     descripcion = fields.Char()
     unidades = fields.Float(string="Unidades", default=1.0)
     bultos = fields.Integer(default=1)
@@ -174,6 +179,11 @@ class AduanaExpediente(models.Model):
     fecha_recepcion = fields.Datetime(string="Fecha Recepción")
     numero_factura = fields.Char(string="Nº Factura Comercial")
     referencia_transporte = fields.Char(string="Referencia Transporte")
+    import_delivery_location = fields.Char(
+        string="Lugar entrega importación",
+        default="LA FARGA DE MOLES",
+        help="DeliveryTerms/location para H1 importación. Ejemplo Andorra → España: LA FARGA DE MOLES.",
+    )
     location_authorisation_number = fields.Char(
         string="Recinto/ubicación AEAT",
         help="LocationOfGoods/authorisationNumber. En preproducción AEAT se usa 010101DA11 por defecto.",
@@ -799,8 +809,6 @@ class AduanaExpediente(models.Model):
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
         imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl")
-        if not imp_decl_endpoint or "ADIM-JDIT/ws/imp/DeclaracionSOAP" in imp_decl_endpoint:
-            imp_decl_endpoint = "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
         return {
             "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c")
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
@@ -1470,7 +1478,7 @@ class AduanaExpediente(models.Model):
         validator = self.env["aduanas.validator"]
         for rec in self:
             if rec.direction != "export":
-                raise UserError(_("DUA solo aplica a exportación"))
+                raise UserError(_("Esta operación es importación Andorra → España. Debe presentarse por CC415A/H1, no por AES."))
             settings = rec._get_settings()
             validator.validate_expediente_export(rec)
             rec._validate_cc515c_offices_before_send(settings)
@@ -1478,6 +1486,7 @@ class AduanaExpediente(models.Model):
             cc515c_body = rec._build_cc515c_native_body()
             soap_payload = rec._build_cc515c_soap_envelope(cc515c_body)
             endpoint = settings.get("aeat_endpoint_cc515c") or ""
+            rec._validate_aeat_endpoint_for_xml(endpoint, soap_payload, "export")
             offices_html = (
                 "<p>%s: <code>%s</code> — %s: <code>%s</code></p>"
                 % (
@@ -2058,9 +2067,52 @@ class AduanaExpediente(models.Model):
             xml_escape(country),
         )
 
+    def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
+        endpoint = (endpoint or "").strip()
+        xml_content = xml_content or ""
+        if direction == "import":
+            if not endpoint:
+                raise UserError(_("Falta configurar endpoint oficial CC415A importación"))
+            if (
+                endpoint.startswith("https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP")
+                or "ADIM-JDIT/ws/imp/DeclaracionSOAP" in endpoint
+            ):
+                raise UserError(_("Falta configurar endpoint oficial CC415A importación"))
+            if "ADEX-JDIT" in endpoint or "CC515" in endpoint or "/aes/" in endpoint.lower():
+                raise UserError(_("Esta operación es importación Andorra → España. Debe presentarse por CC415A/H1, no por AES."))
+            if "CC415AV1SOAP" not in endpoint:
+                raise UserError(_("Falta configurar endpoint oficial CC415A importación"))
+            if "CC515CV1Ent" in xml_content:
+                raise UserError(_("XML de exportación AES detectado en operación de importación. Debe generarse CC415A/H1."))
+            if "CC415AV1Ent" not in xml_content:
+                raise UserError(_("XML de importación inválido: debe tener raíz CC415AV1Ent."))
+        elif direction == "export":
+            if "CC415AV1SOAP" in endpoint or "ADIP-JDIT/ws/cci" in endpoint:
+                raise UserError(_("Operación de exportación AES: no se puede enviar a endpoint de importación CC415A."))
+            if "CC415AV1Ent" in xml_content:
+                raise UserError(_("XML de importación CC415A detectado en operación de exportación. Debe generarse CC515C/AES."))
+
+    def _validate_import_cc415a_roles(self):
+        self.ensure_one()
+        company_id = self._imp_eori(self.env.company.partner_id, "ES")
+        importer_id = self._imp_eori(self.consignatario, "ES")
+        if not importer_id or not importer_id.startswith("ES"):
+            raise UserError(_("Importer obligatorio y debe ser español/UE válido. Revise el consignatario/importador español."))
+        if not company_id:
+            raise UserError(_("Declarant obligatorio: configure el NIF de la empresa declarante (ESB65496556)."))
+        if company_id != "ESB65496556":
+            raise UserError(_("Declarant obligatorio: ESB65496556. Revise el NIF de la compañía Odoo."))
+        if not (self.oficina or "").strip():
+            raise UserError(_("CustomsOfficeOfImport obligatorio."))
+        if not (self.oficina or "").strip():
+            raise UserError(_("CustomsOfficeOfPresentation obligatorio."))
+        if (self.pais_origen or "").upper() != "AD" or (self.pais_destino or "").upper() != "ES":
+            raise UserError(_("Para importación Andorra → España debe declarar countryOfDispatch=AD y countryOfDestination=ES."))
+
     def _build_cc415a_soap_envelope(self):
         """Genera una declaración completa H1 CC415A básica según CC415AV1Ent.xsd."""
         self.ensure_one()
+        self._validate_import_cc415a_roles()
         office = (self.oficina or "").strip().upper()
         if not office:
             raise UserError(_("Informe la oficina aduanera de importación."))
@@ -2081,7 +2133,9 @@ class AduanaExpediente(models.Model):
         total_gross = sum((line.peso_bruto or 0.0) for line in self.line_ids) or 0.0
         lines_xml = []
         for idx, line in enumerate(self.line_ids.sorted(key=lambda l: l.item_number or l.id or 0), 1):
-            partida = (line.partida or "").replace(" ", "").replace(".", "")
+            partida = (line.taric_completo or line.partida or "").replace(" ", "").replace(".", "")
+            if len(partida) != 10 or not partida.isdigit():
+                raise UserError(_("Línea %s: informe un TARIC completo de 10 dígitos.") % idx)
             hs = partida[:6]
             cn = partida[6:8] if len(partida) >= 8 else "00"
             taric = partida[8:10] if len(partida) >= 10 else ""
@@ -2144,10 +2198,26 @@ class AduanaExpediente(models.Model):
         importer_address = self._imp_address_xml(self.consignatario)
         declarant_partner = company.partner_id
         declarant_address = self._imp_address_xml(declarant_partner)
+        seller_id = self._imp_eori(self.remitente, self.pais_origen or "AD")
+        seller_name = "<name>%s</name>" % xml_escape((self.remitente.name or "")[:70]) if self.remitente and self.remitente.name else ""
+        seller_address = self._imp_address_xml(self.remitente)
+        seller_xml = ""
+        if self.remitente:
+            seller_id_xml = "<identificationNumber>%s</identificationNumber>" % xml_escape(seller_id) if seller_id else ""
+            seller_xml = """<Seller>
+%s
+%s
+%s
+</Seller>
+<Exporter>
+%s
+%s
+%s
+</Exporter>""" % (seller_id_xml, seller_name, seller_address, seller_id_xml, seller_name, seller_address)
         importer_name = "<name>%s</name>" % xml_escape((self.consignatario.name or "")[:70]) if self.consignatario and self.consignatario.name else ""
         declarant_name = "<name>%s</name>" % xml_escape((declarant_partner.name or "")[:70]) if declarant_partner and declarant_partner.name else ""
         incoterm = self.incoterm or "DAP"
-        delivery_location = (self.consignatario.city if self.consignatario else "") or "ES"
+        delivery_location = self.import_delivery_location or "LA FARGA DE MOLES"
         ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd"
         return """<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:imp="%s">
@@ -2188,6 +2258,7 @@ class AduanaExpediente(models.Model):
 <natureOfTransaction>11</natureOfTransaction>
 <totalAmountInvoiced>%.2f</totalAmountInvoiced>
 <invoiceCurrency>%s</invoiceCurrency>
+%s
 <DeliveryTerms>
 <incotermCode>%s</incotermCode>
 <location>%s</location>
@@ -2226,6 +2297,7 @@ class AduanaExpediente(models.Model):
             declarant_address,
             self.valor_factura or 0.0,
             xml_escape(self.moneda or "EUR"),
+            seller_xml,
             xml_escape(incoterm),
             xml_escape(delivery_location[:35]),
             xml_escape(destination_country),
@@ -2238,7 +2310,7 @@ class AduanaExpediente(models.Model):
     def action_generate_imp_decl(self):
         for rec in self:
             if rec.direction != "import":
-                raise UserError(_("La declaración de importación solo aplica a importación"))
+                raise UserError(_("Operación España → Andorra / país tercero: debe presentarse por AES CC515C, no por CC415A/H1."))
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
@@ -2254,19 +2326,16 @@ class AduanaExpediente(models.Model):
         parser = self.env["aduanas.xml.parser"]
         for rec in self:
             if rec.direction != "import":
-                raise UserError(_("La declaración de importación solo aplica a importación"))
+                raise UserError(_("Operación España → Andorra / país tercero: debe presentarse por AES CC515C, no por CC415A/H1."))
             settings = rec._get_settings()
-            xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
-            if not xmls:
-                rec.action_generate_imp_decl()
-                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
-            xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
-            if "DeclaracionImportacionEnt" in xml_content:
-                rec.action_generate_imp_decl()
-                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
-                xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
-            status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
-            rec._attach_xml(f"{rec.name}_IMP_DECL_response.xml", resp_xml or "")
+            validator = self.env["aduanas.validator"]
+            validator.validate_expediente_import(rec)
+            xml_content = rec._build_cc415a_soap_envelope()
+            endpoint = settings.get("aeat_endpoint_imp_decl")
+            rec._validate_aeat_endpoint_for_xml(endpoint, xml_content, "import")
+            rec._attach_xml(f"{rec.name}_CC415A_request.xml", xml_content)
+            status_code, resp_xml = client.send_xml(endpoint, xml_content, service="IMP_DECL")
+            rec._attach_xml(f"{rec.name}_CC415A_response.xml", resp_xml or "")
             if status_code != 200:
                 rec.state = "error"
                 rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
@@ -2276,23 +2345,41 @@ class AduanaExpediente(models.Model):
             parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
             rec.last_response_date = fields.Datetime.now()
             
-            if parsed.get("success") and parsed.get("mrn"):
-                rec.mrn = parsed["mrn"]
+            if parsed.get("success") and (parsed.get("mrn") or parsed.get("accepted")):
+                if parsed.get("mrn"):
+                    rec.mrn = parsed["mrn"]
                 rec.state = "accepted"
                 rec.error_message = False
-                if parsed.get("messages"):
-                    rec.with_context(mail_notrack=True).message_post(
-                        body=_("Declaración aceptada. MRN: %s\nMensajes: %s") % (
-                            rec.mrn, "\n".join(parsed["messages"])
-                        ),
-                        subtype_xmlid='mail.mt_note'
-                    )
+                messages = parsed.get("messages") or []
+                body = _("Declaración importación H1 aceptada. MRN: %s") % (rec.mrn or _("pendiente/no informado en respuesta"))
+                if messages:
+                    body += _("\nMensajes: %s") % "\n".join(messages)
+                rec.with_context(mail_notrack=True).message_post(
+                    body=body,
+                    subtype_xmlid='mail.mt_note'
+                )
                 # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                if error_msg == _("Error desconocido") and resp_xml:
+                    fault = None
+                    if resp_xml.strip().startswith("<"):
+                        try:
+                            fault = parser._find_first_text(
+                                ET.fromstring(resp_xml),
+                                "faultstring", "FaultString", "errorDescription", "errorText", "remarks"
+                            )
+                        except Exception:
+                            fault = None
+                    if fault:
+                        error_msg = fault
+                if error_msg == _("Error desconocido") and resp_xml:
+                    error_msg = _("AEAT devolvió una respuesta sin MRN ni detalle de error parseable. Revise el adjunto de respuesta. Extracto:\n%s") % (
+                        (resp_xml or "").strip()[:1200]
+                    )
                 rec.error_message = error_msg
                 rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
                 # Procesar incidencias de error

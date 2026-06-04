@@ -25,7 +25,7 @@
               <field name="aeat_endpoint_cc507c" placeholder="https://..."/>
             </group>
             <group string="Importación (DUA)">
-              <field name="aeat_endpoint_imp_decl" placeholder="https://..."/>
+              <field name="aeat_endpoint_imp_decl" placeholder="Configurar WSDL oficial CC415A"/>
               <field name="aeat_endpoint_imp_query" placeholder="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"/>
             </group>
             <group string="Bandeja AEAT">

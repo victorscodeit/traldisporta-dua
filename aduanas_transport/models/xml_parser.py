@@ -176,6 +176,8 @@ class AduanaXmlParser(models.AbstractModel):
                 root.findall(".//{*}FunctionalError") +
                 root.findall(".//XMLError") +
                 root.findall(".//{*}XMLError") +
+                root.findall(".//XmlError") +
+                root.findall(".//{*}XmlError") +
                 root.findall(".//ERROR") +
                 root.findall(".//{*}ERROR") +
                 root.findall(".//CodigoError") +
@@ -202,6 +204,7 @@ class AduanaXmlParser(models.AbstractModel):
                     "tipo": "error",  # Por defecto
                     "elemento_padre": err.tag,
                 }
+                details = {}
                 
                 # Determinar tipo de incidencia por el tag o contenido
                 tag_lower = err.tag.lower()
@@ -219,7 +222,10 @@ class AduanaXmlParser(models.AbstractModel):
                 # Buscar más información en elementos hijos
                 for child in err:
                     local_child = self._local_name(child.tag)
-                    if local_child in ("errorDescription", "errorText"):
+                    child_text = (child.text or "").strip()
+                    if child_text:
+                        details[local_child] = child_text
+                    if local_child in ("errorDescription", "errorText", "remarks"):
                         incidencia_data["mensaje"] = child.text or incidencia_data["mensaje"]
                     elif local_child in ("errorCode", "errorReason"):
                         incidencia_data["codigo"] = child.text or incidencia_data["codigo"]
@@ -229,17 +235,37 @@ class AduanaXmlParser(models.AbstractModel):
                         incidencia_data["mensaje"] = child.text or incidencia_data["mensaje"]
                     elif child.tag.endswith("Codigo") or child.tag.endswith("Code"):
                         incidencia_data["codigo"] = child.text or incidencia_data["codigo"]
+
+                if not incidencia_data["mensaje"]:
+                    pointer = details.get("errorPointer") or details.get("ErrorPointer")
+                    reason = details.get("errorReason") or details.get("ErrorReason")
+                    code = details.get("errorCode") or details.get("ErrorCode") or incidencia_data.get("codigo")
+                    remarks = details.get("remarks") or details.get("errorDescription") or details.get("errorText")
+                    parts = []
+                    if pointer:
+                        parts.append(pointer)
+                    if code:
+                        parts.append("código %s" % code)
+                    if reason:
+                        parts.append("motivo %s" % reason)
+                    if remarks:
+                        parts.append(remarks)
+                    incidencia_data["mensaje"] = " - ".join(parts) or "Error AEAT sin descripción textual"
                 
                 result["incidencias"].append(incidencia_data)
                 
                 # Mantener compatibilidad con formato anterior
-                if err.tag.endswith("Error") or err.tag.endswith("ERROR"):
-                    result["errors"].append(error_text)
+                local_err = self._local_name(err.tag)
+                formatted_error = incidencia_data["mensaje"]
+                if incidencia_data.get("codigo") and incidencia_data["codigo"] not in formatted_error:
+                    formatted_error = "%s: %s" % (incidencia_data["codigo"], formatted_error)
+                if local_err.endswith("Error") or local_err.endswith("ERROR"):
+                    result["errors"].append(formatted_error)
                 elif "Codigo" in err.tag:
-                    result["errors"].append(f"Código: {error_text}")
+                    result["errors"].append(f"Código: {formatted_error}")
                 else:
                     # Otros tipos también se añaden a errors para compatibilidad
-                    result["errors"].append(error_text)
+                    result["errors"].append(formatted_error)
             
             # Buscar mensajes
             message_elements = (
@@ -261,6 +287,10 @@ class AduanaXmlParser(models.AbstractModel):
             )
             if aceptacion_elements:
                 result["accepted"] = True
+            for elem in root.iter():
+                if self._local_name(elem.tag) == "CC415R":
+                    result["accepted"] = True
+                    break
             
             # Buscar levante
             levante_elements = (

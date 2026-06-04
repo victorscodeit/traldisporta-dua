@@ -124,19 +124,25 @@ class AduanaValidator(models.AbstractModel):
         pais_destino = (expediente.pais_destino or "").strip().upper()
         if not re.match(r"^[A-Z]{2}$", pais_origen):
             errors.append(_("El país origen debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
-        elif pais_origen == "ES":
-            errors.append(_("En importación País tercero → España, el país origen no puede ser ES. Revise el remitente."))
+        elif pais_origen != "AD":
+            errors.append(_("En importación Andorra → España, countryOfDispatch debe ser AD. Revise el remitente."))
         if pais_destino != "ES":
-            errors.append(_("En importación País tercero → España, el país destino debe ser ES."))
+            errors.append(_("En importación Andorra → España, countryOfDestination debe ser ES."))
+
+        if getattr(expediente, "requested_procedure", "40") != "40":
+            errors.append(_("Para importación normal, requestedProcedure debe ser 40."))
+        if getattr(expediente, "previous_procedure", "00") != "00":
+            errors.append(_("Para importación normal, previousProcedure debe ser 00."))
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
         
         for idx, line in enumerate(expediente.line_ids, 1):
-            if not line.partida:
-                errors.append(_("Línea %d: La partida arancelaria es obligatoria") % idx)
-            elif not self.validate_partida_arancelaria(line.partida):
-                errors.append(_("Línea %d: La partida arancelaria debe tener 10 dígitos") % idx)
+            taric = (getattr(line, "taric_completo", False) or line.partida or "").replace(" ", "").replace(".", "")
+            if not taric:
+                errors.append(_("Línea %d: El TARIC completo es obligatorio") % idx)
+            elif not self.validate_partida_arancelaria(taric):
+                errors.append(_("Línea %d: El TARIC completo debe tener 10 dígitos. No se asume validez arancelaria automática.") % idx)
             
             if not line.peso_bruto or line.peso_bruto <= 0:
                 errors.append(_("Línea %d: El peso bruto debe ser mayor que 0") % idx)

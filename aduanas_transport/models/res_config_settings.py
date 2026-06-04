@@ -25,8 +25,7 @@ class ResConfigSettings(models.TransientModel):
     aeat_endpoint_imp_decl = fields.Char(
         string="Endpoint Declaración Importación H1 (CC415A)",
         config_parameter="aduanas_transport.endpoint.imp_decl",
-        default="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP",
-        help="Alta de declaración completa H1/CAU mediante CC415A. Preproducción: prewww1; producción: www1.agenciatributaria.gob.es.",
+        help="Alta de declaración completa H1/CAU mediante CC415A. No usar endpoints AES/CC515C.",
     )
     aeat_endpoint_imp_query = fields.Char(
         string="Endpoint consulta importación (V3)",
