@@ -3557,7 +3557,7 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
             try:
                 documentos_taric = taric_service.get_required_documents(
                     goods_code=partida_limpia,
-                    country_code=expediente.pais_destino or ("AD" if expediente.direction == "export" else "ES"),
+                    country_code=expediente.pais_destino if expediente.direction == "export" else expediente.pais_origen,
                     direction=expediente.direction
                 )
             except Exception as e:

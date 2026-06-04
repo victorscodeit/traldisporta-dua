@@ -1549,9 +1549,9 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             # Si no hay direction explícito, intentar determinarlo por países
             pais_origen = (invoice_data.get("pais_origen") or "").upper() if invoice_data.get("pais_origen") else ""
             pais_destino = (invoice_data.get("pais_destino") or "").upper() if invoice_data.get("pais_destino") else ""
-            if pais_origen == "ES" and pais_destino == "AD":
+            if pais_origen == "ES" and pais_destino and pais_destino != "ES":
                 vals["direction"] = "export"
-            elif pais_origen == "AD" and pais_destino == "ES":
+            elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
                 vals["direction"] = "import"
         
         # Actualizar incoterm (validar y mapear valores) - SIEMPRE validar antes de escribir
