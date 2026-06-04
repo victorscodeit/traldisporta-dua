@@ -80,15 +80,16 @@
 
   <!-- Acción para abrir la configuración -->
   <record id="action_aduanas_config" model="ir.actions.act_window">
-    <field name="name">Empresas - Aduanas AEAT</field>
-    <field name="res_model">res.company</field>
-    <field name="view_mode">tree,form</field>
+    <field name="name">Configuración Aduanas AEAT</field>
+    <field name="res_model">res.config.settings</field>
+    <field name="view_mode">form</field>
     <field name="target">current</field>
-    <field name="context">{'form_view_initial_mode': 'edit'}</field>
+    <field name="view_id" ref="view_aduanas_config_form"/>
+    <field name="context">{'module': 'aduanas_transport'}</field>
   </record>
 
   <!-- Menú Configuración dentro de Aduanas -->
-  <menuitem id="menu_aduanas_configuracion" name="Configuración AEAT"
+  <menuitem id="menu_aduanas_configuracion" name="Configuración"
             parent="menu_aduanas_root" action="action_aduanas_config" sequence="30"/>
 
 </odoo>

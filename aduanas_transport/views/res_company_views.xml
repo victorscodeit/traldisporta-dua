@@ -4,6 +4,7 @@
     <field name="name">res.company.form.aduanas.aeat</field>
     <field name="model">res.company</field>
     <field name="inherit_id" ref="base.view_company_form"/>
+    <field name="active" eval="False"/>
     <field name="arch" type="xml">
       <xpath expr="//sheet" position="inside">
         <notebook>
