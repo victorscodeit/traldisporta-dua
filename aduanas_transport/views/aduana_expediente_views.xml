@@ -237,9 +237,7 @@
               </div>
               <field name="remitente"/>
               <field name="consignatario"/>
-              <label for="oficina" string="Oficina importación" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <label for="oficina" string="Oficina exportación" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
-              <field name="oficina" nolabel="1"/>
+              <field name="oficina"/>
               <field name="oficina_destino" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>

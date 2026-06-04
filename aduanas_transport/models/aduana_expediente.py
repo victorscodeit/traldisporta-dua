@@ -117,9 +117,10 @@ class AduanaExpediente(models.Model):
     ], string="Incoterm", default="DAP", tracking=True)
     incoterm_info = fields.Html(string="Información Incoterm", compute="_compute_incoterm_info")
     oficina = fields.Char(
-        string="Oficina Aduanas (exportación)",
-        help="Código ECS de 4 dígitos (0801) o AES de 8 (ES000801). En preprod AEAT use ES000101. "
-             "Si la salida declarada es distinta de la oficina de exportación, indique esa oficina en «Oficina destino».",
+        string="Oficina Aduanas",
+        help="Código ECS de 4 dígitos (0801) o AES/H1 de 8 (ES000801, ES002501). En preprod AEAT suele usarse ES000101. "
+             "Exportación: oficina de exportación; si la salida es distinta, indíquela en «Oficina destino». "
+             "Importación: oficina de importación y presentación (CC415A).",
     )
     tipo_representacion = fields.Selection([
         ("directa", "Representación directa"),
