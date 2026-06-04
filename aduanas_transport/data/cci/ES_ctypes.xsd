@@ -1,0 +1,1491 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- editado por AEAT (Agencia Estatal de Administración Tributaria) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:td2="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes.xsd" targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd" elementFormDefault="unqualified" version="40.80">
+	<xs:import namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes.xsd" schemaLocation="ES_stypes.xsd"/>
+	<xs:complexType name="MCciOperationType34">
+		<xs:sequence>
+			<xs:element name="dateOfPresentationNotificationAcknowledgment" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAuthorisationType03">
+		<xs:sequence>
+			<xs:element name="type" type="td2:AuthorisationTypeContentType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:AuthorisationNumberContentType"/>
+			<xs:element name="holderOfTheAuthorisation" type="td2:EOIDContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPcoType">
+		<xs:sequence>
+			<xs:element name="referenceNumber" type="td2:CORefNumType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MScoType">
+		<xs:sequence>
+			<xs:element name="referenceNumber" type="td2:CORefNumType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType27">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType29">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="documentsAvailable" type="td2:FlagContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRequestedDocumentsType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType" minOccurs="0"/>
+			<xs:element name="description" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="DocumentsImage" type="MDocumentsImageType" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDocumentsImageType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="fileType" type="td2:FileTypeContentType"/>
+			<xs:element name="documentImage" type="td2:DocumentImageContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType09">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="declarationType" type="td2:DeclarationTypeContentType"/>
+			<xs:element name="additionalDeclarationType" type="td2:AdditionalDeclarationTypeContentType"/>
+			<xs:element name="languageCode" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAuthorisationType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:AuthorisationTypeContentType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:AuthorisationNumberContentType"/>
+			<xs:element name="holderOfTheAuthorisation" type="td2:EOIDContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MImporterType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType" minOccurs="0"/>
+			<xs:element name="name" type="td2:EONameContentType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAddressType01">
+		<xs:sequence>
+			<xs:element name="streetAndNumber" type="td2:StreetAndNumberContentType"/>
+			<xs:element name="postcode" type="td2:PostcodeContentType" minOccurs="0"/>
+			<xs:element name="city" type="td2:CityContentType"/>
+			<xs:element name="country" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDeclarantType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType"/>
+			<xs:element name="name" type="td2:EONameContentType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+			<xs:element name="ContactPerson" type="MContactPersonType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MContactPersonType">
+		<xs:sequence>
+			<xs:element name="name" type="td2:EONameContentType"/>
+			<xs:element name="phoneNumber" type="td2:PhoneNumberContentType"/>
+			<xs:element name="eMailAddress" type="td2:EmailAddressContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPersonProvidingGuaranteeType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPersonPayingCustomsDutyType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRepresentativeType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType" minOccurs="0"/>
+			<xs:element name="status" type="td2:RepStatusCodeContentType"/>
+			<xs:element name="ContactPerson" type="MContactPersonType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGuaranteeType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="guaranteeType" type="td2:TypeOfGuaranteeContentType"/>
+			<xs:element name="GuaranteeReference" type="MGuaranteeReferenceType" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGuaranteeReferenceType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="GRN" type="td2:GRNContentType" minOccurs="0"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="accessCode" type="td2:AccessCodeContentType" minOccurs="0"/>
+			<xs:element name="currencyCode" type="td2:CurrencyContentType"/>
+			<xs:element name="amountToBeCovered" type="td2:AmountContentType"/>
+			<xs:element name="otherGuaranteeReference" type="td2:GuaranteeReferenceContentType" minOccurs="0"/>
+			<xs:element name="CustomsOfficeOfGuarantee" type="MCustomsOfficeOfGuaranteeType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCustomsOfficeOfGuaranteeType">
+		<xs:sequence>
+			<xs:element name="referenceNumber" type="td2:CORefNumType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCurrencyExchangeType">
+		<xs:sequence>
+			<xs:element name="internalCurrencyUnit" type="td2:CurrencyContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDeferredPaymentType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="deferredPayment" type="td2:DeferredPaymentContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType04">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="totalAmountInvoiced" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="invoiceCurrency" type="td2:CurrencyContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="exchangeRate" type="td2:ExchangeRateContentType" minOccurs="0"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="DeliveryTerms" type="MDeliveryTermsType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Warehouse" type="MWarehouseType" minOccurs="0"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionsAndDeductions" type="MAdditionsAndDeductionsType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Consignment" type="MConsignmentType01"/>
+			<xs:element name="GoodsShipmentItem" type="MGoodsShipmentItemType03" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionalSupplyChainActorType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="role" type="td2:RoleCodeContentType"/>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MBuyerType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType" minOccurs="0"/>
+			<xs:element name="name" type="td2:EONameContentType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSellerType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType" minOccurs="0"/>
+			<xs:element name="name" type="td2:EONameContentType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MExporterType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType" minOccurs="0"/>
+			<xs:element name="name" type="td2:EONameContentType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDeliveryTermsType">
+		<xs:sequence>
+			<xs:element name="incotermCode" type="td2:IncotermCodeContentType"/>
+			<xs:element name="UNLOCODE" type="td2:UNLOCODEContentType" minOccurs="0"/>
+			<xs:element name="location" type="td2:LocationNameContentType" minOccurs="0"/>
+			<xs:element name="country" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="text" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCountryOfDispatchType">
+		<xs:sequence>
+			<xs:element name="countryOfDispatch" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDestinationType">
+		<xs:sequence>
+			<xs:element name="countryOfDestination" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="regionOfDestination" type="td2:RegionContentType" minOccurs="0"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MWarehouseType">
+		<xs:sequence>
+			<xs:element name="type" type="td2:TypeOfWarehouseContentType"/>
+			<xs:element name="identifier" type="td2:WarehouseIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSupportingDocumentType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+			<xs:element name="documentLineItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="issuingAuthorityName" type="td2:IssuingAuthorityNameContentType" minOccurs="0"/>
+			<xs:element name="dateOfValidity" type="td2:DateType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionalReferenceType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionalInformationType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="code" type="td2:AdditionalInfoCodeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="text" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionsAndDeductionsType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="code" type="td2:ValuationCodeContentType"/>
+			<xs:element name="amount" type="td2:AmountContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionalFiscalReferenceType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="role" type="td2:FiscalRoleContentType"/>
+			<xs:element name="VATIdentificationNumber" type="td2:VATIdentificationContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MConsignmentType01">
+		<xs:sequence>
+			<xs:element name="containerIndicator" type="td2:FlagContentType"/>
+			<xs:element name="inlandModeOfTransport" type="td2:TransportModeContentType" minOccurs="0"/>
+			<xs:element name="modeOfTransportAtTheBorder" type="td2:TransportModeContentType" minOccurs="0"/>
+			<xs:element name="grossMass" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="TransportEquipment" type="MTransportEquipmentType" minOccurs="0" maxOccurs="999"/>
+			<xs:element name="LocationOfGoods" type="MLocationOfGoodsType01" minOccurs="0"/>
+			<xs:element name="ArrivalTransportMeans" type="MArrivalTransportMeansType" minOccurs="0"/>
+			<xs:element name="ActiveBorderTransportMeans" type="MActiveBorderTransportMeansType" minOccurs="0"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTransportEquipmentType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="containerIdentificationNumber" type="td2:ContainerIdentificationNumberContentType"/>
+			<xs:element name="GoodsReference" type="MGoodsReferenceType" minOccurs="0" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsReferenceType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MLocationOfGoodsType01">
+		<xs:sequence>
+			<xs:element name="typeOfLocation" type="td2:TypeOfLocationContentType"/>
+			<xs:element name="qualifierOfIdentification" type="td2:LocationIDQualifierContentType"/>
+			<xs:element name="authorisationNumber" type="td2:AuthorisationNumberContentType" minOccurs="0"/>
+			<xs:element name="additionalIdentifier" type="td2:AdditionalIdentifierContentType" minOccurs="0"/>
+			<xs:element name="UNLOCODE" type="td2:UNLOCODEContentType" minOccurs="0"/>
+			<xs:element name="CustomsOffice" type="MCustomsOfficeType" minOccurs="0"/>
+			<xs:element name="GNSS" type="MGpsType" minOccurs="0"/>
+			<xs:element name="EconomicOperator" type="MEconomicOperatorType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+			<xs:element name="PostcodeAddress" type="MAddressType02" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCustomsOfficeType">
+		<xs:sequence>
+			<xs:element name="referenceNumber" type="td2:CORefNumType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGpsType">
+		<xs:sequence>
+			<xs:element name="latitude" type="td2:GNSSContentType"/>
+			<xs:element name="longitude" type="td2:GNSSContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MEconomicOperatorType">
+		<xs:sequence>
+			<xs:element name="identificationNumber" type="td2:EOIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAddressType02">
+		<xs:sequence>
+			<xs:element name="houseNumber" type="td2:HouseNumberContentType" minOccurs="0"/>
+			<xs:element name="postcode" type="td2:PostcodeContentType"/>
+			<xs:element name="country" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MArrivalTransportMeansType">
+		<xs:sequence>
+			<xs:element name="typeOfIdentification" type="td2:TransportMeansIdentificationTypeContentType"/>
+			<xs:element name="identificationNumber" type="td2:TransportMeansIDContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MActiveBorderTransportMeansType">
+		<xs:sequence>
+			<xs:element name="nationality" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTransportDocumentType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentItemType03">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+			<xs:element name="statisticalValue" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType"/>
+			<xs:element name="Authorisation" type="MAuthorisationType02" minOccurs="0" maxOccurs="9"/>
+			<xs:element name="Procedure" type="MProcedureType01"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="Origin" type="MOriginType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Commodity" type="MCommodityType03"/>
+			<xs:element name="Packaging" type="MPackagingType01" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="CustomsValuation" type="MCustomsValuationType" minOccurs="0"/>
+			<xs:element name="ValuationAdjustment" type="MValuationAdjustmentType" minOccurs="0"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAuthorisationType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:AuthorisationTypeContentType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:AuthorisationNumberContentType"/>
+			<xs:element name="holderOfTheAuthorisation" type="td2:EOIDContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MProcedureType01">
+		<xs:sequence>
+			<xs:element name="requestedProcedure" type="td2:ProcedureCodeContentType"/>
+			<xs:element name="previousProcedure" type="td2:ProcedureCodeContentType"/>
+			<xs:element name="AdditionalProcedure" type="MAdditionalProcedureType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAdditionalProcedureType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="additionalProcedure" type="td2:AdditionalProcedureContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MOriginType">
+		<xs:sequence>
+			<xs:element name="countryOfOrigin" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="countryOfPreferentialOrigin" type="td2:PreferentialOriginContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType03">
+		<xs:sequence>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType"/>
+			<xs:element name="CUSCode" type="td2:CUSCodeContentType" minOccurs="0"/>
+			<xs:element name="quotaOrderNumber" type="td2:QuotaOrderNumberContentType" minOccurs="0"/>
+			<xs:element name="CommodityCode" type="MCommodityCodeType02" minOccurs="0"/>
+			<xs:element name="GoodsMeasure" type="MGoodsMeasureType01"/>
+			<xs:element name="InvoiceLine" type="MInvoiceLineType" minOccurs="0"/>
+			<xs:element name="CalculationOfTaxes" type="MCalculationOfTaxesType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityCodeType02">
+		<xs:sequence>
+			<xs:element name="harmonizedSystemSubheadingCode" type="td2:HarmonizedSysCodeContentType"/>
+			<xs:element name="combinedNomenclatureCode" type="td2:CombinedNomenclatureCodeContentType"/>
+			<xs:element name="taricCode" type="td2:TaricContentType" minOccurs="0"/>
+			<xs:element name="TaricAdditionalCode" type="MTaricAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="NationalAdditionalCode" type="MNationalAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTaricAdditionalCodeType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taricAdditionalCode" type="td2:TaricAdditionalCodeContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MNationalAdditionalCodeType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="nationalAdditionalCode" type="td2:NationalComCodeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsMeasureType01">
+		<xs:sequence>
+			<xs:element name="grossMass" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="netMass" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="supplementaryUnits" type="td2:QuantityContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MInvoiceLineType">
+		<xs:sequence>
+			<xs:element name="itemAmountInvoiced" type="td2:AmountContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCalculationOfTaxesType01">
+		<xs:sequence>
+			<xs:element name="preference" type="td2:PreferenceContentType" minOccurs="0"/>
+			<xs:element name="totalDutiesAndTaxesAmount" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="DutiesAndTaxes" type="MDutiesAndTaxesType01" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDutiesAndTaxesType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taxType" type="td2:TaxTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="payableTaxAmount" type="td2:AmountContentType"/>
+			<xs:element name="methodOfPayment" type="td2:MethodOfPaymentContentType"/>
+			<xs:element name="TaxBase" type="MTaxBaseType01" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTaxBaseType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taxRate" type="td2:TaxRateContentType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>
+			<xs:element name="ccQualifierForMeasurementUnitAndQualifier" type="td2:CountryCodeType" minOccurs="0" />			
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="amount" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="taxAmount" type="td2:AmountContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPackagingType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="shippingMarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPackagingType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="goodsItemIdentifier" type="td2:ItemNumberContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType06">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>
+			<xs:element name="ccQualifierForMeasurementUnitAndQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="goodsItemIdentifier" type="td2:ItemNumberContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSupportingDocumentType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+			<xs:element name="documentLineItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="issuingAuthorityName" type="td2:IssuingAuthorityNameContentType" minOccurs="0"/>
+			<xs:element name="dateOfValidity" type="td2:DateType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>
+			<xs:element name="ccQualifierForMeasurementUnitAndQualifier" type="td2:CountryCodeType" minOccurs="0"/>			
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="currency" type="td2:CurrencyContentType" minOccurs="0"/>
+			<xs:element name="amount" type="td2:AmountContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCustomsValuationType">
+		<xs:sequence>
+			<xs:element name="valuationMethod" type="td2:ValuationMethodContentType"/>
+			<xs:element name="AdditionsAndDeductions" type="MAdditionsAndDeductionsType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MValuationAdjustmentType">
+		<xs:sequence>
+			<xs:element name="valuationIndicators" type="td2:ValuationIndicatorContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType33">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="dateOfHandlingExciseGoodsAcknowledgment" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType23">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="invalidationDecisionDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="invalidationRequestDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="invalidationInitiatedByCustoms" type="td2:FlagContentType"/>
+			<xs:element name="invalidationJustification" type="td2:FreeTextContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType28">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="acknowledgementDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType26">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRiskAnalysisIdentificationType">
+		<xs:sequence>
+			<xs:element name="code" type="td2:RiskAnalysisIndicatorContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MItemRiskAnalysisType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="code" type="td2:RiskAnalysisIndicatorContentType"/>
+			<xs:element name="RiskDetails" type="MRiskAnalysisResultType" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRiskAnalysisResultType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="riskAreaCode" type="td2:RiskAreaCodeContentType"/>
+			<xs:element name="controlTypeRecommended" type="td2:ControlTypeContentType"/>
+			<xs:element name="FRCNumber" type="td2:CRCContentType" minOccurs="0"/>
+			<xs:element name="analysisGuidelines" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlResultType03">
+		<xs:sequence>
+			<xs:element name="code" type="td2:ControlResultContentType"/>
+			<xs:element name="date" type="td2:DateType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MItemControlResultsType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="controlResultCode" type="td2:ControlResultContentType"/>
+			<xs:element name="ResultsOfControl" type="MControlResultType05" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlResultType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="riskAreaCode" type="td2:RiskAreaCodeContentType"/>
+			<xs:element name="controlType" type="td2:ControlTypeContentType"/>
+			<xs:element name="controlDate" type="td2:DateType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="ControlDetails" type="MControlDetailsType" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlDetailsType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="typeOfDiscrepancies" type="td2:DiscrepanciesContentType"/>
+			<xs:element name="attributePointer" type="td2:FreeTextContentType"/>
+			<xs:element name="correctedValue" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlTypeRequestedType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:ControlTypeContentType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType01">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlResultType01">
+		<xs:sequence>
+			<xs:element name="code" type="td2:ControlResultContentType"/>
+			<xs:element name="date" type="td2:DateType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="pendingSamplingResults" type="td2:FlagContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MItemControlResultsType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="controlResultCode" type="td2:ControlResultContentType"/>
+			<xs:element name="ResultsOfControl" type="MControlResultType02" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlResultType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="riskAreaCode" type="td2:RiskAreaCodeContentType"/>
+			<xs:element name="controlType" type="td2:ControlTypeContentType"/>
+			<xs:element name="controlDate" type="td2:DateType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="ControlDetails" type="MControlDetailsType" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType10">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="declarationType" type="td2:DeclarationTypeContentType"/>
+			<xs:element name="additionalDeclarationType" type="td2:AdditionalDeclarationTypeContentType"/>
+			<xs:element name="declarationAcceptanceDate" type="td2:DateType"/>
+			<xs:element name="releaseDate" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="totalAmountInvoiced" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="invoiceCurrency" type="td2:CurrencyContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="exchangeRate" type="td2:ExchangeRateContentType" minOccurs="0"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="DeliveryTerms" type="MDeliveryTermsType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Warehouse" type="MWarehouseType" minOccurs="0"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionsAndDeductions" type="MAdditionsAndDeductionsType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Consignment" type="MConsignmentType01"/>
+			<xs:element name="GoodsShipmentItem" type="MGoodsShipmentItemType01" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentItemType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+			<xs:element name="statisticalValue" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="Authorisation" type="MAuthorisationType02" minOccurs="0" maxOccurs="9"/>
+			<xs:element name="Procedure" type="MProcedureType01"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="Origin" type="MOriginType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Commodity" type="MCommodityType01"/>
+			<xs:element name="Packaging" type="MPackagingType01" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="CustomsValuation" type="MCustomsValuationType" minOccurs="0"/>
+			<xs:element name="ValuationAdjustment" type="MValuationAdjustmentType" minOccurs="0"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType01">
+		<xs:sequence>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType"/>
+			<xs:element name="CUSCode" type="td2:CUSCodeContentType" minOccurs="0"/>
+			<xs:element name="quotaOrderNumber" type="td2:QuotaOrderNumberContentType" minOccurs="0"/>
+			<xs:element name="CommodityCode" type="MCommodityCodeType01" minOccurs="0"/>
+			<xs:element name="GoodsMeasure" type="MGoodsMeasureType01"/>
+			<xs:element name="InvoiceLine" type="MInvoiceLineType" minOccurs="0"/>
+			<xs:element name="CalculationOfTaxes" type="MCalculationOfTaxesType01" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityCodeType01">
+		<xs:sequence>
+			<xs:element name="harmonizedSystemSubheadingCode" type="td2:HarmonizedSysCodeContentType"/>
+			<xs:element name="combinedNomenclatureCode" type="td2:CombinedNomenclatureCodeContentType"/>
+			<xs:element name="taricCode" type="td2:TaricContentType" minOccurs="0"/>
+			<xs:element name="TaricAdditionalCode" type="MTaricAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="NationalAdditionalCode" type="MNationalAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MEvaluatedMessageType">
+		<xs:sequence>
+			<xs:element name="messageType" type="td2:MessageTypeContentType"/>
+			<xs:element name="country" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="year" type="td2:YearContentType" minOccurs="0"/>
+			<xs:element name="month" type="td2:MonthContentType" minOccurs="0"/>
+			<xs:element name="ConsistencyCheckWarning" type="MConsistencyCheckWarningType" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MConsistencyCheckWarningType">
+		<xs:sequence>
+			<xs:element name="warningPointer" type="td2:WarningPointerContentType"/>
+			<xs:element name="warningCode" type="td2:WarningCodeContentType"/>
+			<xs:element name="originalAttributeValue" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="totalAmountInvoiced" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="invoiceCurrency" type="td2:CurrencyContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="DeliveryTerms" type="MDeliveryTermsType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Warehouse" type="MWarehouseType" minOccurs="0"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionsAndDeductions" type="MAdditionsAndDeductionsType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Consignment" type="MConsignmentType01"/>
+			<xs:element name="GoodsShipmentItem" type="MGoodsShipmentItemType02" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentItemType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+			<xs:element name="statisticalValue" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="Authorisation" type="MAuthorisationType02" minOccurs="0" maxOccurs="9"/>
+			<xs:element name="Procedure" type="MProcedureType01"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="Origin" type="MOriginType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Commodity" type="MCommodityType02"/>
+			<xs:element name="Packaging" type="MPackagingType01" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="CustomsValuation" type="MCustomsValuationType" minOccurs="0"/>
+			<xs:element name="ValuationAdjustment" type="MValuationAdjustmentType" minOccurs="0"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType02">
+		<xs:sequence>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType"/>
+			<xs:element name="CUSCode" type="td2:CUSCodeContentType" minOccurs="0"/>
+			<xs:element name="quotaOrderNumber" type="td2:QuotaOrderNumberContentType" minOccurs="0"/>
+			<xs:element name="CommodityCode" type="MCommodityCodeType01" minOccurs="0"/>
+			<xs:element name="GoodsMeasure" type="MGoodsMeasureType01"/>
+			<xs:element name="InvoiceLine" type="MInvoiceLineType" minOccurs="0"/>
+			<xs:element name="CalculationOfTaxes" type="MCalculationOfTaxesType02"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCalculationOfTaxesType02">
+		<xs:sequence>
+			<xs:element name="preference" type="td2:PreferenceContentType" minOccurs="0"/>
+			<xs:element name="totalDutiesAndTaxesAmount" type="td2:AmountContentType"/>
+			<xs:element name="DutiesAndTaxes" type="MDutiesAndTaxesType02" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDutiesAndTaxesType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taxType" type="td2:TaxTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="payableTaxAmount" type="td2:AmountContentType"/>
+			<xs:element name="methodOfPayment" type="td2:MethodOfPaymentContentType"/>
+			<xs:element name="TaxBase" type="MTaxBaseType02" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTaxBaseType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taxRate" type="td2:TaxRateContentType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="amount" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="taxAmount" type="td2:AmountContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType35">
+		<xs:sequence>
+			<xs:element name="dateOfRequest" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPresentationNotificationPeriodType">
+		<xs:sequence>
+			<xs:element name="startDate" type="td2:DateType"/>
+			<xs:element name="endDate" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="harmonizedSystemSubheadingCode" type="td2:HarmonizedSysCodeContentType"/>
+			<xs:element name="combinedNomenclatureCode" type="td2:CombinedNomenclatureCodeContentType" minOccurs="0"/>
+			<xs:element name="taricCode" type="td2:TaricContentType" minOccurs="0"/>
+			<xs:element name="CUSCode" type="td2:CUSCodeContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MLocationOfGoodsType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="typeOfLocation" type="td2:TypeOfLocationContentType"/>
+			<xs:element name="qualifierOfIdentification" type="td2:LocationIDQualifierContentType"/>
+			<xs:element name="authorisationNumber" type="td2:AuthorisationNumberContentType" minOccurs="0"/>
+			<xs:element name="additionalIdentifier" type="td2:AdditionalIdentifierContentType" minOccurs="0"/>
+			<xs:element name="UNLOCODE" type="td2:UNLOCODEContentType" minOccurs="0"/>
+			<xs:element name="CustomsOffice" type="MCustomsOfficeType" minOccurs="0"/>
+			<xs:element name="GNSS" type="MGpsType" minOccurs="0"/>
+			<xs:element name="EconomicOperator" type="MEconomicOperatorType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+			<xs:element name="PostcodeAddress" type="MAddressType02" minOccurs="0"/>
+			<xs:element name="PresentationNotificationPeriod" type="MPresentationNotificationPeriodType" minOccurs="0"/>
+			<xs:element name="Commodity" type="MCommodityType05" minOccurs="0" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType04">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="declarationType" type="td2:DeclarationTypeContentType"/>
+			<xs:element name="additionalDeclarationType" type="td2:AdditionalDeclarationTypeContentType"/>
+			<xs:element name="languageCode" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAuthorisationType04">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:AuthorisationTypeContentType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:AuthorisationNumberContentType"/>
+			<xs:element name="holderOfTheAuthorisation" type="td2:EOIDContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="totalAmountInvoiced" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="invoiceCurrency" type="td2:CurrencyContentType" minOccurs="0"/>
+			<xs:element name="dateOfAcceptance" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="exchangeRate" type="td2:ExchangeRateContentType" minOccurs="0"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="DeliveryTerms" type="MDeliveryTermsType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Warehouse" type="MWarehouseType" minOccurs="0"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType04" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionsAndDeductions" type="MAdditionsAndDeductionsType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Consignment" type="MConsignmentType04"/>
+			<xs:element name="GoodsShipmentItem" type="MGoodsShipmentItemType04" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType04">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MConsignmentType04">
+		<xs:sequence>
+			<xs:element name="containerIndicator" type="td2:FlagContentType"/>
+			<xs:element name="inlandModeOfTransport" type="td2:TransportModeContentType" minOccurs="0"/>
+			<xs:element name="modeOfTransportAtTheBorder" type="td2:TransportModeContentType" minOccurs="0"/>
+			<xs:element name="grossMass" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="TransportEquipment" type="MTransportEquipmentType" minOccurs="0" maxOccurs="999"/>
+			<xs:element name="LocationOfGoods" type="MLocationOfGoodsType03" minOccurs="0"/>
+			<xs:element name="ArrivalTransportMeans" type="MArrivalTransportMeansType" minOccurs="0"/>
+			<xs:element name="ActiveBorderTransportMeans" type="MActiveBorderTransportMeansType" minOccurs="0"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MLocationOfGoodsType03">
+		<xs:sequence>
+			<xs:element name="typeOfLocation" type="td2:TypeOfLocationContentType"/>
+			<xs:element name="qualifierOfIdentification" type="td2:LocationIDQualifierContentType"/>
+			<xs:element name="authorisationNumber" type="td2:AuthorisationNumberContentType" minOccurs="0"/>
+			<xs:element name="additionalIdentifier" type="td2:AdditionalIdentifierContentType" minOccurs="0"/>
+			<xs:element name="UNLOCODE" type="td2:UNLOCODEContentType" minOccurs="0"/>
+			<xs:element name="CustomsOffice" type="MCustomsOfficeType" minOccurs="0"/>
+			<xs:element name="GNSS" type="MGpsType" minOccurs="0"/>
+			<xs:element name="EconomicOperator" type="MEconomicOperatorType" minOccurs="0"/>
+			<xs:element name="Address" type="MAddressType01" minOccurs="0"/>
+			<xs:element name="PostcodeAddress" type="MAddressType02" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentItemType04">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+			<xs:element name="statisticalValue" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="natureOfTransaction" type="td2:NatureOfTransactionContentType" minOccurs="0"/>
+			<xs:element name="referenceNumberUCR" type="td2:ReferenceNumberUCRContentType" minOccurs="0"/>
+			<xs:element name="Authorisation" type="MAuthorisationType05" minOccurs="0" maxOccurs="9"/>
+			<xs:element name="Procedure" type="MProcedureType02"/>
+			<xs:element name="AdditionalSupplyChainActor" type="MAdditionalSupplyChainActorType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Buyer" type="MBuyerType" minOccurs="0"/>
+			<xs:element name="Seller" type="MSellerType" minOccurs="0"/>
+			<xs:element name="Exporter" type="MExporterType" minOccurs="0"/>
+			<xs:element name="Origin" type="MOriginType" minOccurs="0"/>
+			<xs:element name="CountryOfDispatch" type="MCountryOfDispatchType" minOccurs="0"/>
+			<xs:element name="Destination" type="MDestinationType" minOccurs="0"/>
+			<xs:element name="Commodity" type="MCommodityType04"/>
+			<xs:element name="Packaging" type="MPackagingType01" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType03" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="SupportingDocument" type="MSupportingDocumentType01" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="TransportDocument" type="MTransportDocumentType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalReference" type="MAdditionalReferenceType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="AdditionalInformation" type="MAdditionalInformationType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="CustomsValuation" type="MCustomsValuationType" minOccurs="0"/>
+			<xs:element name="ValuationAdjustment" type="MValuationAdjustmentType" minOccurs="0"/>
+			<xs:element name="AdditionalFiscalReference" type="MAdditionalFiscalReferenceType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MAuthorisationType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:AuthorisationTypeContentType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:AuthorisationNumberContentType"/>
+			<xs:element name="holderOfTheAuthorisation" type="td2:EOIDContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MProcedureType02">
+		<xs:sequence>
+			<xs:element name="requestedProcedure" type="td2:ProcedureCodeContentType"/>
+			<xs:element name="previousProcedure" type="td2:ProcedureCodeContentType"/>
+			<xs:element name="AdditionalProcedure" type="MAdditionalProcedureType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MProcedureType03">
+		<xs:sequence>
+			<xs:element name="requestedProcedure" type="td2:ProcedureCodeContentType"/>
+			<xs:element name="previousProcedure" type="td2:ProcedureCodeContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType04">
+		<xs:sequence>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType"/>
+			<xs:element name="CUSCode" type="td2:CUSCodeContentType" minOccurs="0"/>
+			<xs:element name="quotaOrderNumber" type="td2:QuotaOrderNumberContentType" minOccurs="0"/>
+			<xs:element name="CommodityCode" type="MCommodityCodeType03" minOccurs="0"/>
+			<xs:element name="GoodsMeasure" type="MGoodsMeasureType01"/>
+			<xs:element name="InvoiceLine" type="MInvoiceLineType" minOccurs="0"/>
+			<xs:element name="CalculationOfTaxes" type="MCalculationOfTaxesType03" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityCodeType03">
+		<xs:sequence>
+			<xs:element name="harmonizedSystemSubheadingCode" type="td2:HarmonizedSysCodeContentType"/>
+			<xs:element name="combinedNomenclatureCode" type="td2:CombinedNomenclatureCodeContentType"/>
+			<xs:element name="taricCode" type="td2:TaricContentType" minOccurs="0"/>
+			<xs:element name="TaricAdditionalCode" type="MTaricAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="NationalAdditionalCode" type="MNationalAdditionalCodeType" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCalculationOfTaxesType03">
+		<xs:sequence>
+			<xs:element name="preference" type="td2:PreferenceContentType" minOccurs="0"/>
+			<xs:element name="totalDutiesAndTaxesAmount" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="DutiesAndTaxes" type="MDutiesAndTaxesType03" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MDutiesAndTaxesType03">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="taxType" type="td2:TaxTypeContentType" minOccurs="0"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="payableTaxAmount" type="td2:AmountContentType" minOccurs="0"/>
+			<xs:element name="methodOfPayment" type="td2:MethodOfPaymentContentType" minOccurs="0"/>
+			<xs:element name="TaxBase" type="MTaxBaseType01" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType03">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+			<xs:element name="measurementUnitAndQualifier" type="td2:MeasurementUnitContentType" minOccurs="0"/>			
+            <xs:element name="ccQualifierForMeasurementUnitAndQualifier" type="td2:CountryCodeType" minOccurs="0"/>			
+			<xs:element name="quantity" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="goodsItemIdentifier" type="td2:ItemNumberContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType18">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="businessRejectionType" type="td2:RejectionTypeContentType"/>
+			<xs:element name="rejectionDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="rejectionCode" type="td2:RejectionCodeContentType"/>
+			<xs:element name="rejectionReason" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MFunctionalErrorType01">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="errorPointer" type="td2:FreeTextContentType"/>
+			<xs:element name="errorCode" type="td2:ErrorCodeContentType"/>
+			<xs:element name="errorReason" type="td2:ErrorReasonContentType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="originalAttributeValue" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCountryType01">
+		<xs:sequence>
+			<xs:element name="country" type="td2:CountryCodeType"/>
+			<xs:element name="Action" type="MActionType" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MActionType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="operation" type="td2:OperationContentType"/>
+			<xs:element name="Unavailability" type="MUnavailabilityType" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MUnavailabilityType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:SystemUnavailabilityContentType"/>
+			<xs:element name="functionality" type="td2:FunctionalityContentType"/>
+			<xs:element name="startDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="endDateAndTime" type="td2:DateTimeType" minOccurs="0"/>
+			<xs:element name="explanation" type="td2:ExplanationContentType"/>
+			<xs:element name="text" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="Fallback" type="MFallbackType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MFallbackType">
+		<xs:sequence>
+			<xs:element name="flag" type="td2:FlagContentType"/>
+			<xs:element name="text" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType07">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="declarationRegistrationDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="presentationNotificationDueDate" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType13">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="notificationDate" type="td2:DateType"/>
+			<xs:element name="notificationType" type="td2:NotificationTypeContentType"/>
+			<xs:element name="anticipatedControlDate" type="td2:DateType" minOccurs="0"/>
+			<xs:element name="text" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlDecisionType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:ControlTypeContentType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRequestedDocumentsType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType" minOccurs="0"/>
+			<xs:element name="description" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType25">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="declarationType" type="td2:DeclarationTypeContentType"/>
+			<xs:element name="additionalDeclarationType" type="td2:AdditionalDeclarationTypeContentType"/>
+			<xs:element name="languageCode" type="td2:CountryCodeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType08">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="requestDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType20">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="amendmentDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="amendmentAcceptanceDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType39">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="presentationNotificationRegistrationDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType05">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="declarationType" type="td2:DeclarationTypeContentType"/>
+			<xs:element name="additionalDeclarationType" type="td2:AdditionalDeclarationTypeContentType"/>
+			<xs:element name="decisionDate" type="td2:DateType"/>
+			<xs:element name="decisionReason" type="td2:FreeTextContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType24">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType06">
+		<xs:sequence>
+			<xs:element name="Consignment" type="MConsignmentType02"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MConsignmentType02">
+		<xs:sequence>
+			<xs:element name="TransportEquipment" type="MTransportEquipmentType" minOccurs="0" maxOccurs="999"/>
+			<xs:element name="LocationOfGoods" type="MLocationOfGoodsType01"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSendingCountryType">
+		<xs:sequence>
+			<xs:element name="country" type="td2:CountryCodeType"/>
+			<xs:element name="year" type="td2:YearContentType"/>
+			<xs:element name="month" type="td2:MonthContentType"/>
+			<xs:element name="SystemApplicability" type="MSystemApplicabilityType" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSystemApplicabilityType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="systemCode" type="td2:SystemCodeContentType"/>
+			<xs:element name="StatisticalCharacteristics" type="MStatisticalCharacteristicsType" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MStatisticalCharacteristicsType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="operation" type="td2:OperationContentType"/>
+			<xs:element name="statisticsType" type="td2:StatisticsType"/>
+			<xs:element name="statisticsTypeSupport" type="td2:StatisticsTypeSupportContentType"/>
+			<xs:element name="SeriesElements" type="MSeriesElementsType" minOccurs="0" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MSeriesElementsType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="otherCountry" type="td2:OtherCountryContentType" minOccurs="0"/>
+			<xs:element name="counter" type="td2:CounterContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MReminderDetailsType">
+		<xs:sequence>
+			<xs:element name="requestDate" type="td2:DateType"/>
+			<xs:element name="expirationDate" type="td2:DateType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType32">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="rejectionDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="rejectionCode" type="td2:RejectionCodeContentType"/>
+			<xs:element name="rejectionReason" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MFunctionalErrorType02">
+		<xs:sequence>
+			<xs:element name="errorPointer" type="td2:FreeTextContentType"/>
+			<xs:element name="errorCode" type="td2:ErrorCodeContentType"/>
+			<xs:element name="errorReason" type="td2:ErrorReasonContentType" minOccurs="0"/>
+			<xs:element name="originalAttributeValue" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType22">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="decisionCode" type="td2:FlagContentType"/>
+			<xs:element name="decisionText" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MItemControlDecisionType">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType" minOccurs="0"/>
+			<xs:element name="ItemRiskAnalysisResult" type="MRiskAnalysisResultType" maxOccurs="99"/>
+			<xs:element name="ControlType" type="MControlDecisionType" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType30">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="presentationNotificationRegistrationDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType38">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentType03">
+		<xs:sequence>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType05" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="Consignment" type="MConsignmentType03"/>
+			<xs:element name="GoodsShipmentItem" type="MGoodsShipmentItemType05" maxOccurs="999"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPreviousDocumentType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MConsignmentType03">
+		<xs:sequence>
+			<xs:element name="grossMass" type="td2:QuantityContentType" minOccurs="0"/>
+			<xs:element name="TransportEquipment" type="MTransportEquipmentType" minOccurs="0" maxOccurs="999"/>
+			<xs:element name="LocationOfGoods" type="MLocationOfGoodsType01"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsShipmentItemType05">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType" minOccurs="0"/>
+			<xs:element name="declarationGoodsItemNumber" type="td2:ItemNumberContentType"/>
+			<xs:element name="Authorisation" type="MAuthorisationType02" minOccurs="0" maxOccurs="9"/>
+			<xs:element name="Procedure" type="MProcedureType01"/>
+			<xs:element name="Commodity" type="MCommodityType06"/>
+			<xs:element name="Packaging" type="MPackagingType02" minOccurs="0" maxOccurs="99"/>
+			<xs:element name="PreviousDocument" type="MPreviousDocumentType03" minOccurs="0" maxOccurs="99"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCommodityType06">
+		<xs:sequence>
+			<xs:element name="descriptionOfGoods" type="td2:FreeTextContentType"/>
+			<xs:element name="GoodsMeasure" type="MGoodsMeasureType03"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MGoodsMeasureType03">
+		<xs:sequence>
+			<xs:element name="grossMass" type="td2:QuantityContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MPackagingType03">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="typeOfPackages" type="td2:TypeOfPackagesContentType"/>
+			<xs:element name="numberOfPackages" type="td2:NumberOfPackagesContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCountryType02">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="country" type="td2:CountryCodeType"/>
+			<xs:element name="Action" type="MActionType" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType31">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="documentsProvided" type="td2:FlagContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MRequestedDocumentsType03">
+		<xs:sequence>
+			<xs:element name="sequenceNumber" type="td2:SequenceNrContentType"/>
+			<xs:element name="type" type="td2:DocumentTypeContentType"/>
+			<xs:element name="ccQualifier" type="td2:CountryCodeType" minOccurs="0"/>
+			<xs:element name="referenceNumber" type="td2:DocumentRefNumberContentType" minOccurs="0"/>
+			<xs:element name="description" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="DocumentsImage" type="MDocumentsImageType" minOccurs="0" maxOccurs="9"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType16">
+		<xs:sequence>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="decisionDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="noReleaseDecisionReason" type="td2:FreeTextContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType02">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="MRN" type="td2:MRNContentType"/>
+			<xs:element name="declarationAcceptanceDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType17">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="invalidationRequestDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="invalidationReason" type="td2:FreeTextContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MControlResultType04">
+		<xs:sequence>
+			<xs:element name="code" type="td2:ControlResultContentType"/>
+			<xs:element name="date" type="td2:DateType"/>
+			<xs:element name="remarks" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="supportingDocumentsProvided" type="td2:FlagContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MTimerExpiryType">
+		<xs:sequence>
+			<xs:element name="lodgementOfSupplementaryDeclarationStartDate" type="td2:DateType"/>
+			<xs:element name="lodgementOfSupplementaryDeclarationExpiryDate" type="td2:DateType"/>
+			<xs:element name="timerExpiryInformation" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType12">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="validationDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType03">
+		<xs:sequence>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MXmlErrorType">
+		<xs:sequence>
+			<xs:element name="errorLineNumber" type="td2:XMLErrorContentType"/>
+			<xs:element name="errorColumnNumber" type="td2:XMLErrorContentType"/>
+			<xs:element name="errorPointer" type="td2:FreeTextContentType" minOccurs="0"/>
+			<xs:element name="errorCode" type="td2:ErrorCodeContentType"/>
+			<xs:element name="errorText" type="td2:FreeTextContentType"/>
+			<xs:element name="originalAttributeValue" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType06">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="declarationRejectionDateAndTime" type="td2:DateTimeType"/>
+			<xs:element name="declarationRejectionReason" type="td2:FreeTextContentType" minOccurs="0"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType11">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+			<xs:element name="validationDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType37">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MCciOperationType21">
+		<xs:sequence>
+			<xs:element name="LRN" type="td2:LRNContentType" minOccurs="0"/>
+			<xs:element name="customsRegistrationNumber" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="invalidationDateAndTime" type="td2:DateTimeType"/>
+		</xs:sequence>
+	</xs:complexType>
+</xs:schema>

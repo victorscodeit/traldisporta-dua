@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+    <!--=================================================================================================================-->
+    <!--===== IE415: E_IMP_DAT                                                                                           -->
+    <!--===== Customs declaration                                                                                        -->
+    <!--===== CCI Phase 1                                                                                                -->
+    <!--===== XSD version 40.80                                                                                          -->
+    <!--=================================================================================================================-->
+
+<xs:schema 
+
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     elementFormDefault="unqualified" 
+     attributeFormDefault="unqualified" version="40.80" 
+     xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_CC415A.xsd" 
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+     targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_CC415A.xsd" 
+     xmlns:td1="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd"
+     xmlns:td11="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes_D.xsd">
+
+                   	
+    <xs:import schemaLocation="ES_ctypes.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd" >
+    </xs:import>  
+    
+    <xs:import schemaLocation="ES_ctypes_D.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes_D.xsd" >
+    </xs:import>      
+ 	      
+    <!--=================================================================================================================-->
+    <!--===== Root element                                                                                               -->
+    <!--=================================================================================================================-->
+    <xs:element name="CC415A" type="CC415AType"/>
+    <!--=================================================================================================================-->
+    <!--===== Root element Content                                                                                       -->
+    <!--=================================================================================================================-->
+    <xs:complexType name="CC415AType">
+        <xs:sequence>
+            <xs:element name="ImportOperation" minOccurs="1" maxOccurs="1" type="td1:MCciOperationType04">
+                            </xs:element>
+            <xs:element name="Authorisation" minOccurs="0" maxOccurs="9" type="td1:MAuthorisationType04">
+                            </xs:element>
+            <xs:element name="CustomsOfficeOfPresentation" minOccurs="1" maxOccurs="1" type="td1:MPcoType">
+                            </xs:element>
+            <xs:element name="SupervisingCustomsOffice" minOccurs="0" maxOccurs="1" type="td1:MScoType">
+                            </xs:element>
+            <xs:element name="Importer" minOccurs="1" maxOccurs="1" type="td1:MImporterType">
+                            </xs:element>
+            <xs:element name="Declarant" minOccurs="1" maxOccurs="1" type="td1:MDeclarantType">
+                            </xs:element>
+            <xs:element name="PersonProvidingAGuarantee" minOccurs="0" maxOccurs="1" type="td1:MPersonProvidingGuaranteeType">
+                            </xs:element>
+            <xs:element name="PersonPayingCustomsDuty" minOccurs="0" maxOccurs="1" type="td1:MPersonPayingCustomsDutyType">
+                            </xs:element>
+            <xs:element name="Representative" minOccurs="0" maxOccurs="1" type="td1:MRepresentativeType">
+                            </xs:element>
+            <xs:element name="Guarantee" minOccurs="0" maxOccurs="9" type="td1:MGuaranteeType">
+                            </xs:element>
+            <xs:element name="CurrencyExchange" minOccurs="0" maxOccurs="1" type="td1:MCurrencyExchangeType">
+                            </xs:element>
+            <xs:element name="DeferredPayment" minOccurs="0" maxOccurs="9" type="td1:MDeferredPaymentType">
+                            </xs:element>
+            <xs:element name="GoodsShipment" minOccurs="1" maxOccurs="999" type="td1:MGoodsShipmentType05">
+                            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+</xs:schema>

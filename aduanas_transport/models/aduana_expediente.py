@@ -2464,8 +2464,12 @@ class AduanaExpediente(models.Model):
             packages_type = (type_of_packages or line.type_of_packages or "CT").strip().upper()
             packages = int(line.bultos or 0)
             is_bulk = packages_type == "FR" or packages <= 0
+            # Orden obligatorio según MPreviousDocumentType01 (ES_ctypes.xsd):
+            # referenceNumber → typeOfPackages → numberOfPackages → measurement… → quantity → goodsItemIdentifier
+            type_of_packages_xml = ""
             packages_xml = ""
             if not is_bulk:
+                type_of_packages_xml = "\n<typeOfPackages>%s</typeOfPackages>" % xml_escape(packages_type)
                 packages_xml = "\n<numberOfPackages>%s</numberOfPackages>" % packages
             goods_item_xml = ""
             if self._n337_reference_uses_goods_item(reference):
@@ -2481,12 +2485,13 @@ class AduanaExpediente(models.Model):
 <type>N337</type>
 <referenceNumber>%s</referenceNumber>%s%s
 <measurementUnitAndQualifier>KGMG</measurementUnitAndQualifier>
-<quantity>%s</quantity>
+<quantity>%s</quantity>%s
 </PreviousDocument>""" % (
                 xml_escape(reference[:70]),
-                goods_item_xml,
+                type_of_packages_xml,
                 packages_xml,
                 xml_escape(quantity),
+                goods_item_xml,
             )
 
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
@@ -2793,7 +2798,7 @@ class AduanaExpediente(models.Model):
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
             xml = rec._build_cc415a_soap_envelope()
-            rec._attach_xml(f"{rec.name}_IMP_DECL.xml", xml)
+            rec._attach_xml(f"{rec.name}_CC415A.xml", xml)
             rec.state = "predeclared"
             rec.error_message = False
         return True
@@ -3188,18 +3193,41 @@ class AduanaExpediente(models.Model):
         self._attach_xml(f"{self.name}_CC511C.xml", xml)
         return self._get_xml_attachment("CC511C.xml")
 
-    def _ensure_imp_decl_xml(self):
+    def _cc415a_attachment_name(self):
+        return "%s_CC415A.xml" % (self.name or "import")
+
+    def _get_cc415a_attachment(self):
+        """Adjunto CC415A (H1). Compatibilidad con nombre antiguo *_IMP_DECL.xml."""
         self.ensure_one()
-        xml = self.env['ir.ui.view']._render_template(
-            "aduanas_transport.tpl_imp_decl",
-            {"exp": self}
-        )
-        att = self._get_xml_attachment("IMP_DECL.xml")
-        if att:
-            att.datas = base64.b64encode(xml.encode("utf-8"))
+        att = self._get_xml_attachment("_CC415A.xml")
+        if not att:
+            att = self._get_xml_attachment("IMP_DECL.xml")
+        return att
+
+    def _ensure_cc415a_xml(self):
+        """Genera o devuelve el XML CC415AV1Ent (no el formato legacy DeclaracionImportacionEnt)."""
+        self.ensure_one()
+        if self.direction != "import":
+            raise UserError(_("Solo expedientes de importación usan CC415A."))
+        att = self._get_cc415a_attachment()
+        if att and att.datas and self.state in ("predeclared", "presented", "accepted", "released", "exited", "error"):
             return att
-        self._attach_xml(f"{self.name}_IMP_DECL.xml", xml)
-        return self._get_xml_attachment("IMP_DECL.xml")
+        self.env["aduanas.validator"].validate_expediente_import(self)
+        xml = self._build_cc415a_soap_envelope()
+        fname = self._cc415a_attachment_name()
+        if att:
+            att.write({
+                "name": fname,
+                "datas": base64.b64encode(xml.encode("utf-8")),
+                "mimetype": "application/xml",
+            })
+            return att
+        self._attach_xml(fname, xml)
+        return self._get_cc415a_attachment()
+
+    def _ensure_imp_decl_xml(self):
+        """Compat: previsualizar/descargar CC415A (antes usaba tpl_imp_decl obsoleto)."""
+        return self._ensure_cc415a_xml()
 
 
 

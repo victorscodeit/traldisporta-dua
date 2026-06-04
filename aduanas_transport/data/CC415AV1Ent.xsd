@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- editado por AEAT (Agencia Estatal de Administración Tributaria) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+     xmlns:ds="http://www.w3.org/2000/09/xmldsig#" 
+	 elementFormDefault="unqualified"
+	 
+     xmlns="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd" 
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+     targetNamespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd"       
+     xmlns:td11="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes_D.xsd"         
+     xmlns:td1="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd"
+     xmlns:td2="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes.xsd"
+     xmlns:td22="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes_D.xsd"                   
+     xmlns:td3="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_CC415A.xsd" >
+
+                 
+	<xs:import schemaLocation="ES_CC415A.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_CC415A.xsd" >
+    </xs:import>
+    <xs:import schemaLocation="ES_ctypes_D.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes_D.xsd" >
+    </xs:import>     	
+    <xs:import schemaLocation="ES_ctypes.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_ctypes.xsd" >
+    </xs:import>  
+    <xs:import schemaLocation="ES_stypes.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes.xsd" >
+    </xs:import>  
+    <xs:import schemaLocation="ES_stypes_D.xsd" 
+     namespace="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/ES_stypes_D.xsd" >
+    </xs:import>       	   
+	
+	<xs:annotation>
+		<xs:documentation>
+    	Esquema de Entrada del Servicio que define el mensaje CCI CC415A:       	
+    	Permite: 	declarar/modificar una DPA, 
+    				declarar/modificar una DAC,  
+    	         	completar una PDI,
+    	         	complementar una SPA/SAC.
+    	</xs:documentation>
+	</xs:annotation>
+	<xs:element name="CC415AV1Ent" type="CC415AV1Ent"/>
+	<xs:complexType name="CC415AV1Ent">
+		<xs:sequence>
+			<xs:element name="Message" type="td11:MessageTypeD"/>
+			<xs:element name="MRN" type="td2:MRNContentType" minOccurs="0"/>
+			<xs:element name="operation" type="td2:OperationContentType"/>	
+			<xs:element name="CustomsOfficeOfImport" type="td1:MScoType"/>
+			<xs:element name="recapitulationPeriod" type="td22:DatePeriodTypeD" minOccurs="0"/>			
+			<xs:element name="ModoActivacionDeclaracion" type="td22:ActivacionTypeD" minOccurs="0"/>						
+			<xs:element name="CC415A" 	 type="td3:CC415AType"/>
+		</xs:sequence>
+	</xs:complexType>
+
+</xs:schema>
