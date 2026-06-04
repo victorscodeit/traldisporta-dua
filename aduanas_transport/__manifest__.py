@@ -2,7 +2,7 @@
 {
     "name": "Aduanas Transporte España ↔ País tercero (Unificado)",
     "summary": "Expedientes aduaneros de Exportación (AES) e Importación (DUA) con AEAT. Origen de datos MSoft. Bandeja AEAT.",
-    "version": "16.0.1.0.10",
+    "version": "16.0.1.0.11",
     "category": "Operations/Logistics",
     "author": "Indomit / Traldisporta",
     "license": "LGPL-3",
@@ -14,6 +14,7 @@
         "views/res_config_settings_views.xml",
         "views/res_company_views.xml",
         "views/aduanas_config_views.xml",
+        "views/aeat_import_stubs_views.xml",
         "views/aduana_expediente_views.xml",
         "views/aduana_incidencia_views.xml",
         "views/factura_carga_views.xml",

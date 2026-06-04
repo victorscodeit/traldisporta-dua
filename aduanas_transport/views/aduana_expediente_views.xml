@@ -82,6 +82,9 @@
                   help="Bandeja EXPORAES: levante y salida efectiva de exportación."/>
 
           <!-- Importación H1 -->
+          <button name="action_abrir_g4_ddt" string="0. G4 / DDT (MRN)" type="object"
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"
+                  help="Registro G4 separado de CC415A. Integración AEAT pendiente; puede aplicar MRN manual al expediente."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
                   help="Comprueba datos obligatorios antes de generar CC415A."/>
@@ -245,14 +248,12 @@
             <group>
               <div class="alert alert-info mb-0" role="alert" colspan="2"
                    attrs="{'invisible': [('direction', '!=', 'import')]}">
-                <strong>Importación H1:</strong> El <strong>MRN de la cabecera</strong> del expediente queda vacío hasta que AEAT acepte esta declaración (CC415A).
-                Antes de presentar, debe indicar el <strong>MRN del DDT/G4</strong> (documento previo N337, 18 caracteres) en el campo inferior — no es el MRN del expediente.
-                Remitente = exportador (país AD). Consignatario = importador español. Declarante = ESB65496556 (empresa Odoo).
+                <strong>CC415A (H1)</strong> es independiente de <strong>G4/DDT</strong> y <strong>G3</strong> (endpoints y XML distintos).
+                MRN de cabecera = importación aceptada. Si marca «Requiere DDT», rellene <strong>MRN DDT/G4</strong> o use botón <strong>0. G4 / DDT</strong>.
               </div>
               <div class="alert alert-warning mb-0" role="alert" colspan="2"
-                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('import_previous_document_ref', '!=', False)]}">
-                Sin MRN del DDT/G4 no puede presentarse la importación con documento previo N337.
-                Obtenga el MRN de la declaración sumaria de depósito temporal (PreCAU) o G4 y rellénelo abajo.
+                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('mrn_ddt', '!=', False)]}">
+                Requiere DDT pero falta MRN DDT/G4. Presente G4 (futuro) o indique el MRN de 18 caracteres.
               </div>
               <field name="remitente"/>
               <field name="consignatario"/>
@@ -271,11 +272,14 @@
               <field name="import_region_of_destination" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <field name="import_previous_document_type" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="requiere_ddt" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="ddt_type" attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"/>
+              <field name="mrn_ddt" placeholder="24ES00280180000019"
+                     attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)], 'required': [('requiere_ddt', '=', True), ('direction', '=', 'import')]}"/>
               <field name="import_ddt_origen_id" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <field name="import_previous_document_ref" placeholder="24ES00280180000019"
-                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <field name="import_previous_document_is_g4" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_previous_document_type" invisible="1"/>
+              <field name="import_previous_document_ref" invisible="1"/>
+              <field name="import_previous_document_is_g4" invisible="1"/>
               <field name="import_checklist_html" nolabel="1" colspan="2"
                      attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>

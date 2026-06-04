@@ -65,8 +65,26 @@ def migrate_aeat_config_to_companies(env):
     _logger.info("Migración AEAT: configuración copiada a res.company")
 
 
+def migrate_import_ddt_fields(env):
+    """Expedientes import con referencia legacy → requiere_ddt + mrn_ddt."""
+    Expediente = env["aduana.expediente"].sudo()
+    for exp in Expediente.search([
+        ("direction", "=", "import"),
+        ("import_previous_document_ref", "!=", False),
+        ("requiere_ddt", "=", False),
+    ]):
+        ref = (exp.import_previous_document_ref or "").strip()
+        if ref:
+            exp.write({
+                "requiere_ddt": True,
+                "mrn_ddt": ref,
+                "ddt_type": "g4" if exp.import_previous_document_is_g4 else "dsdt",
+            })
+
+
 def post_init_hook(cr, registry):
     from odoo import api, SUPERUSER_ID
 
     env = api.Environment(cr, SUPERUSER_ID, {})
     migrate_aeat_config_to_companies(env)
+    migrate_import_ddt_fields(env)

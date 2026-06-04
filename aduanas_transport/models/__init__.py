@@ -1,1 +1,15 @@
-from . import aduana_expediente_factura, aduana_expediente, aduanas_config_settings, res_company, res_config_settings, aduana_validator, xml_parser, msoft_import, aduana_incidencia, ir_attachment, factura_carga
+from . import (
+    aduana_expediente_factura,
+    aduana_expediente,
+    aduanas_config_settings,
+    res_company,
+    res_config_settings,
+    aduana_validator,
+    xml_parser,
+    msoft_import,
+    aduana_incidencia,
+    ir_attachment,
+    factura_carga,
+    aeat_import_g3,
+    aeat_import_g4,
+)

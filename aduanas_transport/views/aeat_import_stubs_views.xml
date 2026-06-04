@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <record id="view_aeat_import_g4_form" model="ir.ui.view">
+    <field name="name">aeat.import.g4.temporary.storage.form</field>
+    <field name="model">aeat.import.g4.temporary.storage</field>
+    <field name="arch" type="xml">
+      <form string="G4 / Depósito temporal">
+        <header>
+          <button name="action_generar_xml_g4" string="Generar XML G4" type="object" class="oe_highlight"/>
+          <button name="action_presentar_g4" string="Presentar G4" type="object"/>
+          <button name="action_aplicar_mrn_al_expediente" string="Aplicar MRN al expediente" type="object"
+                  attrs="{'invisible': [('mrn', '=', False)]}"/>
+          <field name="state" widget="statusbar" statusbar_visible="draft,generated,presented,accepted,error"/>
+        </header>
+        <sheet>
+          <div class="alert alert-warning" role="alert">
+            Servicio G4 separado de CC415A/H1. La presentación automática se implementará en una fase posterior.
+            Puede registrar aquí el MRN obtenido externamente y pulsar «Aplicar MRN al expediente».
+          </div>
+          <group>
+            <field name="expediente_id" readonly="1"/>
+            <field name="ddt_type" readonly="1"/>
+            <field name="lrn"/>
+            <field name="mrn" placeholder="24ESG4A000000001U6"/>
+            <field name="endpoint_url"/>
+            <field name="error_message" readonly="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_aeat_import_g3_form" model="ir.ui.view">
+    <field name="name">aeat.import.g3.presentation.form</field>
+    <field name="model">aeat.import.g3.presentation</field>
+    <field name="arch" type="xml">
+      <form string="G3 Presentación importación">
+        <header>
+          <button name="action_generar_xml_g3" string="Generar XML G3" type="object"/>
+          <button name="action_presentar_g3" string="Presentar G3" type="object"/>
+          <field name="state" widget="statusbar"/>
+        </header>
+        <sheet>
+          <div class="alert alert-warning" role="alert">
+            Integración G3 pendiente. No usar endpoints CC415A para este flujo.
+          </div>
+          <group>
+            <field name="expediente_id"/>
+            <field name="lrn"/>
+            <field name="mrn"/>
+            <field name="endpoint_url"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+</odoo>

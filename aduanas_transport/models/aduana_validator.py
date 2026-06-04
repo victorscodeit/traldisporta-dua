@@ -47,6 +47,19 @@ class AduanaValidator(models.AbstractModel):
         partida = partida.replace(' ', '').replace('.', '')
         return len(partida) == 10 and partida.isdigit()
 
+    def _validate_n337_mrn_format(self, mrn):
+        ref = (mrn or "").strip().upper().replace(" ", "")
+        if not ref:
+            return False, _("Indique el MRN DDT/G4 (campo «MRN DDT/G4»).")
+        valid_mrn = bool(len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref))
+        valid_plus = (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
+        if valid_mrn or valid_plus:
+            return True, None
+        return False, _(
+            "El MRN DDT/G4 debe tener 18 caracteres (ej. 24ES00280180000019) "
+            "o formato vuelo+conocimiento con «+» en posición 17 o 19."
+        )
+
     def validate_expediente_export(self, expediente):
         """Valida expediente de exportación antes de enviar"""
         errors = []
@@ -99,7 +112,7 @@ class AduanaValidator(models.AbstractModel):
         return True
 
     def validate_expediente_import(self, expediente):
-        """Valida expediente de importación antes de enviar"""
+        """Valida expediente de importación antes de enviar CC415A."""
         errors = []
         
         if not expediente.remitente:
@@ -136,35 +149,30 @@ class AduanaValidator(models.AbstractModel):
         valuation_method = (getattr(expediente, "import_valuation_method", "") or "").strip()
         if not re.match(r"^[0-9]{1}$", valuation_method):
             errors.append(_("En importación H1, el método de valoración debe tener 1 dígito (ej: 1)."))
-        previous_document_type = (getattr(expediente, "import_previous_document_type", "") or "N337").strip().upper()
-        if previous_document_type == "N355":
-            previous_document_type = "N337"
-        previous_document_ref = (getattr(expediente, "import_previous_document_ref", "") or "").strip()
-        if not re.match(r"^[A-Za-z0-9]{1,4}$", previous_document_type):
-            errors.append(_("En importación H1, el tipo de documento previo es obligatorio (ej: N337)."))
-        if previous_document_type == "N337":
-            if not previous_document_ref:
-                errors.append(
-                    _("N337: indique el MRN del DDT/G4 (18 caracteres) en «MRN / referencia documento previo».")
-                )
-            else:
-                ref = previous_document_ref.upper().replace(" ", "")
-                valid_mrn = bool(len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref))
-                valid_plus = (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
-                if not (valid_mrn or valid_plus):
-                    errors.append(
-                        _("N337: la referencia debe ser un MRN de 18 caracteres o vuelo+conocimiento con «+» "
-                          "en posición 17 o 19. No use formato fecha:referencia.")
-                    )
-                elif valid_mrn:
-                    for idx, line in enumerate(expediente.line_ids, 1):
-                        ddt_item = getattr(line, "import_ddt_goods_item", False) or line.item_number
-                        if not ddt_item:
-                            errors.append(
-                                _("Línea %d: indique el nº de partida del DDT (campo «Nº partida DDT»).") % idx
-                            )
-        elif not previous_document_ref:
-            errors.append(_("En importación H1, la referencia de documento previo es obligatoria."))
+
+        requiere_ddt = bool(getattr(expediente, "requiere_ddt", False))
+        ddt_type = getattr(expediente, "ddt_type", "none") or "none"
+        mrn_ddt = ""
+        if hasattr(expediente, "_get_mrn_ddt"):
+            mrn_ddt = expediente._get_mrn_ddt()
+        else:
+            mrn_ddt = (getattr(expediente, "mrn_ddt", "") or getattr(expediente, "import_previous_document_ref", "") or "").strip()
+
+        if requiere_ddt:
+            if ddt_type == "none":
+                errors.append(_("Si «Requiere DDT/G4 previo» está activo, seleccione tipo DSDT o G4."))
+            ok, msg = self._validate_n337_mrn_format(mrn_ddt)
+            if not ok:
+                errors.append(msg)
+            elif len((mrn_ddt or "").replace(" ", "")) == 18 and re.match(
+                r"^[A-Z0-9]{18}$", (mrn_ddt or "").upper().replace(" ", "")
+            ):
+                for idx, line in enumerate(expediente.line_ids, 1):
+                    ddt_item = getattr(line, "import_ddt_goods_item", False) or line.item_number
+                    if not ddt_item:
+                        errors.append(
+                            _("Línea %d: indique el nº de partida del DDT (campo «Nº partida DDT»).") % idx
+                        )
 
         if getattr(expediente, "requested_procedure", "40") != "40":
             errors.append(_("Para importación normal, requestedProcedure debe ser 40."))
@@ -191,4 +199,3 @@ class AduanaValidator(models.AbstractModel):
             raise ValidationError("\n".join(errors))
         
         return True
-

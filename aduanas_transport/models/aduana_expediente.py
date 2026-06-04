@@ -210,26 +210,54 @@ class AduanaExpediente(models.Model):
         default="1",
         help="CustomsValuation/valuationMethod. 1 = valor de transacción.",
     )
+    requiere_ddt = fields.Boolean(
+        string="Requiere DDT/G4 previo",
+        default=False,
+        help="Si está marcado, la importación CC415A debe datar un documento previo N337 (MRN DDT/G4). "
+             "Si no está marcado, puede presentarse CC415A sin MRN de depósito temporal.",
+    )
+    mrn_ddt = fields.Char(
+        string="MRN DDT/G4",
+        help="MRN de 18 caracteres del DDT PreCAU (DSDT) o G4, obligatorio si «Requiere DDT/G4 previo».",
+    )
+    ddt_type = fields.Selection(
+        [
+            ("none", "Sin DDT"),
+            ("dsdt", "DSDT / DDT PreCAU"),
+            ("g4", "G4"),
+        ],
+        string="Tipo depósito previo",
+        default="none",
+        help="Tipo de documento previo al datar en CC415A. Solo aplica si requiere DDT.",
+    )
+    g4_storage_ids = fields.One2many(
+        "aeat.import.g4.temporary.storage",
+        "expediente_id",
+        string="Presentaciones G4",
+    )
+    g3_presentation_ids = fields.One2many(
+        "aeat.import.g3.presentation",
+        "expediente_id",
+        string="Presentaciones G3",
+    )
     import_previous_document_type = fields.Char(
-        string="Tipo documento previo importación",
+        string="Tipo documento previo (legacy)",
         default="N337",
-        help="PreviousDocument/type para H1. N337 = declaración de depósito temporal. Ajustar según documento previo real.",
+        help="Sincronizado automáticamente con requiere_ddt/mrn_ddt. No editar manualmente.",
     )
     import_previous_document_ref = fields.Char(
-        string="MRN / referencia documento previo (N337)",
-        help="PreviousDocument/referenceNumber para N337: MRN DDT PreCAU o G4 de 18 caracteres "
-             "(ej. 24ES00280180000019, 24ESG4A000000001U6) o vuelo+conocimiento con '+' en posición 17 o 19.",
+        string="Referencia documento previo (legacy)",
+        help="Copia de mrn_ddt para compatibilidad XML.",
     )
     import_previous_document_is_g4 = fields.Boolean(
-        string="Documento previo es G4",
+        string="Documento previo es G4 (legacy)",
         default=False,
-        help="Si el N337 referencia una G4, la cantidad (quantity) admite decimales. En DDT solo kilos enteros.",
+        help="Sincronizado con ddt_type=g4.",
     )
     import_ddt_origen_id = fields.Many2one(
         "aduana.expediente",
         string="Expediente origen DDT",
-        help="Opcional: otro expediente en Odoo cuyo MRN sea el de la DDT/G4 (N337). "
-             "Al seleccionarlo se copia el MRN al campo de documento previo.",
+        help="Opcional: otro expediente cuyo MRN se copia a mrn_ddt.",
         domain="[('mrn', '!=', False)]",
     )
     import_checklist_html = fields.Html(
@@ -392,8 +420,15 @@ class AduanaExpediente(models.Model):
         doc_type = (vals.get("import_previous_document_type") or "").strip().upper()
         if doc_type == "N355":
             vals["import_previous_document_type"] = "N337"
+        if vals.get("mrn_ddt") and not vals.get("import_previous_document_ref"):
+            vals["import_previous_document_ref"] = vals["mrn_ddt"]
+        if "requiere_ddt" in vals and not vals.get("requiere_ddt"):
+            vals.setdefault("ddt_type", "none")
+            vals.setdefault("mrn_ddt", False)
 
         result = super().write(vals)
+        if any(k in vals for k in ("requiere_ddt", "mrn_ddt", "ddt_type", "import_previous_document_ref")):
+            self._sync_ddt_legacy_fields()
         if 'factura_pdf' in vals or 'factura_pdf_filename' in vals:
             for rec in self:
                 if rec.factura_pdf and rec.factura_pdf_filename:
@@ -678,6 +713,53 @@ class AduanaExpediente(models.Model):
             for field, value in rec._get_country_values_from_partners().items():
                 rec[field] = value
 
+    def _get_mrn_ddt(self):
+        """MRN DDT/G4 efectivo (campo nuevo o legacy)."""
+        self.ensure_one()
+        return (self.mrn_ddt or self.import_previous_document_ref or "").strip()
+
+    def _ddt_quantity_allows_decimals(self):
+        self.ensure_one()
+        return self.ddt_type == "g4" or bool(self.import_previous_document_is_g4)
+
+    def _ddt_legacy_vals(self):
+        """Valores legacy PreviousDocument derivados de requiere_ddt/mrn_ddt."""
+        self.ensure_one()
+        if self.requiere_ddt:
+            return {
+                "import_previous_document_type": "N337",
+                "import_previous_document_ref": self._get_mrn_ddt(),
+                "import_previous_document_is_g4": self.ddt_type == "g4",
+            }
+        return {
+            "import_previous_document_type": False,
+            "import_previous_document_ref": False,
+            "import_previous_document_is_g4": False,
+        }
+
+    def _sync_ddt_legacy_fields(self):
+        """Persiste campos legacy alineados con requiere_ddt/mrn_ddt."""
+        if self.env.context.get("skip_ddt_legacy_sync"):
+            return
+        for rec in self:
+            vals = rec._ddt_legacy_vals()
+            if (
+                (rec.import_previous_document_type or False) != vals["import_previous_document_type"]
+                or (rec.import_previous_document_ref or False) != vals["import_previous_document_ref"]
+                or rec.import_previous_document_is_g4 != vals["import_previous_document_is_g4"]
+            ):
+                super(AduanaExpediente, rec).write(vals)
+
+    @api.onchange("requiere_ddt", "mrn_ddt", "ddt_type")
+    def _onchange_requiere_ddt_fields(self):
+        for rec in self:
+            if not rec.requiere_ddt:
+                rec.ddt_type = "none"
+            elif rec.ddt_type == "none":
+                rec.ddt_type = "dsdt"
+            for field, value in rec._ddt_legacy_vals().items():
+                setattr(rec, field, value)
+
     @api.onchange("import_previous_document_type")
     def _onchange_import_previous_document_type(self):
         for rec in self:
@@ -688,8 +770,43 @@ class AduanaExpediente(models.Model):
     def _onchange_import_ddt_origen_id(self):
         for rec in self:
             if rec.import_ddt_origen_id and rec.import_ddt_origen_id.mrn:
-                rec.import_previous_document_type = "N337"
-                rec.import_previous_document_ref = rec.import_ddt_origen_id.mrn.strip()
+                rec.requiere_ddt = True
+                rec.mrn_ddt = rec.import_ddt_origen_id.mrn.strip()
+                if rec.ddt_type == "none":
+                    rec.ddt_type = "dsdt"
+                for field, value in rec._ddt_legacy_vals().items():
+                    setattr(rec, field, value)
+
+    def _aplicar_mrn_ddt_desde_g4(self, mrn):
+        self.ensure_one()
+        mrn = (mrn or "").strip()
+        if not mrn:
+            raise UserError(_("MRN DDT/G4 vacío."))
+        self.write({
+            "requiere_ddt": True,
+            "mrn_ddt": mrn,
+            "ddt_type": self.ddt_type if self.ddt_type != "none" else "g4",
+        })
+        self._sync_ddt_legacy_fields()
+        self.message_post(
+            body=_("MRN DDT/G4 aplicado desde presentación G4: %s") % mrn,
+            subtype_xmlid="mail.mt_note",
+        )
+
+    def action_abrir_g4_ddt(self):
+        """Abre el registro stub G4 (presentación futura, MRN manual hoy)."""
+        self.ensure_one()
+        if self.direction != "import":
+            raise UserError(_("Solo en expedientes de importación."))
+        g4 = self.env["aeat.import.g4.temporary.storage"].create_from_expediente(self)
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("G4 / Depósito temporal"),
+            "res_model": "aeat.import.g4.temporary.storage",
+            "res_id": g4.id,
+            "view_mode": "form",
+            "target": "new",
+        }
 
     def _import_checklist_items(self):
         """Lista de comprobaciones del flujo de importación H1 para el operario."""
@@ -697,9 +814,9 @@ class AduanaExpediente(models.Model):
         icp = self.env["ir.config_parameter"].sudo()
         cert_ok = bool(icp.get_param("aduanas_transport.cert_attachment_id"))
         endpoint_ok = bool((icp.get_param("aduanas_transport.endpoint.imp_decl") or "").strip())
-        ref = (self.import_previous_document_ref or "").strip().upper().replace(" ", "")
-        n337_ok = False
-        if (self.import_previous_document_type or "N337").strip().upper() == "N337":
+        ref = self._get_mrn_ddt().upper().replace(" ", "")
+        n337_ok = True
+        if self.requiere_ddt:
             n337_ok = (len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref)) or (
                 (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
             )
@@ -715,7 +832,8 @@ class AduanaExpediente(models.Model):
             (_("Oficina aduanas informada"), bool((self.oficina or "").strip())),
             (_("Líneas de mercancía con TARIC 10 dígitos"), lineas_ok and taric_ok),
             (_("Valor factura y moneda"), (self.valor_factura or 0) > 0),
-            (_("MRN DDT/G4 para documento previo N337"), n337_ok),
+            (_("MRN DDT/G4 configurado (si requiere DDT)"), (not self.requiere_ddt) or n337_ok),
+            (_("Tipo DDT DSDT/G4 (si requiere DDT)"), (not self.requiere_ddt) or self.ddt_type in ("dsdt", "g4")),
             (_("XML CC415A generado (estado predeclarado o superior)"), self.state in (
                 "predeclared", "presented", "accepted", "released", "exited", "closed"
             )),
@@ -725,6 +843,7 @@ class AduanaExpediente(models.Model):
     @api.depends(
         "direction", "line_ids", "line_ids.taric_completo", "line_ids.partida",
         "remitente", "consignatario", "oficina", "valor_factura", "moneda",
+        "requiere_ddt", "mrn_ddt", "ddt_type",
         "import_previous_document_ref", "import_previous_document_type",
         "pais_origen", "state", "mrn",
     )
@@ -737,16 +856,20 @@ class AduanaExpediente(models.Model):
             for label, ok in rec._import_checklist_items():
                 icon = "✅" if ok else "⬜"
                 rows.append("<li>%s %s</li>" % (icon, html_escape(label)))
+            ddt_step = (
+                "<li><strong>Si requiere DDT:</strong> presentar G4/DDT (botón G4, integración futura) "
+                "o indicar <strong>MRN DDT</strong> obtenido externamente.</li>"
+                if rec.requiere_ddt
+                else "<li><strong>Sin DDT previo:</strong> puede ir directo a CC415A (no marque «Requiere DDT»).</li>"
+            )
             rec.import_checklist_html = (
-                "<p><strong>Flujo operativo importación (Andorra → España, H1 CC415A)</strong></p>"
+                "<p><strong>Flujo importación H1 (CC415A) — G4/DDT y G3 son servicios aparte</strong></p>"
                 "<ol>"
-                "<li>Presentar la <strong>DDT</strong> (depósito temporal) y obtener su <strong>MRN 18 caracteres</strong> "
-                "(fuera de este expediente o vinculando otro expediente con MRN).</li>"
-                "<li>Completar datos, factura/líneas y MRN DDT abajo.</li>"
-                "<li><strong>Validar</strong> → <strong>Generar</strong> → <strong>Previsualizar</strong> → "
-                "<strong>Presentar</strong> declaración.</li>"
-                "<li><strong>Consultar estado</strong> y <strong>bandeja</strong> cuando exista MRN de importación.</li>"
-                "</ol><ul>%s</ul>" % "".join(rows)
+                "%s"
+                "<li>Completar datos, factura y líneas.</li>"
+                "<li><strong>Validar</strong> → <strong>Generar CC415A</strong> → <strong>Presentar</strong>.</li>"
+                "<li><strong>Consultar estado</strong> / <strong>bandeja</strong> con MRN de importación.</li>"
+                "</ol><ul>%s</ul>" % (ddt_step, "".join(rows))
             )
 
     def action_validar_importacion(self):
@@ -2293,7 +2416,7 @@ class AduanaExpediente(models.Model):
         ref = (reference or "").strip().upper().replace(" ", "")
         if not ref:
             raise UserError(
-                _("N337: indique el MRN del DDT/G4 en «MRN / referencia documento previo». "
+                _("N337: indique el MRN del DDT/G4 en «MRN DDT/G4» (mrn_ddt). "
                   "Ejemplo DDT PreCAU: 24ES00280180000019")
             )
         if len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref):
@@ -2315,16 +2438,13 @@ class AduanaExpediente(models.Model):
         return False
 
     def _imp_previous_document_xml(self, line, type_of_packages="CT"):
-        """PreviousDocument por partida; N337 exige MRN, KGMG, quantity y bultos según AEAT H1."""
+        """PreviousDocument por partida; solo si requiere_ddt (N337 + MRN DDT/G4)."""
         self.ensure_one()
+        if not self.requiere_ddt:
+            return ""
         if not line:
             raise UserError(_("PreviousDocument requiere una línea de mercancía."))
-        doc_type = (self.import_previous_document_type or "N337").strip().upper()
-        if doc_type == "N355":
-            doc_type = "N337"
-        if not doc_type:
-            raise UserError(_("Informe el tipo de documento previo para CC415A."))
-
+        doc_type = "N337"
         gross = line.peso_bruto or 0.0
         if gross <= 0:
             raise UserError(
@@ -2333,8 +2453,8 @@ class AduanaExpediente(models.Model):
             )
 
         if doc_type == "N337":
-            reference = self._normalize_n337_reference(self.import_previous_document_ref)
-            is_g4 = bool(self.import_previous_document_is_g4)
+            reference = self._normalize_n337_reference(self._get_mrn_ddt())
+            is_g4 = self._ddt_quantity_allows_decimals()
             if is_g4:
                 quantity = "%.2f" % gross
             else:
@@ -2366,21 +2486,6 @@ class AduanaExpediente(models.Model):
                 packages_xml,
                 xml_escape(quantity),
             )
-
-        reference = (
-            self.import_previous_document_ref
-            or self.numero_factura
-            or self.name
-            or "PREV"
-        ).strip()
-        return """<PreviousDocument>
-<sequenceNumber>1</sequenceNumber>
-<type>%s</type>
-<referenceNumber>%s</referenceNumber>
-</PreviousDocument>""" % (
-            xml_escape(doc_type[:4]),
-            xml_escape(reference[:70]),
-        )
 
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
         endpoint = (endpoint or "").strip()
@@ -2451,13 +2556,15 @@ class AduanaExpediente(models.Model):
             raise UserError(_("Informe la preferencia de importación (CalculationOfTaxes/preference)."))
         if not valuation_method:
             raise UserError(_("Informe el método de valoración de importación (CustomsValuation/valuationMethod)."))
-        previous_document_type = (self.import_previous_document_type or "N337").strip().upper()
-        if previous_document_type == "N355":
-            previous_document_type = "N337"
-        if previous_document_type == "N337":
-            self._normalize_n337_reference(self.import_previous_document_ref)
-        elif not (self.import_previous_document_ref or self.numero_factura or self.name or "").strip():
-            raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
+        self._sync_ddt_legacy_fields()
+        if self.requiere_ddt:
+            if self.ddt_type not in ("dsdt", "g4"):
+                raise UserError(_("Si requiere DDT, seleccione tipo DSDT o G4."))
+            if not self._get_mrn_ddt():
+                raise UserError(
+                    _("Requiere DDT/G4: indique el MRN en «MRN DDT/G4» o presente G4 y aplique el MRN al expediente.")
+                )
+            self._normalize_n337_reference(self._get_mrn_ddt())
         location_authorisation = (
             self.location_authorisation_number
             or self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.aeat_preprod_location_authorisation")
