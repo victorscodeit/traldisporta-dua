@@ -205,6 +205,22 @@ class AduanaExpediente(models.Model):
         default="100",
         help="CalculationOfTaxes/preference. 100 = régimen arancelario erga omnes/sin preferencia.",
     )
+    import_vat_rate = fields.Float(
+        string="Tipo IVA importación (%)",
+        default=21.0,
+        help="Tipo impositivo B00 en casilla 47 / DutiesAndTaxes. AEAT puede recalcular la cuota.",
+    )
+    import_declare_duty_a00 = fields.Boolean(
+        string="Declarar arancel A00",
+        default=True,
+        help="Si está activo, declara A00 (arancel) antes del IVA; la base del IVA incluye la cuota A00.",
+    )
+    import_tax_method_of_payment = fields.Char(
+        string="Modo pago tributos (1 letra)",
+        default="E",
+        size=1,
+        help="methodOfPayment en DutiesAndTaxes (ej. E = cuenta de cargo, R = no sujeto).",
+    )
     import_valuation_method = fields.Char(
         string="Método valoración importación",
         default="1",
@@ -2439,6 +2455,58 @@ class AduanaExpediente(models.Model):
             return True
         return False
 
+    def _imp_tax_method_of_payment(self):
+        self.ensure_one()
+        method = (self.import_tax_method_of_payment or "E").strip().upper()[:1]
+        return method if re.match(r"^[A-Z]$", method) else "E"
+
+    def _imp_duty_tax_block_xml(self, sequence, tax_type, base_amount, tax_rate, tax_amount, method_of_payment):
+        return """<DutiesAndTaxes>
+<sequenceNumber>%s</sequenceNumber>
+<taxType>%s</taxType>
+<payableTaxAmount>%.2f</payableTaxAmount>
+<methodOfPayment>%s</methodOfPayment>
+<TaxBase>
+<sequenceNumber>1</sequenceNumber>
+<taxRate>%.3f</taxRate>
+<amount>%.2f</amount>
+<taxAmount>%.2f</taxAmount>
+</TaxBase>
+</DutiesAndTaxes>""" % (
+            sequence,
+            xml_escape(tax_type),
+            tax_amount,
+            xml_escape(method_of_payment),
+            tax_rate,
+            base_amount,
+            tax_amount,
+        )
+
+    def _imp_calculation_of_taxes_xml(self, line, preference):
+        """CalculationOfTaxes con B00 (IVA) obligatorio en casilla 47 (error AEAT 2802)."""
+        self.ensure_one()
+        preference = (preference or "100").strip()
+        customs_value = float(line.valor_linea or 0.0)
+        vat_rate = float(self.import_vat_rate or 21.0)
+        method_b00 = self._imp_tax_method_of_payment()
+        blocks = []
+        seq = 1
+        duty_tax_amount = 0.0
+        if self.import_declare_duty_a00:
+            blocks.append(
+                self._imp_duty_tax_block_xml(seq, "A00", customs_value, 0.0, 0.0, "R")
+            )
+            seq += 1
+        vat_base = customs_value + duty_tax_amount
+        vat_tax = round(vat_base * vat_rate / 100.0, 2)
+        blocks.append(
+            self._imp_duty_tax_block_xml(seq, "B00", vat_base, vat_rate, vat_tax, method_b00)
+        )
+        return """<CalculationOfTaxes>
+<preference>%s</preference>
+%s
+</CalculationOfTaxes>""" % (xml_escape(preference), "\n".join(blocks))
+
     def _imp_previous_document_xml(self, line, type_of_packages="CT"):
         """PreviousDocument por partida; solo si requiere_ddt (N337 + MRN DDT/G4)."""
         self.ensure_one()
@@ -2615,9 +2683,7 @@ class AduanaExpediente(models.Model):
 <InvoiceLine>
 <itemAmountInvoiced>%.2f</itemAmountInvoiced>
 </InvoiceLine>
-<CalculationOfTaxes>
-<preference>%s</preference>
-</CalculationOfTaxes>
+%s
 </Commodity>
 <Packaging>
 <sequenceNumber>1</sequenceNumber>
@@ -2645,7 +2711,7 @@ class AduanaExpediente(models.Model):
                 line.peso_bruto or 0.0,
                 line.peso_neto or 0.0,
                 line.valor_linea or 0.0,
-                xml_escape(preference),
+                self._imp_calculation_of_taxes_xml(line, preference),
                 xml_escape(packages_type),
                 (
                     "<numberOfPackages>%s</numberOfPackages>" % packages_count

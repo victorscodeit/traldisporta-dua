@@ -149,6 +149,12 @@ class AduanaValidator(models.AbstractModel):
         valuation_method = (getattr(expediente, "import_valuation_method", "") or "").strip()
         if not re.match(r"^[0-9]{1}$", valuation_method):
             errors.append(_("En importación H1, el método de valoración debe tener 1 dígito (ej: 1)."))
+        vat_rate = float(getattr(expediente, "import_vat_rate", 21.0) or 0.0)
+        if vat_rate <= 0:
+            errors.append(_("El tipo de IVA de importación debe ser mayor que 0 (casilla 47 / B00)."))
+        tax_pay_method = (getattr(expediente, "import_tax_method_of_payment", "") or "E").strip().upper()[:1]
+        if not re.match(r"^[A-Z]$", tax_pay_method):
+            errors.append(_("El modo de pago de tributos debe ser una letra A-Z (ej: E)."))
 
         requiere_ddt = bool(getattr(expediente, "requiere_ddt", False))
         ddt_type = getattr(expediente, "ddt_type", "none") or "none"

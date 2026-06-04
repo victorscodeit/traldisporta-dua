@@ -271,6 +271,9 @@
               <field name="import_delivery_location" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_region_of_destination" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_vat_rate" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_declare_duty_a00" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_tax_method_of_payment" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="requiere_ddt" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="ddt_type" attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"/>
