@@ -313,6 +313,7 @@ class AduanaExpediente(models.Model):
                         'mimetype': 'application/pdf',
                         'datas': vals['factura_pdf']
                     })
+        records._sync_country_fields_from_partners()
         return records
     
     def write(self, vals):
@@ -349,6 +350,10 @@ class AduanaExpediente(models.Model):
                         })
                 # Invalidar el campo computed para que se recalcule
                 rec.invalidate_recordset(['documento_ids'])
+        if not self.env.context.get("skip_country_partner_sync") and any(
+            field in vals for field in ("direction", "remitente", "consignatario")
+        ):
+            self._sync_country_fields_from_partners()
         return result
 
     def copy(self, default=None):
@@ -578,23 +583,34 @@ class AduanaExpediente(models.Model):
             return partner.country_id.code.upper()
         return False
 
+    def _get_country_values_from_partners(self):
+        self.ensure_one()
+        sender_country = self._partner_country_code(self.remitente)
+        consignee_country = self._partner_country_code(self.consignatario)
+        vals = {}
+        if self.direction == "export":
+            vals["pais_origen"] = "ES"
+            vals["pais_destino"] = consignee_country if consignee_country and consignee_country != "ES" else False
+        elif self.direction == "import":
+            vals["pais_destino"] = "ES"
+            vals["pais_origen"] = sender_country if sender_country and sender_country != "ES" else False
+        return vals
+
+    def _sync_country_fields_from_partners(self):
+        for rec in self:
+            vals = {
+                field: value
+                for field, value in rec._get_country_values_from_partners().items()
+                if rec[field] != value
+            }
+            if vals:
+                rec.with_context(skip_country_partner_sync=True).write(vals)
+
     @api.onchange("direction", "remitente", "consignatario")
     def _onchange_direction_partner_countries(self):
         for rec in self:
-            sender_country = rec._partner_country_code(rec.remitente)
-            consignee_country = rec._partner_country_code(rec.consignatario)
-            if rec.direction == "export":
-                rec.pais_origen = "ES"
-                if consignee_country and consignee_country != "ES":
-                    rec.pais_destino = consignee_country
-                elif (rec.pais_destino or "").upper() == "ES":
-                    rec.pais_destino = False
-            elif rec.direction == "import":
-                rec.pais_destino = "ES"
-                if sender_country and sender_country != "ES":
-                    rec.pais_origen = sender_country
-                elif (rec.pais_origen or "").upper() == "ES":
-                    rec.pais_origen = False
+            for field, value in rec._get_country_values_from_partners().items():
+                rec[field] = value
 
     @api.depends("incidencia_ids", "incidencia_ids.state")
     def _compute_incidencias_count(self):
@@ -782,6 +798,9 @@ class AduanaExpediente(models.Model):
 
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
+        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl")
+        if not imp_decl_endpoint or "ADIM-JDIT/ws/imp/DeclaracionSOAP" in imp_decl_endpoint:
+            imp_decl_endpoint = "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
         return {
             "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c")
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
@@ -791,8 +810,7 @@ class AduanaExpediente(models.Model):
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP",
             "aeat_endpoint_cc507c": icp.get_param("aduanas_transport.endpoint.cc507c")
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
-            "aeat_endpoint_imp_decl": icp.get_param("aduanas_transport.endpoint.imp_decl")
-            or "https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP",
+            "aeat_endpoint_imp_decl": imp_decl_endpoint,
             "aeat_endpoint_imp_query": icp.get_param("aduanas_transport.endpoint.imp_query")
             or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
             "aeat_endpoint_bandeja": icp.get_param("aduanas_transport.endpoint.bandeja")
@@ -2041,6 +2059,16 @@ class AduanaExpediente(models.Model):
                 rec.action_generate_imp_decl()
                 xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], limit=1)
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
+            if "DeclaracionImportacionEnt" in xml_content:
+                endpoint = settings.get("aeat_endpoint_imp_decl") or "-"
+                raise UserError(_(
+                    "La URL de importación ya no debe ser DeclaracionSOAP. El servicio AEAT H1 vigente es CC415A:\n"
+                    "%s\n\n"
+                    "Pero el XML generado por el módulo aún es una plantilla provisional "
+                    "(<DeclaracionImportacionEnt>) y AEAT espera un mensaje CC415AV1Ent/CC415A. "
+                    "No se envía para evitar rechazos confusos. Hay que implementar el XML H1 CC415A "
+                    "antes de presentar importaciones reales."
+                ) % endpoint)
             status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
             rec._attach_xml(f"{rec.name}_IMP_DECL_response.xml", resp_xml or "")
             if status_code != 200:

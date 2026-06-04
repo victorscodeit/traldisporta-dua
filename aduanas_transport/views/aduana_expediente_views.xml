@@ -367,8 +367,8 @@
               <group>
                 <field name="valor_factura"/>
                 <field name="moneda"/>
-                <field name="pais_origen"/>
-                <field name="pais_destino" string="País destino (ISO)"/>
+                <field name="pais_origen" readonly="1" help="Se rellena automáticamente desde el sentido y el país del remitente/consignatario."/>
+                <field name="pais_destino" string="País destino (ISO)" readonly="1" help="Se rellena automáticamente desde el sentido y el país del remitente/consignatario."/>
                 <field name="region_of_dispatch" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               </group>
             </page>

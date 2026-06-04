@@ -22,8 +22,12 @@ class ResConfigSettings(models.TransientModel):
         default="https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP",
         help="Notificación de llegada de mercancías a la aduana de salida.")
     # Import
-    aeat_endpoint_imp_decl = fields.Char(string="Endpoint Declaración Importación", config_parameter="aduanas_transport.endpoint.imp_decl",
-        default="https://prewww1.aeat.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP")
+    aeat_endpoint_imp_decl = fields.Char(
+        string="Endpoint Declaración Importación H1 (CC415A)",
+        config_parameter="aduanas_transport.endpoint.imp_decl",
+        default="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP",
+        help="Alta de declaración completa H1/CAU mediante CC415A. Preproducción: prewww1; producción: www1.agenciatributaria.gob.es.",
+    )
     aeat_endpoint_imp_query = fields.Char(
         string="Endpoint consulta importación (V3)",
         config_parameter="aduanas_transport.endpoint.imp_query",

@@ -239,7 +239,7 @@
                     <t t-foreach="exp.line_ids or []" t-as="l" t-foreach-index="l_index">
                         <Partida t-att-num="l.item_number or (l_index + 1)">
                             <CodigoNC t-esc="l.partida or '0000000000'"/>
-                            <PaisOrigen t-esc="l.pais_origen or exp.pais_origen or ''"/>
+                            <PaisOrigen t-esc="exp.pais_origen or l.pais_origen or ''"/>
                             <PesoNeto t-esc="'%.2f' % (l.peso_neto or 0.0)"/>
                             <PesoBruto t-esc="'%.2f' % (l.peso_bruto or 0.0)"/>
                             <Unidades t-esc="'%.2f' % (l.unidades or 0.0)"/>
