@@ -90,13 +90,13 @@ class AduanaExpediente(models.Model):
 
     name = fields.Char(string="Referencia", required=True, copy=False, readonly=True, default=lambda self: _("Nuevo"))
     direction = fields.Selection([
-        ("export", "España → país tercero (Exportación)"),
-        ("import", "Andorra → España (Importación)"),
+        ("export", "España → País tercero (Exportación)"),
+        ("import", "País tercero → España (Importación)"),
     ], string="Sentido", required=True, default="export", tracking=True)
     export_destination_type = fields.Selection([
-        ("andorra", "España → Andorra"),
-        ("other", "España → otro país"),
-    ], string="Destino exportación", default="andorra", tracking=True)
+        ("andorra", "España → País tercero"),
+        ("other", "España → País tercero"),
+    ], string="Destino exportación", default="other", tracking=True)
 
     # Datos clave (ingresan desde MSoft)
     remitente = fields.Many2one("res.partner", string="Remitente")
@@ -114,7 +114,7 @@ class AduanaExpediente(models.Model):
     oficina = fields.Char(
         string="Oficina Aduanas (exportación)",
         help="Código ECS de 4 dígitos (0801) o AES de 8 (ES000801). En preprod AEAT use ES000101. "
-             "La Jonquera (salida hacia Andorra): 1741 o ES001741 en «Oficina destino».",
+             "Si la salida declarada es distinta de la oficina de exportación, indique esa oficina en «Oficina destino».",
     )
     tipo_representacion = fields.Selection([
         ("directa", "Representación directa"),
@@ -158,8 +158,7 @@ class AduanaExpediente(models.Model):
     # Países
     pais_origen = fields.Char(default="ES")
     pais_destino = fields.Char(
-        default="AD",
-        help="Código ISO del país destino. En exportación a otro país, indique el país tercero (ej. CH, GB, MA).",
+        help="Código ISO del país destino. En exportación se toma del destinatario si tiene país informado.",
     )
     region_of_dispatch = fields.Char(string="Región de expedición", default="46", help="Código región española (ej. 46 Cataluña). Obligatorio cuando countryOfExport es ES (error 1877).")
 
@@ -248,7 +247,7 @@ class AduanaExpediente(models.Model):
     oficina_destino = fields.Char(
         string="Oficina aduanas de salida",
         help="CustomsOfficeOfExitDeclared. Si vacío, coincide con la oficina de exportación. "
-             "España→Andorra por carretera: 1741 o ES001741 (La Jonquera).",
+             "Use el código de la aduana de salida real cuando no coincida con la oficina de exportación.",
     )
     
     # Factura PDF y procesamiento IA (FLUJO PRINCIPAL)
@@ -351,6 +350,98 @@ class AduanaExpediente(models.Model):
                 # Invalidar el campo computed para que se recalcule
                 rec.invalidate_recordset(['documento_ids'])
         return result
+
+    def copy(self, default=None):
+        """Duplica el expediente conservando la información operativa editable.
+
+        Odoo no copia siempre las líneas One2many. Además, un duplicado no debe
+        heredar identificadores ni respuestas AEAT del expediente original.
+        """
+        self.ensure_one()
+        default = dict(default or {})
+        default.update({
+            "state": "draft",
+            "lrn": False,
+            "mrn": False,
+            "bandeja_last_num": 0,
+            "error_message": False,
+            "last_response_date": False,
+            "aes_estado": False,
+            "aes_circuito": False,
+            "aes_circuito_llegada": False,
+            "aes_csv_declaracion": False,
+            "aes_csv_levante_exportacion": False,
+            "aes_csv_levante_salida": False,
+            "aes_csv_certificado_salida": False,
+            "fecha_admision_aes": False,
+            "fecha_llegada_salida": False,
+            "fecha_levante_salida": False,
+            "iva_exportacion_exento": False,
+            "exs_circuito": False,
+            "exs_dec_csv": False,
+            "exs_rel_csv": False,
+            "exs_tipo_declaracion": False,
+            "exs_predeclaracion": False,
+            "fecha_salida_real": False,
+            "fecha_entrada_real": False,
+            "fecha_levante": False,
+            "factura_en_cola_at": False,
+        })
+        new_rec = super().copy(default)
+
+        factura_map = {}
+        for factura in self.factura_ids:
+            vals = factura.copy_data({"expediente_id": new_rec.id})[0]
+            vals.pop("id", None)
+            vals["expediente_id"] = new_rec.id
+            new_factura = self.env["aduana.expediente.factura"].create(vals)
+            factura_map[factura.id] = new_factura.id
+
+        for line in self.line_ids.sorted(key=lambda l: (l.item_number or 0, l.id or 0)):
+            vals = line.copy_data({"expediente_id": new_rec.id})[0]
+            vals.pop("id", None)
+            vals["expediente_id"] = new_rec.id
+            if line.factura_id and line.factura_id.id in factura_map:
+                vals["factura_id"] = factura_map[line.factura_id.id]
+            else:
+                vals["factura_id"] = False
+            self.env["aduana.expediente.line"].create(vals)
+
+        for doc in self.documento_requerido_ids:
+            vals = doc.copy_data({"expediente_id": new_rec.id})[0]
+            vals.pop("id", None)
+            vals["expediente_id"] = new_rec.id
+            if doc.factura_id and doc.factura_id.id in factura_map:
+                vals["factura_id"] = factura_map[doc.factura_id.id]
+            else:
+                vals["factura_id"] = False
+            self.env["aduana.expediente.documento.requerido"].create(vals)
+
+        # Copiar adjuntos de usuario del expediente, evitando XML generados por AEAT/DUA.
+        attachments = self.env["ir.attachment"].search([
+            ("res_model", "=", self._name),
+            ("res_id", "=", self.id),
+        ])
+        for attachment in attachments:
+            name = attachment.name or ""
+            mimetype = attachment.mimetype or ""
+            if name.lower().endswith(".xml") or mimetype in ("application/xml", "text/xml"):
+                continue
+            existing = self.env["ir.attachment"].search([
+                ("res_model", "=", new_rec._name),
+                ("res_id", "=", new_rec.id),
+                ("name", "=", name),
+            ], limit=1)
+            if existing:
+                continue
+            attachment.copy({
+                "res_model": new_rec._name,
+                "res_id": new_rec.id,
+            })
+
+        new_rec._recompute_factura_estado_from_facturas()
+        new_rec.invalidate_recordset(["documento_ids"])
+        return new_rec
     
     @api.depends('factura_pdf')
     def _compute_factura_pdf_url(self):
@@ -482,19 +573,28 @@ class AduanaExpediente(models.Model):
             else:
                 rec.levante_estado_color = "pendiente"
 
-    @api.onchange("direction", "export_destination_type")
-    def _onchange_export_destination_type(self):
+    def _partner_country_code(self, partner):
+        if partner and partner.country_id and partner.country_id.code:
+            return partner.country_id.code.upper()
+        return False
+
+    @api.onchange("direction", "remitente", "consignatario")
+    def _onchange_direction_partner_countries(self):
         for rec in self:
-            if rec.direction == "export" and rec.export_destination_type == "andorra":
+            sender_country = rec._partner_country_code(rec.remitente)
+            consignee_country = rec._partner_country_code(rec.consignatario)
+            if rec.direction == "export":
                 rec.pais_origen = "ES"
-                rec.pais_destino = "AD"
-            elif rec.direction == "export" and rec.export_destination_type == "other":
-                rec.pais_origen = "ES"
-                if (rec.pais_destino or "").upper() == "AD":
+                if consignee_country and consignee_country != "ES":
+                    rec.pais_destino = consignee_country
+                elif (rec.pais_destino or "").upper() == "ES":
                     rec.pais_destino = False
             elif rec.direction == "import":
-                rec.pais_origen = "AD"
                 rec.pais_destino = "ES"
+                if sender_country and sender_country != "ES":
+                    rec.pais_origen = sender_country
+                elif (rec.pais_origen or "").upper() == "ES":
+                    rec.pais_origen = False
 
     @api.depends("incidencia_ids", "incidencia_ids.state")
     def _compute_incidencias_count(self):
@@ -1075,12 +1175,12 @@ class AduanaExpediente(models.Model):
         total_inv = "%.2f" % (self.valor_factura or 0.0)
         incoterm = self.incoterm or "DAP"
         pais_exp = self.pais_origen or "ES"
-        pais_dest = self.pais_destino or "AD"
+        pais_dest = self.pais_destino or ""
         consignee_country = ""
         if self.consignatario and getattr(self.consignatario, "country_id", False) and self.consignatario.country_id:
             consignee_country = (self.consignatario.country_id.code or "").upper()
         if not consignee_country:
-            consignee_country = (pais_dest or "AD").upper()
+            consignee_country = (pais_dest or "").upper()
         consignee_name = ((self.consignatario and self.consignatario.name) or "CONSIGNEE")[:70]
         consignee_street = " ".join(
             p for p in [
@@ -1143,7 +1243,7 @@ class AduanaExpediente(models.Model):
 </cc5:Representative>""" % (xml_escape(company_id), xml_escape(contact_company_name), xml_escape(contact_company_phone), xml_escape(contact_company_email))
         # DeliveryTerms: si incoterm != XXX, AEAT exige location+country o UNLocode (error 1384)
         delivery_location = (self.consignatario and self.consignatario.city) or ("ANDORRA LA VELLA" if (pais_dest or "").upper() == "AD" else "N/A")
-        delivery_country = pais_dest or "AD"
+        delivery_country = pais_dest or ""
         delivery_terms_extra = ""
         if (incoterm or "").upper() != "XXX":
             delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (xml_escape(delivery_location[:35]), xml_escape(delivery_country))
@@ -1200,7 +1300,7 @@ class AduanaExpediente(models.Model):
 </cc5:TransportDocument>""" % (
             xml_escape(loc_auth),
             departure_transport_xml,
-            xml_escape(pais_dest or "AD"),
+            xml_escape(pais_dest or ""),
             xml_escape(transport_id),
             xml_escape(transport_country),
             xml_escape(transport_doc_ref),
@@ -1690,14 +1790,14 @@ class AduanaExpediente(models.Model):
             consignee_street = (consignee.street or "").strip()[:70]
             consignee_zip = (consignee.zip or "00000").strip()[:9]
             consignee_city = (consignee.city or "").strip()[:35]
-            consignee_country = (consignee.country_id and consignee.country_id.code) or "AD"
-            consignee_tin = (consignee.vat or "ADXXXXXXXXX").replace(" ", "").strip()[:17]
+            consignee_country = (consignee.country_id and consignee.country_id.code) or (self.pais_destino or "")
+            consignee_tin = (consignee.vat or "").replace(" ", "").strip()[:17]
         else:
             consignee_name = "Consignatario"
             consignee_street = "Calle"
             consignee_zip = "00000"
             consignee_city = "Ciudad"
-            consignee_country = self.pais_destino or "AD"
+            consignee_country = self.pais_destino or ""
             consignee_tin = "ADXXXXXXXXX"
         trans_ref = (self.referencia_transporte or "V010102567780").strip()[:35]
         # TRACONCO1 = carrier/sender (remitente o compañía)
@@ -1742,7 +1842,7 @@ class AduanaExpediente(models.Model):
 <NumOfPacGS24>%s</NumOfPacGS24>
 </PACGS2>
 </GOOITEGDS>""" % (item_num, xml_escape(desc), gross, doc_ref, preprod_doc_item, partida, tot_packages if not self.line_ids else (line.bultos or 1)))
-        dest_country = self.pais_destino or "AD"
+        dest_country = self.pais_destino or ""
         body = """<?xml version="1.0" encoding="UTF-8"?>
 <exs:CC615A xmlns:exs="%s">
 <MesSenMES3>%s</MesSenMES3>

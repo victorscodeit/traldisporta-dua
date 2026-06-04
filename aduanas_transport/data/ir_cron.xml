@@ -226,7 +226,7 @@
                     <NIF t-esc="(exp.consignatario.vat or '').replace(' ','')"/>
                 </Consignatario>
                 <DatosGenerales>
-                    <PaisOrigen t-esc="exp.pais_origen or 'AD'"/>
+                    <PaisOrigen t-esc="exp.pais_origen or ''"/>
                     <PaisDestino>ES</PaisDestino>
                     <Incoterm>
                       <Code t-esc="exp.incoterm or 'DAP'"/>

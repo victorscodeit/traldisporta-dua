@@ -254,11 +254,12 @@ class MsoftImportWizard(models.TransientModel):
             return "export"
         if exp_imp_dua == 1:
             return "import"
-        # Inferir por países
-        if ori_nac == 1 and des_pai == 43:
-            return "export"  # España → Andorra
-        if ori_nac == 43 and des_pai == 1:
-            return "import"  # Andorra → España
+        # Inferir por países: España -> país tercero export, país tercero -> España import.
+        spain_codes = {1, 11}
+        if ori_nac in spain_codes and des_pai not in spain_codes:
+            return "export"
+        if ori_nac not in spain_codes and des_pai in spain_codes:
+            return "import"
         return "export"  # Por defecto
     
     def action_import_expedientes(self):

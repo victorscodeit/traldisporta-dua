@@ -120,7 +120,7 @@
                   </tr>
                   <tr>
                     <td style="font-weight: bold; padding: 5px;">País Destino:</td>
-                    <td style="padding: 5px;"><t t-esc="exp.pais_destino or 'AD'"/></td>
+                    <td style="padding: 5px;"><t t-esc="exp.pais_destino or ''"/></td>
                   </tr>
                 </table>
               </div>

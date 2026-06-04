@@ -21,7 +21,7 @@ class TaricService(models.AbstractModel):
         Consulta los documentos requeridos para una partida arancelaria usando la API TARIC.
         
         :param goods_code: Código de la partida arancelaria (8-10 dígitos)
-        :param country_code: Código del país destino (AD para Andorra, ES para España)
+        :param country_code: Código del país destino/origen según el sentido (ISO de 2 letras)
         :param reference_date: Fecha de referencia en formato YYYY-MM-DD (opcional, por defecto hoy)
         :param trade_movement: Movimiento comercial - "E" para exportación, "I" para importación (opcional)
         :param direction: Dirección del expediente ("export" o "import") - se usa para determinar trade_movement si no se proporciona
@@ -47,7 +47,7 @@ class TaricService(models.AbstractModel):
             
             # Determinar trade_movement si no se proporciona
             if not trade_movement and direction:
-                # E = Exportación (España → Andorra), I = Importación (Andorra → España)
+                # E = Exportación (España → país tercero), I = Importación (país tercero → España)
                 trade_movement = "E" if direction == "export" else "I"
             elif not trade_movement:
                 # Por defecto, si no hay dirección, usar E (exportación)

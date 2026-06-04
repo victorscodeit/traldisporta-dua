@@ -672,7 +672,7 @@ class InvoiceOCRService(models.AbstractModel):
         # Obtener contexto adicional del expediente para mejor sugerencia de partidas
         contexto_expediente = {
             "pais_origen": expediente.pais_origen or "ES",
-            "pais_destino": expediente.pais_destino or "AD",
+            "pais_destino": expediente.pais_destino or "",
             "direction": expediente.direction or "export",
             "incoterm": expediente.incoterm or "",
         }
@@ -717,7 +717,7 @@ REGLAS DE CLASIFICACIÓN:
 
 CLASIFICACIÓN ARANCELARIA:
 - Los códigos HS tienen 6 dígitos base (capítulo, partida, subpartida) y se extienden a 10 dígitos para la Nomenclatura Combinada (NC) de la UE.
-- Para España-Andorra, usa códigos de EXACTAMENTE 10 DÍGITOS (Nomenclatura Combinada - NC).
+- Para operaciones España ↔ país tercero, usa códigos de EXACTAMENTE 10 DÍGITOS (Nomenclatura Combinada - NC).
 - Si el código tiene menos de 10 dígitos, rellénalo con ceros a la izquierda. Ejemplo: "12345678" → "1234567800", "123456" → "1234560000".
 - Analiza cuidadosamente la descripción del producto para determinar la partida más apropiada.
 - Si la descripción es ambigua, elige la partida más probable basándote en el contexto (país origen, tipo de operación, etc.).
@@ -811,7 +811,7 @@ FORMATO DE RESPUESTA REQUERIDO (JSON válido, sin markdown, sin código, solo JS
   "incoterm": "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP" o null (si encuentras CIF, FOB, CFR, mapea a CIP, FCA, CPT respectivamente),
   "pais_origen": "código ISO de 2 letras (ES, AD, FR, etc.) o null",
   "pais_destino": "código ISO de 2 letras o null",
-  "direction": "export" o "import" o null (export = España → Andorra, import = Andorra → España),
+  "direction": "export" o "import" o null (export = España → país tercero, import = país tercero → España),
   "transportista": "nombre del transportista o null",
   "matricula": "matrícula del vehículo o null",
   "referencia_transporte": "referencia o número de transporte o null",
@@ -843,10 +843,10 @@ INSTRUCCIONES CRÍTICAS PARA FACTURAS MULTI-PÁGINA:
 5. Extrae SOLO los artículos/productos de la factura ACTUAL. IGNORA completamente cualquier sección que diga "Pedido pendiente", "Pedidos pendientes", "Pendiente" o similar. Esos productos NO deben aparecer en las líneas.
 6. Para el código H.S. (partida arancelaria), busca "H.S.", "HS", "Partida arancelaria" seguido de números de 8-10 dígitos. Es OBLIGATORIO incluirlo en cada línea de producto.
 7. Para incoterms, busca DAP, CIF, FOB, EXW, etc. en el texto (puede estar en cualquier página)
-8. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD
+8. Para países, identifica por contexto: España/Spain/Barcelona → ES, Andorra → AD, Suiza/Switzerland → CH, Reino Unido/United Kingdom → GB, Marruecos/Morocco → MA, etc.
 9. Para direction (sentido), determina basándote en los países:
-   - Si pais_origen = "ES" y pais_destino = "AD" → direction = "export" (España → Andorra, Exportación)
-   - Si pais_origen = "AD" y pais_destino = "ES" → direction = "import" (Andorra → España, Importación)
+   - Si pais_origen = "ES" y pais_destino es distinto de "ES" → direction = "export" (España → país tercero)
+   - Si pais_origen es distinto de "ES" y pais_destino = "ES" → direction = "import" (país tercero → España)
    - Si no puedes determinarlo con certeza, usa null
 10. Para NIFs, busca patrones como A12345678 (español) o L123456H (andorrano)
 11. Para valores monetarios, usa el formato español (2.195,42 → 2195.42)
@@ -936,9 +936,9 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                         # Intentar determinar basándose en países
                         pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
                         pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
-                        if pais_origen == "ES" and pais_destino == "AD":
+                        if pais_origen == "ES" and pais_destino and pais_destino != "ES":
                             data["direction"] = "export"
-                        elif pais_origen == "AD" and pais_destino == "ES":
+                        elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
                             data["direction"] = "import"
                         else:
                             data["direction"] = None
@@ -950,9 +950,9 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     # Si no hay direction pero hay países, intentar determinarlo
                     pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
                     pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
-                    if pais_origen == "ES" and pais_destino == "AD":
+                    if pais_origen == "ES" and pais_destino and pais_destino != "ES":
                         data["direction"] = "export"
-                    elif pais_origen == "AD" and pais_destino == "ES":
+                    elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
                         data["direction"] = "import"
                 
                 # Validar incoterm - SIEMPRE mapear CIF, FOB, CFR antes de guardar
@@ -1253,7 +1253,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             data["incoterm"] = match.group(1).upper()
         
         # Buscar países (códigos ISO comunes y nombres de países)
-        # Buscar por contexto: "España" o "Spain" -> ES, "Andorra" -> AD
+        # Buscar por contexto: España como lado UE y cualquier país tercero frecuente.
         pais_origen_patterns = [
             r'(?:Origen|Origin|From|España|Spain|Español)\s*:?\s*([A-Z]{2})',
             r'\b(ES|ESPAÑA|SPAIN)\b',
@@ -1267,27 +1267,36 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     break
         
         pais_destino_patterns = [
-            r'(?:Destino|Destination|To|Andorra)\s*:?\s*([A-Z]{2})',
-            r'\b(AD|ANDORRA)\b',
+            r'(?:Destino|Destination|To)\s*:?\s*([A-Z]{2})',
+            r'\b(AD|ANDORRA|CH|SWITZERLAND|SUIZA|GB|UNITED KINGDOM|UK|MA|MOROCCO|MARRUECOS)\b',
         ]
         for pattern in pais_destino_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                pais = match.group(1).upper()[:2]
-                if pais == 'AD' or 'ANDORRA' in pais:
+                pais = match.group(1).upper()
+                if pais in ("ANDORRA", "AD"):
                     data["pais_destino"] = "AD"
+                    break
+                if pais in ("SWITZERLAND", "SUIZA", "CH"):
+                    data["pais_destino"] = "CH"
+                    break
+                if pais in ("UNITED KINGDOM", "UK", "GB"):
+                    data["pais_destino"] = "GB"
+                    break
+                if pais in ("MOROCCO", "MARRUECOS", "MA"):
+                    data["pais_destino"] = "MA"
                     break
         
         # Si no se encontraron por contexto, buscar códigos ISO en el texto
         if not data["pais_origen"] or not data["pais_destino"]:
-            pais_pattern = r'\b(ES|AD|FR|PT|DE|IT|GB|US)\b'
+            pais_pattern = r'\b(ES|AD|FR|PT|DE|IT|GB|US|CH|MA)\b'
             paises = re.findall(pais_pattern, text)
             if paises:
                 # Filtrar paises que aparecen en direcciones (códigos postales)
                 paises_validos = []
                 for pais in paises:
                     # Evitar falsos positivos (códigos que aparecen en otros contextos)
-                    if pais in ['ES', 'AD', 'FR', 'PT', 'DE', 'IT', 'GB', 'US']:
+                    if pais in ['ES', 'AD', 'FR', 'PT', 'DE', 'IT', 'GB', 'US', 'CH', 'MA']:
                         paises_validos.append(pais)
                 
                 if paises_validos:
@@ -1298,18 +1307,18 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     if 'BARCELONA' in text.upper() or 'ESPAÑA' in text.upper() or 'SPAIN' in text.upper():
                         data["pais_origen"] = "ES"
                     
-                    # Valores por defecto si no se encontraron
+                    # Valores por defecto si no se encontraron, sin asumir Andorra.
                     if not data["pais_origen"]:
                         data["pais_origen"] = paises_validos[0] if len(paises_validos) > 0 else "ES"
                     if not data["pais_destino"]:
-                        data["pais_destino"] = paises_validos[1] if len(paises_validos) > 1 else "AD"
+                        data["pais_destino"] = paises_validos[1] if len(paises_validos) > 1 else None
         
         # Determinar direction (sentido) basándose en países
         pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
         pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
-        if pais_origen == "ES" and pais_destino == "AD":
+        if pais_origen == "ES" and pais_destino and pais_destino != "ES":
             data["direction"] = "export"
-        elif pais_origen == "AD" and pais_destino == "ES":
+        elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
             data["direction"] = "import"
         else:
             data["direction"] = None

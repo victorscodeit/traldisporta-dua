@@ -24,7 +24,6 @@
                invisible="context.get('hide_verificacion_ia', False)"/>
         <field name="matricula"/>
         <field name="direction"/>
-        <field name="export_destination_type"/>
         <field name="remitente"/>
         <field name="consignatario"/>
         <field name="oficina"/>
@@ -35,10 +34,8 @@
                decoration-warning="levante_estado_color == 'levante'"
                decoration-success="levante_estado_color in ('salida', 'cerrado')"
                decoration-danger="levante_estado_color == 'error'"/>
-        <field name="aes_estado"/>
-        <field name="aes_circuito"/>
         <field name="iva_exportacion_exento" widget="boolean_toggle"/>
-        <field name="state" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
+        <field name="state" string="Estado" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="create_date" string="Fecha creación"/>
       </tree>
     </field>
@@ -210,7 +207,6 @@
             <group>
               <field name="name"/>
               <field name="direction"/>
-              <field name="export_destination_type" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="state" readonly="1"/>
               <field name="lrn"/>
               <field name="mrn"/>
@@ -372,9 +368,7 @@
                 <field name="valor_factura"/>
                 <field name="moneda"/>
                 <field name="pais_origen"/>
-                <field name="pais_destino"
-                       string="País destino (ISO)"
-                       attrs="{'readonly': [('direction', '=', 'export'), ('export_destination_type', '=', 'andorra')]}"/>
+                <field name="pais_destino" string="País destino (ISO)"/>
                 <field name="region_of_dispatch" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               </group>
             </page>

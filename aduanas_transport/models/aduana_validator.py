@@ -69,8 +69,8 @@ class AduanaValidator(models.AbstractModel):
             pais_destino = (expediente.pais_destino or "").strip().upper()
             if not re.match(r"^[A-Z]{2}$", pais_destino):
                 errors.append(_("El país destino debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
-            elif expediente.export_destination_type == "other" and pais_destino == "AD":
-                errors.append(_("Para 'España → otro país', el país destino no puede ser AD. Seleccione Andorra o indique otro código ISO."))
+            elif pais_destino == "ES":
+                errors.append(_("En exportación España → País tercero, el país destino no puede ser ES. Revise el destinatario."))
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
@@ -104,10 +104,6 @@ class AduanaValidator(models.AbstractModel):
         
         if not expediente.remitente:
             errors.append(_("El remitente es obligatorio"))
-        elif not expediente.remitente.vat:
-            errors.append(_("El remitente debe tener NIF/CIF"))
-        elif not self.validate_nif_cif(expediente.remitente.vat):
-            errors.append(_("El NIF/CIF del remitente no es válido"))
         
         if not expediente.consignatario:
             errors.append(_("El consignatario es obligatorio"))
@@ -123,6 +119,15 @@ class AduanaValidator(models.AbstractModel):
         
         if not expediente.valor_factura or expediente.valor_factura <= 0:
             errors.append(_("El valor de la factura debe ser mayor que 0"))
+
+        pais_origen = (expediente.pais_origen or "").strip().upper()
+        pais_destino = (expediente.pais_destino or "").strip().upper()
+        if not re.match(r"^[A-Z]{2}$", pais_origen):
+            errors.append(_("El país origen debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
+        elif pais_origen == "ES":
+            errors.append(_("En importación País tercero → España, el país origen no puede ser ES. Revise el remitente."))
+        if pais_destino != "ES":
+            errors.append(_("En importación País tercero → España, el país destino debe ser ES."))
         
         if not expediente.line_ids:
             errors.append(_("Debe haber al menos una línea de mercancía"))
