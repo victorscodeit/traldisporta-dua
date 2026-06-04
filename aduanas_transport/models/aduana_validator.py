@@ -136,6 +136,17 @@ class AduanaValidator(models.AbstractModel):
         valuation_method = (getattr(expediente, "import_valuation_method", "") or "").strip()
         if not re.match(r"^[0-9]{1}$", valuation_method):
             errors.append(_("En importación H1, el método de valoración debe tener 1 dígito (ej: 1)."))
+        previous_document_type = (getattr(expediente, "import_previous_document_type", "") or "").strip()
+        previous_document_ref = (
+            getattr(expediente, "import_previous_document_ref", "")
+            or expediente.numero_factura
+            or expediente.name
+            or ""
+        ).strip()
+        if not re.match(r"^[A-Za-z0-9]{1,4}$", previous_document_type):
+            errors.append(_("En importación H1, el tipo de documento previo es obligatorio (ej: N355)."))
+        if not previous_document_ref:
+            errors.append(_("En importación H1, la referencia de documento previo es obligatoria."))
 
         if getattr(expediente, "requested_procedure", "40") != "40":
             errors.append(_("Para importación normal, requestedProcedure debe ser 40."))

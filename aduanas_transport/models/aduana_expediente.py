@@ -199,6 +199,15 @@ class AduanaExpediente(models.Model):
         default="1",
         help="CustomsValuation/valuationMethod. 1 = valor de transacción.",
     )
+    import_previous_document_type = fields.Char(
+        string="Tipo documento previo importación",
+        default="N355",
+        help="PreviousDocument/type para H1. Ajustar según documento previo real (ENS, depósito temporal, tránsito, etc.).",
+    )
+    import_previous_document_ref = fields.Char(
+        string="Referencia documento previo importación",
+        help="PreviousDocument/referenceNumber. Si está vacío se usa la factura o el expediente.",
+    )
     location_authorisation_number = fields.Char(
         string="Recinto/ubicación AEAT",
         help="LocationOfGoods/authorisationNumber. En preproducción AEAT se usa 010101DA11 por defecto.",
@@ -2136,6 +2145,39 @@ class AduanaExpediente(models.Model):
             xml_escape(emails[0]),
         )
 
+    def _imp_optional_foreign_eori_xml(self, partner, default_country):
+        """Seller/Exporter admite identificación opcional; no enviar NRT extranjero si AEAT no lo reconoce como EORI."""
+        ident = self._imp_eori(partner, default_country)
+        if not ident:
+            return ""
+        if ident.startswith("ES"):
+            return "<identificationNumber>%s</identificationNumber>" % xml_escape(ident)
+        allow_foreign = (
+            self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.imp_allow_foreign_seller_eori")
+            or ""
+        ).strip().lower() in ("1", "true", "yes", "si", "sí")
+        if allow_foreign:
+            return "<identificationNumber>%s</identificationNumber>" % xml_escape(ident)
+        return ""
+
+    def _imp_previous_document_xml(self, line_item_number=None):
+        doc_type = (self.import_previous_document_type or "N355").strip().upper()
+        reference = (self.import_previous_document_ref or self.numero_factura or self.name or "PREV").strip()
+        if not doc_type or not reference:
+            raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
+        extra = ""
+        if line_item_number:
+            extra = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(line_item_number))
+        return """<PreviousDocument>
+<sequenceNumber>1</sequenceNumber>
+<type>%s</type>
+<referenceNumber>%s</referenceNumber>%s
+</PreviousDocument>""" % (
+            xml_escape(doc_type[:4]),
+            xml_escape(reference[:70]),
+            extra,
+        )
+
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
         endpoint = (endpoint or "").strip()
         xml_content = xml_content or ""
@@ -2205,6 +2247,10 @@ class AduanaExpediente(models.Model):
             raise UserError(_("Informe la preferencia de importación (CalculationOfTaxes/preference)."))
         if not valuation_method:
             raise UserError(_("Informe el método de valoración de importación (CustomsValuation/valuationMethod)."))
+        previous_document_type = (self.import_previous_document_type or "N355").strip().upper()
+        previous_document_ref = (self.import_previous_document_ref or self.numero_factura or self.name or "").strip()
+        if not previous_document_type or not previous_document_ref:
+            raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
         location_authorisation = (
             self.location_authorisation_number
             or self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.aeat_preprod_location_authorisation")
@@ -2255,6 +2301,7 @@ class AduanaExpediente(models.Model):
 <typeOfPackages>CT</typeOfPackages>
 <numberOfPackages>%s</numberOfPackages>
 </Packaging>
+%s
 <SupportingDocument>
 <sequenceNumber>1</sequenceNumber>
 <type>N380</type>
@@ -2278,6 +2325,7 @@ class AduanaExpediente(models.Model):
                 line.valor_linea or 0.0,
                 xml_escape(preference),
                 line.bultos or 1,
+                self._imp_previous_document_xml(goods_item_number),
                 xml_escape((self.numero_factura or self.name or "FACTURA")[:35]),
                 goods_item_number,
                 xml_escape(valuation_method),
@@ -2290,7 +2338,7 @@ class AduanaExpediente(models.Model):
         seller_address = self._imp_address_xml(self.remitente)
         seller_xml = ""
         if self.remitente:
-            seller_id_xml = "<identificationNumber>%s</identificationNumber>" % xml_escape(seller_id) if seller_id else ""
+            seller_id_xml = self._imp_optional_foreign_eori_xml(self.remitente, self.pais_origen or "AD")
             seller_xml = """<Seller>
 %s
 %s
@@ -2353,8 +2401,6 @@ class AduanaExpediente(models.Model):
 <GoodsShipment>
 <sequenceNumber>1</sequenceNumber>
 <natureOfTransaction>11</natureOfTransaction>
-<totalAmountInvoiced>%.2f</totalAmountInvoiced>
-<invoiceCurrency>%s</invoiceCurrency>
 %s
 <DeliveryTerms>
 <incotermCode>%s</incotermCode>
@@ -2402,8 +2448,6 @@ class AduanaExpediente(models.Model):
             declarant_name,
             declarant_address,
             declarant_contact_xml,
-            self.valor_factura or 0.0,
-            xml_escape(self.moneda or "EUR"),
             seller_xml,
             xml_escape(incoterm),
             xml_escape(delivery_location[:35]),
