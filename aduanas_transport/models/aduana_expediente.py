@@ -2100,6 +2100,27 @@ class AduanaExpediente(models.Model):
             xml_escape(country),
         )
 
+    def _imp_contact_person_xml(self, partner):
+        partner = partner or self.env.company.partner_id
+        name = (partner.name or self.env.company.name or "Contacto AEAT")[:70]
+        phone = (partner.phone or partner.mobile or self.env.company.phone or self.env.user.partner_id.phone or "000000000")[:35]
+        emails = []
+        for email in (partner.email, self.env.company.email, self.env.user.email):
+            email = (email or "").strip()
+            if email and email not in emails:
+                emails.append(email[:127])
+        if not emails:
+            raise UserError(_("Configure un email en la compañía o en el usuario actual para Declarant.ContactPerson en CC415A."))
+        return """<ContactPerson>
+<name>%s</name>
+<phoneNumber>%s</phoneNumber>
+<eMailAddress>%s</eMailAddress>
+</ContactPerson>""" % (
+            xml_escape(name),
+            xml_escape(phone),
+            xml_escape(emails[0]),
+        )
+
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
         endpoint = (endpoint or "").strip()
         xml_content = xml_content or ""
@@ -2225,9 +2246,7 @@ class AduanaExpediente(models.Model):
             ))
         if not lines_xml:
             raise UserError(_("Añada al menos una línea de mercancía para generar CC415A."))
-        importer_address = self._imp_address_xml(self.consignatario)
         declarant_partner = company.partner_id
-        declarant_address = self._imp_address_xml(declarant_partner)
         seller_id = self._imp_eori(self.remitente, self.pais_origen or "AD")
         seller_name = "<name>%s</name>" % xml_escape((self.remitente.name or "")[:70]) if self.remitente and self.remitente.name else ""
         seller_address = self._imp_address_xml(self.remitente)
@@ -2244,8 +2263,17 @@ class AduanaExpediente(models.Model):
 %s
 %s
 </Exporter>""" % (seller_id_xml, seller_name, seller_address, seller_id_xml, seller_name, seller_address)
-        importer_name = "<name>%s</name>" % xml_escape((self.consignatario.name or "")[:70]) if self.consignatario and self.consignatario.name else ""
-        declarant_name = "<name>%s</name>" % xml_escape((declarant_partner.name or "")[:70]) if declarant_partner and declarant_partner.name else ""
+        importer_name = ""
+        importer_address = ""
+        if not importer_id.startswith("ES"):
+            importer_name = "<name>%s</name>" % xml_escape((self.consignatario.name or "")[:70]) if self.consignatario and self.consignatario.name else ""
+            importer_address = self._imp_address_xml(self.consignatario)
+        declarant_contact_xml = self._imp_contact_person_xml(declarant_partner)
+        declarant_name = ""
+        declarant_address = ""
+        if not declarant_id.startswith("ES"):
+            declarant_name = "<name>%s</name>" % xml_escape((declarant_partner.name or "")[:70]) if declarant_partner and declarant_partner.name else ""
+            declarant_address = self._imp_address_xml(declarant_partner)
         incoterm = self.incoterm or "DAP"
         delivery_location = self.import_delivery_location or "LA FARGA DE MOLES"
         ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd"
@@ -2280,6 +2308,7 @@ class AduanaExpediente(models.Model):
 </Importer>
 <Declarant>
 <identificationNumber>%s</identificationNumber>
+%s
 %s
 %s
 </Declarant>
@@ -2325,6 +2354,7 @@ class AduanaExpediente(models.Model):
             xml_escape(declarant_id),
             declarant_name,
             declarant_address,
+            declarant_contact_xml,
             self.valor_factura or 0.0,
             xml_escape(self.moneda or "EUR"),
             seller_xml,
