@@ -128,6 +128,14 @@ class AduanaValidator(models.AbstractModel):
             errors.append(_("En importación Andorra → España, countryOfDispatch debe ser AD. Revise el remitente."))
         if pais_destino != "ES":
             errors.append(_("En importación Andorra → España, countryOfDestination debe ser ES."))
+        if not (getattr(expediente, "import_region_of_destination", "") or "").strip():
+            errors.append(_("En importación H1 debe informarse Region of Destination."))
+        preference = (getattr(expediente, "import_preference", "") or "").strip()
+        if not re.match(r"^[0-9]{3}$", preference):
+            errors.append(_("En importación H1, la preferencia debe tener 3 dígitos (ej: 100)."))
+        valuation_method = (getattr(expediente, "import_valuation_method", "") or "").strip()
+        if not re.match(r"^[0-9]{1}$", valuation_method):
+            errors.append(_("En importación H1, el método de valoración debe tener 1 dígito (ej: 1)."))
 
         if getattr(expediente, "requested_procedure", "40") != "40":
             errors.append(_("Para importación normal, requestedProcedure debe ser 40."))

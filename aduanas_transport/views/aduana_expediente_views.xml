@@ -234,6 +234,9 @@
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>
               <field name="import_delivery_location" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_region_of_destination" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
           </group>

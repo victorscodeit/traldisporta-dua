@@ -184,6 +184,21 @@ class AduanaExpediente(models.Model):
         default="LA FARGA DE MOLES",
         help="DeliveryTerms/location para H1 importación. Ejemplo Andorra → España: LA FARGA DE MOLES.",
     )
+    import_region_of_destination = fields.Char(
+        string="Región destino importación",
+        default="25",
+        help="Destination/regionOfDestination para H1. Para La Farga de Moles/Lleida use 25.",
+    )
+    import_preference = fields.Char(
+        string="Preferencia importación",
+        default="100",
+        help="CalculationOfTaxes/preference. 100 = régimen arancelario erga omnes/sin preferencia.",
+    )
+    import_valuation_method = fields.Char(
+        string="Método valoración importación",
+        default="1",
+        help="CustomsValuation/valuationMethod. 1 = valor de transacción.",
+    )
     location_authorisation_number = fields.Char(
         string="Recinto/ubicación AEAT",
         help="LocationOfGoods/authorisationNumber. En preproducción AEAT se usa 010101DA11 por defecto.",
@@ -2181,6 +2196,21 @@ class AduanaExpediente(models.Model):
         destination_country = (self.pais_destino or "ES").strip().upper()
         if not origin_country or origin_country == "ES":
             raise UserError(_("En importación, el país origen debe ser un país tercero distinto de ES."))
+        region_destination = (self.import_region_of_destination or "25").strip().upper()
+        preference = (self.import_preference or "100").strip()
+        valuation_method = (self.import_valuation_method or "1").strip()
+        if not region_destination:
+            raise UserError(_("Informe la región destino de importación (Destination/regionOfDestination)."))
+        if not preference:
+            raise UserError(_("Informe la preferencia de importación (CalculationOfTaxes/preference)."))
+        if not valuation_method:
+            raise UserError(_("Informe el método de valoración de importación (CustomsValuation/valuationMethod)."))
+        location_authorisation = (
+            self.location_authorisation_number
+            or self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.aeat_preprod_location_authorisation")
+            or "010101DA11"
+        )
+        transport_country = (self.pais_transporte or "ES").strip().upper()[:2]
         total_gross = sum((line.peso_bruto or 0.0) for line in self.line_ids) or 0.0
         lines_xml = []
         for idx, line in enumerate(self.line_ids.sorted(key=lambda l: l.item_number or l.id or 0), 1):
@@ -2216,6 +2246,9 @@ class AduanaExpediente(models.Model):
 <InvoiceLine>
 <itemAmountInvoiced>%.2f</itemAmountInvoiced>
 </InvoiceLine>
+<CalculationOfTaxes>
+<preference>%s</preference>
+</CalculationOfTaxes>
 </Commodity>
 <Packaging>
 <sequenceNumber>1</sequenceNumber>
@@ -2228,6 +2261,9 @@ class AduanaExpediente(models.Model):
 <referenceNumber>%s</referenceNumber>
 <documentLineItemNumber>%s</documentLineItemNumber>
 </SupportingDocument>
+<CustomsValuation>
+<valuationMethod>%s</valuationMethod>
+</CustomsValuation>
 </GoodsShipmentItem>""" % (
                 idx,
                 goods_item_number,
@@ -2240,9 +2276,11 @@ class AduanaExpediente(models.Model):
                 line.peso_bruto or 0.0,
                 line.peso_neto or 0.0,
                 line.valor_linea or 0.0,
+                xml_escape(preference),
                 line.bultos or 1,
                 xml_escape((self.numero_factura or self.name or "FACTURA")[:35]),
                 goods_item_number,
+                xml_escape(valuation_method),
             ))
         if not lines_xml:
             raise UserError(_("Añada al menos una línea de mercancía para generar CC415A."))
@@ -2328,12 +2366,21 @@ class AduanaExpediente(models.Model):
 </CountryOfDispatch>
 <Destination>
 <countryOfDestination>%s</countryOfDestination>
+<regionOfDestination>%s</regionOfDestination>
 </Destination>
 <Consignment>
 <containerIndicator>0</containerIndicator>
 <inlandModeOfTransport>3</inlandModeOfTransport>
 <modeOfTransportAtTheBorder>3</modeOfTransportAtTheBorder>
 <grossMass>%.2f</grossMass>
+<LocationOfGoods>
+<typeOfLocation>B</typeOfLocation>
+<qualifierOfIdentification>Y</qualifierOfIdentification>
+<authorisationNumber>%s</authorisationNumber>
+</LocationOfGoods>
+<ActiveBorderTransportMeans>
+<nationality>%s</nationality>
+</ActiveBorderTransportMeans>
 </Consignment>
 %s
 </GoodsShipment>
@@ -2363,7 +2410,10 @@ class AduanaExpediente(models.Model):
             xml_escape(destination_country),
             xml_escape(origin_country),
             xml_escape(destination_country),
+            xml_escape(region_destination),
             total_gross,
+            xml_escape(location_authorisation),
+            xml_escape(transport_country),
             "\n".join(lines_xml),
         )
 
