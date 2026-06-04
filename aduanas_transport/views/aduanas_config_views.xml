@@ -25,7 +25,7 @@
               <field name="aeat_endpoint_cc507c" placeholder="https://..."/>
             </group>
             <group string="Importación (DUA)">
-              <field name="aeat_endpoint_imp_decl" placeholder="Configurar WSDL oficial CC415A"/>
+              <field name="aeat_endpoint_imp_decl" placeholder="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"/>
               <field name="aeat_endpoint_imp_query" placeholder="https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP"/>
             </group>
             <group string="Bandeja AEAT">
@@ -80,7 +80,7 @@
 
   <!-- Acción para abrir la configuración -->
   <record id="action_aduanas_config" model="ir.actions.act_window">
-    <field name="name">Configuración</field>
+    <field name="name">Configuración AEAT</field>
     <field name="res_model">res.config.settings</field>
     <field name="view_mode">form</field>
     <field name="target">current</field>
@@ -89,7 +89,7 @@
   </record>
 
   <!-- Menú Configuración dentro de Aduanas -->
-  <menuitem id="menu_aduanas_configuracion" name="Configuración"
+  <menuitem id="menu_aduanas_configuracion" name="Configuración AEAT"
             parent="menu_aduanas_root" action="action_aduanas_config" sequence="30"/>
 
 </odoo>

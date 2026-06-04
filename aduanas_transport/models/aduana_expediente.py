@@ -808,7 +808,7 @@ class AduanaExpediente(models.Model):
 
     def _get_settings(self):
         icp = self.env["ir.config_parameter"].sudo()
-        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl")
+        imp_decl_endpoint = icp.get_param("aduanas_transport.endpoint.imp_decl") or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP"
         return {
             "aeat_endpoint_cc515c": icp.get_param("aduanas_transport.endpoint.cc515c")
             or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
@@ -2073,10 +2073,7 @@ class AduanaExpediente(models.Model):
         if direction == "import":
             if not endpoint:
                 raise UserError(_("Falta configurar endpoint oficial CC415A importación"))
-            if (
-                endpoint.startswith("https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP")
-                or "ADIM-JDIT/ws/imp/DeclaracionSOAP" in endpoint
-            ):
+            if "ADIM-JDIT/ws/imp/DeclaracionSOAP" in endpoint:
                 raise UserError(_("Falta configurar endpoint oficial CC415A importación"))
             if "ADEX-JDIT" in endpoint or "CC515" in endpoint or "/aes/" in endpoint.lower():
                 raise UserError(_("Esta operación es importación Andorra → España. Debe presentarse por CC415A/H1, no por AES."))
