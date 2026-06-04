@@ -5,7 +5,8 @@
     <field name="model">res.company</field>
     <field name="inherit_id" ref="base.view_company_form"/>
     <field name="arch" type="xml">
-      <xpath expr="//notebook" position="inside">
+      <xpath expr="//sheet" position="inside">
+        <notebook>
         <page string="Aduanas AEAT" name="aduanas_aeat">
           <group string="Endpoints AEAT">
             <group string="Exportación AES">
@@ -39,6 +40,7 @@
             </group>
           </group>
         </page>
+        </notebook>
       </xpath>
     </field>
   </record>

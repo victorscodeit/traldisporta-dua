@@ -1,4 +1,8 @@
+import logging
+
 from odoo import api, fields, models
+
+_logger = logging.getLogger(__name__)
 
 
 class ResCompany(models.Model):
@@ -83,3 +87,26 @@ class ResCompany(models.Model):
         if vals.get("aeat_cert_upload"):
             self._create_aeat_certificate_attachment()
         return res
+
+    @api.model
+    def _aduanas_aeat_columns_ready(self):
+        self.env.cr.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'res_company' AND column_name = 'aeat_endpoint_cc515c'
+            LIMIT 1
+            """
+        )
+        return bool(self.env.cr.fetchone())
+
+    @api.model
+    def init(self):
+        """Tras crear columnas en -u, migra configuración legacy desde ir.config_parameter."""
+        if not self._aduanas_aeat_columns_ready():
+            return
+        try:
+            from ..hooks import migrate_aeat_config_to_companies
+
+            migrate_aeat_config_to_companies(self.env)
+        except Exception:
+            _logger.exception("No se pudo migrar configuración AEAT a res.company")
