@@ -93,15 +93,18 @@
                   help="Presenta la Declaración Sumaria de Salida (EXS) al endpoint de preproducción IE615 V5 (oculto por el momento)"/>
 
           <!-- Botones de importación -->
-          <button name="action_generate_imp_decl" string="(Import) Generar Declaración" type="object"
+          <button name="action_generate_imp_decl" string="Generar declaración importación" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-          <button name="action_send_imp_decl" string="(Import) Enviar Declaración" type="object"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-          <button name="action_consultar_estado_importacion" string="(Import) Consultar Estado" type="object"
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"
+                  help="Genera el XML CC415A (H1) para Andorra → España."/>
+          <button name="action_send_imp_decl" string="Presentar declaración importación" type="object"
+                  class="oe_highlight"
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"
+                  help="Envía CC415A al endpoint H1 configurado en Aduanas &gt; Configuración."/>
+          <button name="action_consultar_estado_importacion" string="Consultar estado importación" type="object"
                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
                   help="Consulta importación CAU/H1 por MRN mediante ConsultaImportacionV3."/>
-          <button name="action_preview_imp_decl" string="(Import) Previsualizar Declaración" type="object"
+          <button name="action_preview_imp_decl" string="Previsualizar CC415A" type="object"
                   attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
 
           <field name="state" widget="statusbar"
@@ -227,12 +230,26 @@
               <field name="exs_predeclaracion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
             </group>
             <group>
+              <div class="alert alert-info mb-0" role="alert" colspan="2"
+                   attrs="{'invisible': [('direction', '!=', 'import')]}">
+                <strong>Roles CC415A:</strong> Remitente = exportador en país de expedición (Andorra, país AD).
+                Consignatario = importador español con NIF/CIF válido. Traldis presenta como declarante (ESB65496556) desde la empresa Odoo.
+              </div>
               <field name="remitente"/>
               <field name="consignatario"/>
-              <field name="oficina"/>
+              <label for="oficina" string="Oficina importación" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <label for="oficina" string="Oficina exportación" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="oficina" nolabel="1"/>
               <field name="oficina_destino" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="incoterm"/>
+              <field name="numero_factura" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="moneda" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="valor_factura" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="pais_origen" string="País expedición (ISO)" readonly="1"
+                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="pais_destino" string="País destino (ISO)" readonly="1"
+                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_delivery_location" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_region_of_destination" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
@@ -261,7 +278,8 @@
               <field name="pais_transporte"/>
               <field name="transportista"/>
               <field name="remolque"/>
-              <field name="location_authorisation_number" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+              <field name="location_authorisation_number"
+                     attrs="{'invisible': [('direction', 'not in', ('export', 'import'))]}"/>
               <field name="codigo_transporte"/>
             </group>
             <group>

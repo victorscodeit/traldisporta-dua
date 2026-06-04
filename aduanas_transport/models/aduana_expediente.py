@@ -201,8 +201,8 @@ class AduanaExpediente(models.Model):
     )
     import_previous_document_type = fields.Char(
         string="Tipo documento previo importación",
-        default="N355",
-        help="PreviousDocument/type para H1. Ajustar según documento previo real (ENS, depósito temporal, tránsito, etc.).",
+        default="N337",
+        help="PreviousDocument/type para H1. N337 = declaración de depósito temporal. Ajustar según documento previo real.",
     )
     import_previous_document_ref = fields.Char(
         string="Referencia documento previo importación",
@@ -360,7 +360,10 @@ class AduanaExpediente(models.Model):
         # Si se elimina la factura, volver a "sin_factura"
         elif 'factura_pdf' in vals and not vals.get('factura_pdf'):
             vals['factura_estado_procesamiento'] = 'sin_factura'
-        
+        doc_type = (vals.get("import_previous_document_type") or "").strip().upper()
+        if doc_type == "N355":
+            vals["import_previous_document_type"] = "N337"
+
         result = super().write(vals)
         if 'factura_pdf' in vals or 'factura_pdf_filename' in vals:
             for rec in self:
@@ -645,6 +648,12 @@ class AduanaExpediente(models.Model):
         for rec in self:
             for field, value in rec._get_country_values_from_partners().items():
                 rec[field] = value
+
+    @api.onchange("import_previous_document_type")
+    def _onchange_import_previous_document_type(self):
+        for rec in self:
+            if (rec.import_previous_document_type or "").strip().upper() == "N355":
+                rec.import_previous_document_type = "N337"
 
     @api.depends("incidencia_ids", "incidencia_ids.state")
     def _compute_incidencias_count(self):
@@ -2161,10 +2170,14 @@ class AduanaExpediente(models.Model):
         return ""
 
     def _imp_previous_document_xml(self, line_item_number=None):
-        doc_type = (self.import_previous_document_type or "N355").strip().upper()
+        doc_type = (self.import_previous_document_type or "N337").strip().upper()
+        if doc_type == "N355":
+            doc_type = "N337"
         reference = (self.import_previous_document_ref or self.numero_factura or self.name or "PREV").strip()
         if not doc_type or not reference:
             raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
+        if doc_type == "N337" and ":" not in reference:
+            reference = "%s:%s" % (fields.Date.context_today(self).strftime("%Y%m%d"), reference)
         extra = ""
         if line_item_number:
             extra = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(line_item_number))
@@ -2247,7 +2260,9 @@ class AduanaExpediente(models.Model):
             raise UserError(_("Informe la preferencia de importación (CalculationOfTaxes/preference)."))
         if not valuation_method:
             raise UserError(_("Informe el método de valoración de importación (CustomsValuation/valuationMethod)."))
-        previous_document_type = (self.import_previous_document_type or "N355").strip().upper()
+        previous_document_type = (self.import_previous_document_type or "N337").strip().upper()
+        if previous_document_type == "N355":
+            previous_document_type = "N337"
         previous_document_ref = (self.import_previous_document_ref or self.numero_factura or self.name or "").strip()
         if not previous_document_type or not previous_document_ref:
             raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
@@ -2401,6 +2416,7 @@ class AduanaExpediente(models.Model):
 <GoodsShipment>
 <sequenceNumber>1</sequenceNumber>
 <natureOfTransaction>11</natureOfTransaction>
+<invoiceCurrency>%s</invoiceCurrency>
 %s
 <DeliveryTerms>
 <incotermCode>%s</incotermCode>
@@ -2448,6 +2464,7 @@ class AduanaExpediente(models.Model):
             declarant_name,
             declarant_address,
             declarant_contact_xml,
+            xml_escape(self.moneda or "EUR"),
             seller_xml,
             xml_escape(incoterm),
             xml_escape(delivery_location[:35]),
