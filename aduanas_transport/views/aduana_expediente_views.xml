@@ -57,6 +57,8 @@
                   class="oe_highlight"
                   attrs="{'invisible': [('line_ids', '=', [])]}"
                   help="Realiza una verificación IA de las partidas arancelarias y coherencia de las líneas del expediente. Normaliza las partidas a 10 dígitos."/>
+
+          <!-- Exportación AES -->
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
@@ -76,9 +78,14 @@
                   attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed'))]}"
                   help="Envía CC507C: mercancía presentada en la aduana de salida."/>
           <button name="action_poll_bandeja" string="Consultar Bandeja AEAT" type="object"
-                  attrs="{'invisible': [('mrn', '=', False)]}"
-                  help="Recoge comunicaciones AEAT por bandeja, incluidas levante de salida y salida efectiva (IE599/ComunicaResulSalida)."/>
-          
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
+                  help="Bandeja EXPORAES: levante y salida efectiva de exportación."/>
+
+          <!-- Importación H1 -->
+          <button name="action_validar_importacion" string="1. Validar importación" type="object"
+                  attrs="{'invisible': [('direction', '!=', 'import')]}"
+                  help="Comprueba datos obligatorios antes de generar CC415A."/>
+
           <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
                   class="oe_highlight"
@@ -92,20 +99,22 @@
                   invisible="1"
                   help="Presenta la Declaración Sumaria de Salida (EXS) al endpoint de preproducción IE615 V5 (oculto por el momento)"/>
 
-          <!-- Botones de importación -->
-          <button name="action_generate_imp_decl" string="Generar declaración importación" type="object"
+          <button name="action_generate_imp_decl" string="2. Generar CC415A" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="Genera el XML CC415A (H1) para Andorra → España."/>
-          <button name="action_send_imp_decl" string="Presentar declaración importación" type="object"
+                  help="Genera el XML CC415A (H1) para país tercero → España."/>
+          <button name="action_preview_imp_decl" string="3. Previsualizar CC415A" type="object"
+                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
+          <button name="action_send_imp_decl" string="4. Presentar importación" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
                   help="Envía CC415A al endpoint H1 configurado en Aduanas &gt; Configuración."/>
-          <button name="action_consultar_estado_importacion" string="Consultar estado importación" type="object"
+          <button name="action_consultar_estado_importacion" string="5. Consultar estado" type="object"
                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
-                  help="Consulta importación CAU/H1 por MRN mediante ConsultaImportacionV3."/>
-          <button name="action_preview_imp_decl" string="Previsualizar CC415A" type="object"
-                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
+                  help="Consulta importación CAU/H1 por MRN (ConsultaImportacionV3)."/>
+          <button name="action_poll_bandeja" string="6. Bandeja importación" type="object"
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
+                  help="Bandeja IMPORAES: comunicaciones AEAT de importación."/>
 
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
@@ -211,8 +220,12 @@
               <field name="name"/>
               <field name="direction"/>
               <field name="state" readonly="1"/>
-              <field name="lrn"/>
-              <field name="mrn"/>
+              <field name="lrn" string="LRN" attrs="{'readonly': [('direction', '=', 'import')]}"/>
+              <field name="mrn" string="MRN declaración importación"
+                     attrs="{'invisible': [('direction', '!=', 'import')]}"
+                     readonly="1"
+                     placeholder="Se rellena cuando AEAT acepta la CC415A"/>
+              <field name="mrn" attrs="{'invisible': [('direction', '=', 'import')]}"/>
               <field name="levante_estado_color" widget="badge"
                      decoration-muted="levante_estado_color == 'pendiente'"
                      decoration-info="levante_estado_color in ('admitido', 'control')"
@@ -232,8 +245,14 @@
             <group>
               <div class="alert alert-info mb-0" role="alert" colspan="2"
                    attrs="{'invisible': [('direction', '!=', 'import')]}">
-                <strong>Roles CC415A:</strong> Remitente = exportador en país de expedición (Andorra, país AD).
-                Consignatario = importador español con NIF/CIF válido. Traldis presenta como declarante (ESB65496556) desde la empresa Odoo.
+                <strong>Importación H1:</strong> El <strong>MRN de la cabecera</strong> del expediente queda vacío hasta que AEAT acepte esta declaración (CC415A).
+                Antes de presentar, debe indicar el <strong>MRN del DDT/G4</strong> (documento previo N337, 18 caracteres) en el campo inferior — no es el MRN del expediente.
+                Remitente = exportador (país AD). Consignatario = importador español. Declarante = ESB65496556 (empresa Odoo).
+              </div>
+              <div class="alert alert-warning mb-0" role="alert" colspan="2"
+                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('import_previous_document_ref', '!=', False)]}">
+                Sin MRN del DDT/G4 no puede presentarse la importación con documento previo N337.
+                Obtenga el MRN de la declaración sumaria de depósito temporal (PreCAU) o G4 y rellénelo abajo.
               </div>
               <field name="remitente"/>
               <field name="consignatario"/>
@@ -253,7 +272,12 @@
               <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_previous_document_type" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <field name="import_previous_document_ref" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_ddt_origen_id" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_previous_document_ref" placeholder="24ES00280180000019"
+                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_previous_document_is_g4" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_checklist_html" nolabel="1" colspan="2"
+                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
           </group>
@@ -367,6 +391,10 @@
                   <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                   <field name="partida"/>
                   <field name="taric_completo"/>
+                  <field name="import_ddt_goods_item" optional="show"
+                         attrs="{'column_invisible': [('parent.direction', '!=', 'import')]}"/>
+                  <field name="type_of_packages" optional="hide"
+                         attrs="{'column_invisible': [('parent.direction', '!=', 'import')]}"/>
                   <field name="descripcion"/>
                   <field name="unidades" sum="Total"/>
                   <field name="bultos" sum="Total"/>

@@ -3,6 +3,7 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.tools import html_escape
 import base64
 import logging
+import re
 import time
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
@@ -38,6 +39,15 @@ class AduanaExpedienteLine(models.Model):
     descripcion = fields.Char()
     unidades = fields.Float(string="Unidades", default=1.0)
     bultos = fields.Integer(default=1)
+    import_ddt_goods_item = fields.Integer(
+        string="Nº partida DDT",
+        help="PreviousDocument/goodsItemIdentifier al datar un N337 (MRN DDT/G4 de 18 caracteres). Si está vacío se usa Nº línea.",
+    )
+    type_of_packages = fields.Char(
+        string="Tipo bulto",
+        default="CT",
+        help="Packaging/typeOfPackages. Use FR u otro código a granel (CSRDC181) si no hay bultos en el DDT.",
+    )
     peso_bruto = fields.Float()
     peso_neto = fields.Float()
     valor_linea = fields.Float()
@@ -206,8 +216,26 @@ class AduanaExpediente(models.Model):
         help="PreviousDocument/type para H1. N337 = declaración de depósito temporal. Ajustar según documento previo real.",
     )
     import_previous_document_ref = fields.Char(
-        string="Referencia documento previo importación",
-        help="PreviousDocument/referenceNumber. Si está vacío se usa la factura o el expediente.",
+        string="MRN / referencia documento previo (N337)",
+        help="PreviousDocument/referenceNumber para N337: MRN DDT PreCAU o G4 de 18 caracteres "
+             "(ej. 24ES00280180000019, 24ESG4A000000001U6) o vuelo+conocimiento con '+' en posición 17 o 19.",
+    )
+    import_previous_document_is_g4 = fields.Boolean(
+        string="Documento previo es G4",
+        default=False,
+        help="Si el N337 referencia una G4, la cantidad (quantity) admite decimales. En DDT solo kilos enteros.",
+    )
+    import_ddt_origen_id = fields.Many2one(
+        "aduana.expediente",
+        string="Expediente origen DDT",
+        help="Opcional: otro expediente en Odoo cuyo MRN sea el de la DDT/G4 (N337). "
+             "Al seleccionarlo se copia el MRN al campo de documento previo.",
+        domain="[('mrn', '!=', False)]",
+    )
+    import_checklist_html = fields.Html(
+        string="Checklist importación",
+        compute="_compute_import_checklist_html",
+        sanitize=False,
     )
     location_authorisation_number = fields.Char(
         string="Recinto/ubicación AEAT",
@@ -655,6 +683,96 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if (rec.import_previous_document_type or "").strip().upper() == "N355":
                 rec.import_previous_document_type = "N337"
+
+    @api.onchange("import_ddt_origen_id")
+    def _onchange_import_ddt_origen_id(self):
+        for rec in self:
+            if rec.import_ddt_origen_id and rec.import_ddt_origen_id.mrn:
+                rec.import_previous_document_type = "N337"
+                rec.import_previous_document_ref = rec.import_ddt_origen_id.mrn.strip()
+
+    def _import_checklist_items(self):
+        """Lista de comprobaciones del flujo de importación H1 para el operario."""
+        self.ensure_one()
+        icp = self.env["ir.config_parameter"].sudo()
+        cert_ok = bool(icp.get_param("aduanas_transport.cert_attachment_id"))
+        endpoint_ok = bool((icp.get_param("aduanas_transport.endpoint.imp_decl") or "").strip())
+        ref = (self.import_previous_document_ref or "").strip().upper().replace(" ", "")
+        n337_ok = False
+        if (self.import_previous_document_type or "N337").strip().upper() == "N337":
+            n337_ok = (len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref)) or (
+                (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
+            )
+        lineas_ok = bool(self.line_ids)
+        taric_ok = all(
+            len((l.taric_completo or l.partida or "").replace(" ", "").replace(".", "")) == 10
+            for l in self.line_ids
+        ) if self.line_ids else False
+        return [
+            (_("Configuración AEAT (certificado + endpoint CC415A)"), cert_ok and endpoint_ok),
+            (_("Remitente con país expedición AD"), (self.pais_origen or "").upper() == "AD"),
+            (_("Consignatario español con NIF"), bool(self.consignatario and self.consignatario.vat)),
+            (_("Oficina aduanas informada"), bool((self.oficina or "").strip())),
+            (_("Líneas de mercancía con TARIC 10 dígitos"), lineas_ok and taric_ok),
+            (_("Valor factura y moneda"), (self.valor_factura or 0) > 0),
+            (_("MRN DDT/G4 para documento previo N337"), n337_ok),
+            (_("XML CC415A generado (estado predeclarado o superior)"), self.state in (
+                "predeclared", "presented", "accepted", "released", "exited", "closed"
+            )),
+            (_("MRN declaración importación (tras presentar)"), bool(self.mrn)),
+        ]
+
+    @api.depends(
+        "direction", "line_ids", "line_ids.taric_completo", "line_ids.partida",
+        "remitente", "consignatario", "oficina", "valor_factura", "moneda",
+        "import_previous_document_ref", "import_previous_document_type",
+        "pais_origen", "state", "mrn",
+    )
+    def _compute_import_checklist_html(self):
+        for rec in self:
+            if rec.direction != "import":
+                rec.import_checklist_html = False
+                continue
+            rows = []
+            for label, ok in rec._import_checklist_items():
+                icon = "✅" if ok else "⬜"
+                rows.append("<li>%s %s</li>" % (icon, html_escape(label)))
+            rec.import_checklist_html = (
+                "<p><strong>Flujo operativo importación (Andorra → España, H1 CC415A)</strong></p>"
+                "<ol>"
+                "<li>Presentar la <strong>DDT</strong> (depósito temporal) y obtener su <strong>MRN 18 caracteres</strong> "
+                "(fuera de este expediente o vinculando otro expediente con MRN).</li>"
+                "<li>Completar datos, factura/líneas y MRN DDT abajo.</li>"
+                "<li><strong>Validar</strong> → <strong>Generar</strong> → <strong>Previsualizar</strong> → "
+                "<strong>Presentar</strong> declaración.</li>"
+                "<li><strong>Consultar estado</strong> y <strong>bandeja</strong> cuando exista MRN de importación.</li>"
+                "</ol><ul>%s</ul>" % "".join(rows)
+            )
+
+    def action_validar_importacion(self):
+        """Validación previa al envío; muestra checklist y errores concretos."""
+        validator = self.env["aduanas.validator"]
+        for rec in self:
+            if rec.direction != "import":
+                raise UserError(_("Esta acción solo aplica a expedientes de importación."))
+            validator.validate_expediente_import(rec)
+            pending = [label for label, ok in rec._import_checklist_items() if not ok]
+            body = _("Validación importación correcta. Puede generar y presentar CC415A.")
+            if pending:
+                body += _("<br/><br/>Pendiente (no bloquea la validación de campos): %s") % (
+                    ", ".join(pending)
+                )
+            rec.message_post(body=body, subtype_xmlid="mail.mt_note")
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Importación validada"),
+                "message": _("Los datos obligatorios son correctos. Revise el checklist en el expediente."),
+                "type": "success",
+                "sticky": False,
+            },
+        }
 
     @api.depends("incidencia_ids", "incidencia_ids.state")
     def _compute_incidencias_count(self):
@@ -2170,26 +2288,98 @@ class AduanaExpediente(models.Model):
             return "<identificationNumber>%s</identificationNumber>" % xml_escape(ident)
         return ""
 
-    def _imp_previous_document_xml(self, line_item_number=None):
+    def _normalize_n337_reference(self, reference):
+        """Valida y normaliza referenceNumber para PreviousDocument N337 (H1)."""
+        ref = (reference or "").strip().upper().replace(" ", "")
+        if not ref:
+            raise UserError(
+                _("N337: indique el MRN del DDT/G4 en «MRN / referencia documento previo». "
+                  "Ejemplo DDT PreCAU: 24ES00280180000019")
+            )
+        if len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref):
+            return ref
+        if len(ref) > 16 and ref[16] == "+":
+            return ref[:70]
+        if len(ref) > 18 and ref[18] == "+":
+            return ref[:70]
+        raise UserError(
+            _("N337: la referencia «%s» (%s caracteres) no es válida. "
+              "Use un MRN de 18 caracteres (DDT PreCAU o G4) o vuelo+conocimiento con «+» en posición 17 o 19.")
+            % (ref, len(ref))
+        )
+
+    def _n337_reference_uses_goods_item(self, reference):
+        ref = (reference or "").strip().upper().replace(" ", "")
+        if len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref):
+            return True
+        return False
+
+    def _imp_previous_document_xml(self, line, type_of_packages="CT"):
+        """PreviousDocument por partida; N337 exige MRN, KGMG, quantity y bultos según AEAT H1."""
+        self.ensure_one()
+        if not line:
+            raise UserError(_("PreviousDocument requiere una línea de mercancía."))
         doc_type = (self.import_previous_document_type or "N337").strip().upper()
         if doc_type == "N355":
             doc_type = "N337"
-        reference = (self.import_previous_document_ref or self.numero_factura or self.name or "PREV").strip()
-        if not doc_type or not reference:
-            raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
-        if doc_type == "N337" and ":" not in reference:
-            reference = "%s:%s" % (fields.Date.context_today(self).strftime("%Y%m%d"), reference)
-        extra = ""
-        if line_item_number:
-            extra = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(line_item_number))
+        if not doc_type:
+            raise UserError(_("Informe el tipo de documento previo para CC415A."))
+
+        gross = line.peso_bruto or 0.0
+        if gross <= 0:
+            raise UserError(
+                _("Línea %s: la masa bruta debe ser mayor que 0 para el documento previo N337.")
+                % (line.item_number or line.id)
+            )
+
+        if doc_type == "N337":
+            reference = self._normalize_n337_reference(self.import_previous_document_ref)
+            is_g4 = bool(self.import_previous_document_is_g4)
+            if is_g4:
+                quantity = "%.2f" % gross
+            else:
+                quantity = str(int(round(gross)))
+            packages_type = (type_of_packages or line.type_of_packages or "CT").strip().upper()
+            packages = int(line.bultos or 0)
+            is_bulk = packages_type == "FR" or packages <= 0
+            packages_xml = ""
+            if not is_bulk:
+                packages_xml = "\n<numberOfPackages>%s</numberOfPackages>" % packages
+            goods_item_xml = ""
+            if self._n337_reference_uses_goods_item(reference):
+                ddt_item = line.import_ddt_goods_item or line.item_number
+                if not ddt_item:
+                    raise UserError(
+                        _("Línea %s: indique el nº de partida del DDT/G4 (campo «Nº partida DDT»).")
+                        % (line.item_number or line.id)
+                    )
+                goods_item_xml = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(ddt_item))
+            return """<PreviousDocument>
+<sequenceNumber>1</sequenceNumber>
+<type>N337</type>
+<referenceNumber>%s</referenceNumber>%s%s
+<measurementUnitAndQualifier>KGMG</measurementUnitAndQualifier>
+<quantity>%s</quantity>
+</PreviousDocument>""" % (
+                xml_escape(reference[:70]),
+                goods_item_xml,
+                packages_xml,
+                xml_escape(quantity),
+            )
+
+        reference = (
+            self.import_previous_document_ref
+            or self.numero_factura
+            or self.name
+            or "PREV"
+        ).strip()
         return """<PreviousDocument>
 <sequenceNumber>1</sequenceNumber>
 <type>%s</type>
-<referenceNumber>%s</referenceNumber>%s
+<referenceNumber>%s</referenceNumber>
 </PreviousDocument>""" % (
             xml_escape(doc_type[:4]),
             xml_escape(reference[:70]),
-            extra,
         )
 
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
@@ -2264,8 +2454,9 @@ class AduanaExpediente(models.Model):
         previous_document_type = (self.import_previous_document_type or "N337").strip().upper()
         if previous_document_type == "N355":
             previous_document_type = "N337"
-        previous_document_ref = (self.import_previous_document_ref or self.numero_factura or self.name or "").strip()
-        if not previous_document_type or not previous_document_ref:
+        if previous_document_type == "N337":
+            self._normalize_n337_reference(self.import_previous_document_ref)
+        elif not (self.import_previous_document_ref or self.numero_factura or self.name or "").strip():
             raise UserError(_("Informe tipo y referencia de documento previo para CC415A."))
         location_authorisation = (
             self.location_authorisation_number
@@ -2284,6 +2475,8 @@ class AduanaExpediente(models.Model):
             taric = partida[8:10] if len(partida) >= 10 else ""
             taric_xml = "<taricCode>%s</taricCode>" % xml_escape(taric) if taric else ""
             goods_item_number = line.item_number or idx
+            packages_type = (line.type_of_packages or "CT").strip().upper()
+            packages_count = int(line.bultos or 1)
             lines_xml.append("""<GoodsShipmentItem>
 <sequenceNumber>%s</sequenceNumber>
 <declarationGoodsItemNumber>%s</declarationGoodsItemNumber>
@@ -2314,9 +2507,8 @@ class AduanaExpediente(models.Model):
 </Commodity>
 <Packaging>
 <sequenceNumber>1</sequenceNumber>
-<typeOfPackages>CT</typeOfPackages>
-<numberOfPackages>%s</numberOfPackages>
-</Packaging>
+<typeOfPackages>%s</typeOfPackages>
+%s</Packaging>
 %s
 <SupportingDocument>
 <sequenceNumber>1</sequenceNumber>
@@ -2340,8 +2532,13 @@ class AduanaExpediente(models.Model):
                 line.peso_neto or 0.0,
                 line.valor_linea or 0.0,
                 xml_escape(preference),
-                line.bultos or 1,
-                self._imp_previous_document_xml(goods_item_number),
+                xml_escape(packages_type),
+                (
+                    "<numberOfPackages>%s</numberOfPackages>" % packages_count
+                    if packages_type != "FR" and packages_count > 0
+                    else ""
+                ),
+                self._imp_previous_document_xml(line, packages_type),
                 xml_escape((self.numero_factura or self.name or "FACTURA")[:35]),
                 goods_item_number,
                 xml_escape(valuation_method),
@@ -2506,6 +2703,7 @@ class AduanaExpediente(models.Model):
             endpoint = settings.get("aeat_endpoint_imp_decl")
             rec._validate_aeat_endpoint_for_xml(endpoint, xml_content, "import")
             rec._attach_xml(f"{rec.name}_CC415A_request.xml", xml_content)
+            rec.state = "presented"
             status_code, resp_xml = client.send_xml(endpoint, xml_content, service="IMP_DECL")
             rec._attach_xml(f"{rec.name}_CC415A_response.xml", resp_xml or "")
             if status_code != 200:

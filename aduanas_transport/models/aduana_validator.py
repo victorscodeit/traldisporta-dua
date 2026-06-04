@@ -139,15 +139,31 @@ class AduanaValidator(models.AbstractModel):
         previous_document_type = (getattr(expediente, "import_previous_document_type", "") or "N337").strip().upper()
         if previous_document_type == "N355":
             previous_document_type = "N337"
-        previous_document_ref = (
-            getattr(expediente, "import_previous_document_ref", "")
-            or expediente.numero_factura
-            or expediente.name
-            or ""
-        ).strip()
+        previous_document_ref = (getattr(expediente, "import_previous_document_ref", "") or "").strip()
         if not re.match(r"^[A-Za-z0-9]{1,4}$", previous_document_type):
             errors.append(_("En importación H1, el tipo de documento previo es obligatorio (ej: N337)."))
-        if not previous_document_ref:
+        if previous_document_type == "N337":
+            if not previous_document_ref:
+                errors.append(
+                    _("N337: indique el MRN del DDT/G4 (18 caracteres) en «MRN / referencia documento previo».")
+                )
+            else:
+                ref = previous_document_ref.upper().replace(" ", "")
+                valid_mrn = bool(len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref))
+                valid_plus = (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
+                if not (valid_mrn or valid_plus):
+                    errors.append(
+                        _("N337: la referencia debe ser un MRN de 18 caracteres o vuelo+conocimiento con «+» "
+                          "en posición 17 o 19. No use formato fecha:referencia.")
+                    )
+                elif valid_mrn:
+                    for idx, line in enumerate(expediente.line_ids, 1):
+                        ddt_item = getattr(line, "import_ddt_goods_item", False) or line.item_number
+                        if not ddt_item:
+                            errors.append(
+                                _("Línea %d: indique el nº de partida del DDT (campo «Nº partida DDT»).") % idx
+                            )
+        elif not previous_document_ref:
             errors.append(_("En importación H1, la referencia de documento previo es obligatoria."))
 
         if getattr(expediente, "requested_procedure", "40") != "40":
