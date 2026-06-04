@@ -2265,7 +2265,7 @@ class AduanaExpediente(models.Model):
 <countryOfDestination>%s</countryOfDestination>
 </Destination>
 <Consignment>
-<containerIndicator>0</containerIndicator>
+<containerIndicator>N</containerIndicator>
 <inlandModeOfTransport>3</inlandModeOfTransport>
 <modeOfTransportAtTheBorder>3</modeOfTransportAtTheBorder>
 <grossMass>%.2f</grossMass>
