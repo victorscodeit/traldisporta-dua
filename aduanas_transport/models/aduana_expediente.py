@@ -950,10 +950,15 @@ class AduanaExpediente(models.Model):
         return "ES%s" % raw_office[:6].rjust(6, "0")
 
     def _aeat_is_preproduction(self, endpoint_url=None):
-        url = (endpoint_url or self.env["ir.config_parameter"].sudo().get_param(
-            "aduanas_transport.endpoint.cc515c"
-        ) or "").lower()
-        return "prewww" in url
+        icp = self.env["ir.config_parameter"].sudo()
+        if endpoint_url:
+            return "prewww" in endpoint_url.lower()
+        urls = [
+            icp.get_param("aduanas_transport.endpoint.cc515c") or "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP",
+            icp.get_param("aduanas_transport.endpoint.imp_decl") or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP",
+            icp.get_param("aduanas_transport.endpoint.imp_query") or "https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP",
+        ]
+        return any("prewww" in url.lower() for url in urls)
 
     def _aeat_preprod_test_office(self):
         return (
@@ -962,6 +967,37 @@ class AduanaExpediente(models.Model):
             )
             or "ES000101"
         ).strip().upper()
+
+    def _aeat_preprod_import_office(self):
+        return (
+            self.env["ir.config_parameter"].sudo().get_param(
+                "aduanas_transport.aeat_preprod_import_office"
+            )
+            or self._aeat_preprod_test_office()
+        ).strip().upper()
+
+    def _get_cc415a_office_code(self):
+        """Oficina H1 para CC415A; en preproducción usa oficina de prueba AEAT."""
+        self.ensure_one()
+        user_office = self._normalize_aes_office(self.oficina)
+        office = user_office
+        office_note = ""
+        if self._aeat_is_preproduction():
+            allow_real = (
+                self.env["ir.config_parameter"].sudo().get_param(
+                    "aduanas_transport.preprod_allow_real_import_office"
+                )
+                or ""
+            ).strip().lower() in ("1", "true", "yes", "si", "sí")
+            if not allow_real:
+                test_office = self._aeat_preprod_import_office()
+                if office != test_office:
+                    office_note = _(
+                        "Preproducción AEAT: en CC415A se usa oficina de importación de prueba (%s) "
+                        "en lugar de la indicada en el expediente (%s)."
+                    ) % (test_office, user_office)
+                    office = test_office
+        return office, office_note
 
     def _get_cc515c_office_codes(self):
         """Oficinas AES para CC515C; en preprod sustituye por oficina de prueba AEAT."""
@@ -2107,9 +2143,9 @@ class AduanaExpediente(models.Model):
         """Genera una declaración completa H1 CC415A básica según CC415AV1Ent.xsd."""
         self.ensure_one()
         self._validate_import_cc415a_roles()
-        office = (self.oficina or "").strip().upper()
-        if not office:
+        if not (self.oficina or "").strip():
             raise UserError(_("Informe la oficina aduanera de importación."))
+        office, _office_note = self._get_cc415a_office_code()
         importer_id = self._imp_eori(self.consignatario, "ES")
         if not importer_id:
             raise UserError(_("El consignatario/importador debe tener NIF/EORI para CC415A."))

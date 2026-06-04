@@ -88,6 +88,10 @@ class ResConfigSettings(models.TransientModel):
         string="Unsplash Access Key",
         config_parameter="unsplash.access_key",
         help="API Key de Unsplash (definido para compatibilidad con otros módulos)")
+    unsplash_app_id = fields.Char(
+        string="Unsplash App ID",
+        config_parameter="unsplash.app_id",
+        help="App ID de Unsplash (definido para compatibilidad con otros módulos)")
 
     @api.model
     def get_values(self):
