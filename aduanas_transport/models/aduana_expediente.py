@@ -2029,7 +2029,212 @@ class AduanaExpediente(models.Model):
                 raise UserError(_("Error al presentar EXS:\n%s") % error_msg)
         return True
 
-    # ===== Importación (DUA Import) =====
+    # ===== Importación H1/CAU (CC415A) =====
+    def _imp_eori(self, partner, default_country="ES"):
+        vat = ((partner and partner.vat) or "").replace(" ", "").replace("-", "").upper()
+        if not vat:
+            return ""
+        if len(vat) > 2 and vat[:2].isalpha():
+            return vat
+        return "%s%s" % (default_country, vat)
+
+    def _imp_address_xml(self, partner):
+        if not partner:
+            return ""
+        street = " ".join(p for p in [partner.street or "", partner.street2 or ""] if p)[:70]
+        city = (partner.city or "")[:35]
+        country = partner.country_id.code if partner.country_id else ""
+        if not street or not city or not country:
+            return ""
+        return """<Address>
+<streetAndNumber>%s</streetAndNumber>
+<postcode>%s</postcode>
+<city>%s</city>
+<country>%s</country>
+</Address>""" % (
+            xml_escape(street),
+            xml_escape((partner.zip or "00000")[:17]),
+            xml_escape(city),
+            xml_escape(country),
+        )
+
+    def _build_cc415a_soap_envelope(self):
+        """Genera una declaración completa H1 CC415A básica según CC415AV1Ent.xsd."""
+        self.ensure_one()
+        office = (self.oficina or "").strip().upper()
+        if not office:
+            raise UserError(_("Informe la oficina aduanera de importación."))
+        importer_id = self._imp_eori(self.consignatario, "ES")
+        if not importer_id:
+            raise UserError(_("El consignatario/importador debe tener NIF/EORI para CC415A."))
+        company = self.env.company
+        declarant_id = self._imp_eori(company.partner_id, "ES") or importer_id
+        lrn = (self.lrn or self.name or ("EXP%s" % (self.id or ""))).replace(" ", "")[:22]
+        now = fields.Datetime.now()
+        prep_time = now.strftime("%Y-%m-%dT%H:%M:%S")
+        msg_id = ("%s-CC415A-%s" % (lrn, now.strftime("%Y%m%d%H%M%S")))[:40]
+        test_indicator_xml = "<testIndicator>1</testIndicator>" if self._aeat_is_preproduction() else ""
+        origin_country = (self.pais_origen or "").strip().upper()
+        destination_country = (self.pais_destino or "ES").strip().upper()
+        if not origin_country or origin_country == "ES":
+            raise UserError(_("En importación, el país origen debe ser un país tercero distinto de ES."))
+        total_gross = sum((line.peso_bruto or 0.0) for line in self.line_ids) or 0.0
+        lines_xml = []
+        for idx, line in enumerate(self.line_ids.sorted(key=lambda l: l.item_number or l.id or 0), 1):
+            partida = (line.partida or "").replace(" ", "").replace(".", "")
+            hs = partida[:6]
+            cn = partida[6:8] if len(partida) >= 8 else "00"
+            taric = partida[8:10] if len(partida) >= 10 else ""
+            taric_xml = "<taricCode>%s</taricCode>" % xml_escape(taric) if taric else ""
+            goods_item_number = line.item_number or idx
+            lines_xml.append("""<GoodsShipmentItem>
+<sequenceNumber>%s</sequenceNumber>
+<declarationGoodsItemNumber>%s</declarationGoodsItemNumber>
+<statisticalValue>%.2f</statisticalValue>
+<Procedure>
+<requestedProcedure>40</requestedProcedure>
+<previousProcedure>00</previousProcedure>
+</Procedure>
+<Origin>
+<countryOfOrigin>%s</countryOfOrigin>
+</Origin>
+<Commodity>
+<descriptionOfGoods>%s</descriptionOfGoods>
+<CommodityCode>
+<harmonizedSystemSubheadingCode>%s</harmonizedSystemSubheadingCode>
+<combinedNomenclatureCode>%s</combinedNomenclatureCode>
+%s</CommodityCode>
+<GoodsMeasure>
+<grossMass>%.2f</grossMass>
+<netMass>%.2f</netMass>
+</GoodsMeasure>
+<InvoiceLine>
+<itemAmountInvoiced>%.2f</itemAmountInvoiced>
+</InvoiceLine>
+</Commodity>
+<Packaging>
+<sequenceNumber>1</sequenceNumber>
+<typeOfPackages>CT</typeOfPackages>
+<numberOfPackages>%s</numberOfPackages>
+</Packaging>
+<SupportingDocument>
+<sequenceNumber>1</sequenceNumber>
+<type>N380</type>
+<referenceNumber>%s</referenceNumber>
+<documentLineItemNumber>%s</documentLineItemNumber>
+</SupportingDocument>
+</GoodsShipmentItem>""" % (
+                idx,
+                goods_item_number,
+                line.valor_linea or 0.0,
+                xml_escape(origin_country),
+                xml_escape((line.descripcion or "Mercancia")[:512]),
+                xml_escape(hs),
+                xml_escape(cn),
+                taric_xml,
+                line.peso_bruto or 0.0,
+                line.peso_neto or 0.0,
+                line.valor_linea or 0.0,
+                line.bultos or 1,
+                xml_escape((self.numero_factura or self.name or "FACTURA")[:35]),
+                goods_item_number,
+            ))
+        if not lines_xml:
+            raise UserError(_("Añada al menos una línea de mercancía para generar CC415A."))
+        importer_address = self._imp_address_xml(self.consignatario)
+        declarant_partner = company.partner_id
+        declarant_address = self._imp_address_xml(declarant_partner)
+        importer_name = "<name>%s</name>" % xml_escape((self.consignatario.name or "")[:70]) if self.consignatario and self.consignatario.name else ""
+        declarant_name = "<name>%s</name>" % xml_escape((declarant_partner.name or "")[:70]) if declarant_partner and declarant_partner.name else ""
+        incoterm = self.incoterm or "DAP"
+        delivery_location = (self.consignatario.city if self.consignatario else "") or "ES"
+        ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd"
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:imp="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<imp:CC415AV1Ent>
+<Message>
+<messageIdentification>%s</messageIdentification>
+<preparationDateAndTime>%s</preparationDateAndTime>
+%s
+</Message>
+<operation>A</operation>
+<CustomsOfficeOfImport>
+<referenceNumber>%s</referenceNumber>
+</CustomsOfficeOfImport>
+<CC415A>
+<ImportOperation>
+<LRN>%s</LRN>
+<declarationType>IM</declarationType>
+<additionalDeclarationType>A</additionalDeclarationType>
+<languageCode>ES</languageCode>
+</ImportOperation>
+<CustomsOfficeOfPresentation>
+<referenceNumber>%s</referenceNumber>
+</CustomsOfficeOfPresentation>
+<Importer>
+<identificationNumber>%s</identificationNumber>
+%s
+%s
+</Importer>
+<Declarant>
+<identificationNumber>%s</identificationNumber>
+%s
+%s
+</Declarant>
+<GoodsShipment>
+<sequenceNumber>1</sequenceNumber>
+<natureOfTransaction>11</natureOfTransaction>
+<totalAmountInvoiced>%.2f</totalAmountInvoiced>
+<invoiceCurrency>%s</invoiceCurrency>
+<DeliveryTerms>
+<incotermCode>%s</incotermCode>
+<location>%s</location>
+<country>%s</country>
+</DeliveryTerms>
+<CountryOfDispatch>
+<countryOfDispatch>%s</countryOfDispatch>
+</CountryOfDispatch>
+<Destination>
+<countryOfDestination>%s</countryOfDestination>
+</Destination>
+<Consignment>
+<containerIndicator>0</containerIndicator>
+<inlandModeOfTransport>3</inlandModeOfTransport>
+<modeOfTransportAtTheBorder>3</modeOfTransportAtTheBorder>
+<grossMass>%.2f</grossMass>
+</Consignment>
+%s
+</GoodsShipment>
+</CC415A>
+</imp:CC415AV1Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (
+            ns,
+            xml_escape(msg_id),
+            prep_time,
+            test_indicator_xml,
+            xml_escape(office),
+            xml_escape(lrn),
+            xml_escape(office),
+            xml_escape(importer_id),
+            importer_name,
+            importer_address,
+            xml_escape(declarant_id),
+            declarant_name,
+            declarant_address,
+            self.valor_factura or 0.0,
+            xml_escape(self.moneda or "EUR"),
+            xml_escape(incoterm),
+            xml_escape(delivery_location[:35]),
+            xml_escape(destination_country),
+            xml_escape(origin_country),
+            xml_escape(destination_country),
+            total_gross,
+            "\n".join(lines_xml),
+        )
+
     def action_generate_imp_decl(self):
         for rec in self:
             if rec.direction != "import":
@@ -2037,10 +2242,7 @@ class AduanaExpediente(models.Model):
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
-            xml = self.env['ir.ui.view']._render_template(
-                "aduanas_transport.tpl_imp_decl",
-                {"exp": rec}
-            )
+            xml = rec._build_cc415a_soap_envelope()
             rec._attach_xml(f"{rec.name}_IMP_DECL.xml", xml)
             rec.state = "predeclared"
             rec.error_message = False
@@ -2054,21 +2256,15 @@ class AduanaExpediente(models.Model):
             if rec.direction != "import":
                 raise UserError(_("La declaración de importación solo aplica a importación"))
             settings = rec._get_settings()
-            xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], limit=1)
+            xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
             if not xmls:
                 rec.action_generate_imp_decl()
-                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], limit=1)
+                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
             xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
             if "DeclaracionImportacionEnt" in xml_content:
-                endpoint = settings.get("aeat_endpoint_imp_decl") or "-"
-                raise UserError(_(
-                    "La URL de importación ya no debe ser DeclaracionSOAP. El servicio AEAT H1 vigente es CC415A:\n"
-                    "%s\n\n"
-                    "Pero el XML generado por el módulo aún es una plantilla provisional "
-                    "(<DeclaracionImportacionEnt>) y AEAT espera un mensaje CC415AV1Ent/CC415A. "
-                    "No se envía para evitar rechazos confusos. Hay que implementar el XML H1 CC415A "
-                    "antes de presentar importaciones reales."
-                ) % endpoint)
+                rec.action_generate_imp_decl()
+                xmls = self.env["ir.attachment"].search([("res_model","=",rec._name),("res_id","=",rec.id),("name","like","%IMP_DECL.xml")], order="create_date desc, id desc", limit=1)
+                xml_content = base64.b64decode(xmls.datas or b"").decode("utf-8")
             status_code, resp_xml = client.send_xml(settings.get("aeat_endpoint_imp_decl"), xml_content, service="IMP_DECL")
             rec._attach_xml(f"{rec.name}_IMP_DECL_response.xml", resp_xml or "")
             if status_code != 200:
