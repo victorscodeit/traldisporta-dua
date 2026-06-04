@@ -2119,7 +2119,7 @@ class AduanaExpediente(models.Model):
         now = fields.Datetime.now()
         prep_time = now.strftime("%Y-%m-%dT%H:%M:%S")
         msg_id = ("%s-CC415A-%s" % (lrn, now.strftime("%Y%m%d%H%M%S")))[:40]
-        test_indicator_xml = "<testIndicator>1</testIndicator>" if self._aeat_is_preproduction() else ""
+        test_indicator_xml = "<testIndicator>S</testIndicator>" if self._aeat_is_preproduction() else ""
         origin_country = (self.pais_origen or "").strip().upper()
         destination_country = (self.pais_destino or "ES").strip().upper()
         if not origin_country or origin_country == "ES":
@@ -2265,7 +2265,7 @@ class AduanaExpediente(models.Model):
 <countryOfDestination>%s</countryOfDestination>
 </Destination>
 <Consignment>
-<containerIndicator>N</containerIndicator>
+<containerIndicator>0</containerIndicator>
 <inlandModeOfTransport>3</inlandModeOfTransport>
 <modeOfTransportAtTheBorder>3</modeOfTransportAtTheBorder>
 <grossMass>%.2f</grossMass>

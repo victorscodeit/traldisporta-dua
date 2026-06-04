@@ -3,11 +3,11 @@
   <!-- Vista de formulario para Configuración de Aduanas -->
   <record id="view_aduanas_config_form" model="ir.ui.view">
     <field name="name">aduanas.config.form</field>
-    <field name="model">res.config.settings</field>
+    <field name="model">aduanas.config.settings</field>
     <field name="arch" type="xml">
       <form string="Configuración Aduanas">
         <header>
-          <button string="Aplicar" name="execute" type="object" class="oe_highlight"/>
+          <button string="Aplicar" name="action_apply" type="object" class="oe_highlight"/>
           <button string="Cancelar" special="cancel"/>
         </header>
         <sheet>
@@ -81,11 +81,11 @@
   <!-- Acción para abrir la configuración -->
   <record id="action_aduanas_config" model="ir.actions.act_window">
     <field name="name">Configuración Aduanas AEAT</field>
-    <field name="res_model">res.config.settings</field>
+    <field name="res_model">aduanas.config.settings</field>
     <field name="view_mode">form</field>
     <field name="target">current</field>
     <field name="view_id" ref="view_aduanas_config_form"/>
-    <field name="context">{'module': 'aduanas_transport'}</field>
+    <field name="context">{}</field>
   </record>
 
   <!-- Menú Configuración dentro de Aduanas -->
