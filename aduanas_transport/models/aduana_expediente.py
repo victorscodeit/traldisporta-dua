@@ -281,11 +281,6 @@ class AduanaExpediente(models.Model):
         help="Opcional: otro expediente cuyo MRN se copia a mrn_ddt.",
         domain="[('mrn', '!=', False)]",
     )
-    import_checklist_html = fields.Html(
-        string="Checklist importación",
-        compute="_compute_import_checklist_html",
-        sanitize=False,
-    )
     location_authorisation_number = fields.Char(
         string="Recinto/ubicación AEAT",
         help="LocationOfGoods/authorisationNumber. En preproducción AEAT se usa 010101DA11 por defecto.",
@@ -963,92 +958,23 @@ class AduanaExpediente(models.Model):
             "target": "new",
         }
 
-    def _import_checklist_items(self):
-        """Lista de comprobaciones del flujo de importación H1 para el operario."""
-        self.ensure_one()
-        icp = self.env["ir.config_parameter"].sudo()
-        cert_ok = bool(icp.get_param("aduanas_transport.cert_attachment_id"))
-        endpoint_ok = bool((icp.get_param("aduanas_transport.endpoint.imp_decl") or "").strip())
-        ref = self._get_mrn_ddt().upper().replace(" ", "")
-        n337_ok = True
-        if self.requiere_ddt:
-            n337_ok = (len(ref) == 18 and re.match(r"^[A-Z0-9]{18}$", ref)) or (
-                (len(ref) > 16 and ref[16] == "+") or (len(ref) > 18 and ref[18] == "+")
-            )
-        lineas_ok = bool(self.line_ids)
-        taric_ok = all(
-            len((l.taric_completo or l.partida or "").replace(" ", "").replace(".", "")) == 10
-            for l in self.line_ids
-        ) if self.line_ids else False
-        return [
-            (_("Configuración AEAT (certificado + endpoint CC415A)"), cert_ok and endpoint_ok),
-            (_("Remitente con país expedición AD"), (self.pais_origen or "").upper() == "AD"),
-            (_("Consignatario español con NIF"), bool(self.consignatario and self.consignatario.vat)),
-            (_("Lugar de entrega (municipio)"), bool(self.import_delivery_location)),
-            (_("Oficina aduanas informada"), bool((self.oficina or "").strip())),
-            (_("Líneas de mercancía con TARIC 10 dígitos"), lineas_ok and taric_ok),
-            (_("Valor factura y moneda"), (self.valor_factura or 0) > 0),
-            (_("MRN DDT/G4 configurado (si requiere DDT)"), (not self.requiere_ddt) or n337_ok),
-            (_("Tipo DDT DSDT/G4 (si requiere DDT)"), (not self.requiere_ddt) or self.ddt_type in ("dsdt", "g4")),
-            (_("XML CC415A generado (estado predeclarado o superior)"), self.state in (
-                "predeclared", "presented", "accepted", "released", "exited", "closed"
-            )),
-            (_("MRN declaración importación (tras presentar)"), bool(self.mrn)),
-        ]
-
-    @api.depends(
-        "direction", "line_ids", "line_ids.taric_completo", "line_ids.partida",
-        "remitente", "consignatario", "oficina", "valor_factura", "moneda",
-        "import_delivery_partner_id", "import_delivery_location",
-        "requiere_ddt", "mrn_ddt", "ddt_type",
-        "import_previous_document_ref", "import_previous_document_type",
-        "pais_origen", "state", "mrn",
-    )
-    def _compute_import_checklist_html(self):
-        for rec in self:
-            if rec.direction != "import":
-                rec.import_checklist_html = False
-                continue
-            rows = []
-            for label, ok in rec._import_checklist_items():
-                icon = "✅" if ok else "⬜"
-                rows.append("<li>%s %s</li>" % (icon, html_escape(label)))
-            ddt_step = (
-                "<li><strong>Si requiere DDT:</strong> presentar G4/DDT (botón «0. G4 / DDT» → Generar y Presentar G4) "
-                "o indicar <strong>MRN DDT</strong> obtenido externamente.</li>"
-                if rec.requiere_ddt
-                else "<li><strong>Sin DDT previo:</strong> puede ir directo a CC415A (no marque «Requiere DDT»).</li>"
-            )
-            rec.import_checklist_html = (
-                "<p><strong>Flujo importación H1 (CC415A) — G4/DDT y G3 son servicios aparte</strong></p>"
-                "<ol>"
-                "%s"
-                "<li>Completar datos, factura y líneas.</li>"
-                "<li><strong>Validar</strong> → <strong>Generar CC415A</strong> → <strong>Presentar</strong>.</li>"
-                "<li><strong>Consultar estado</strong> / <strong>bandeja</strong> con MRN de importación.</li>"
-                "</ol><ul>%s</ul>" % (ddt_step, "".join(rows))
-            )
-
     def action_validar_importacion(self):
-        """Validación previa al envío; muestra checklist y errores concretos."""
+        """Validación previa al envío CC415A."""
         validator = self.env["aduanas.validator"]
         for rec in self:
             if rec.direction != "import":
                 raise UserError(_("Esta acción solo aplica a expedientes de importación."))
             validator.validate_expediente_import(rec)
-            pending = [label for label, ok in rec._import_checklist_items() if not ok]
-            body = _("Validación importación correcta. Puede generar y presentar CC415A.")
-            if pending:
-                body += _("<br/><br/>Pendiente (no bloquea la validación de campos): %s") % (
-                    ", ".join(pending)
-                )
-            rec.message_post(body=body, subtype_xmlid="mail.mt_note")
+            rec.message_post(
+                body=_("Validación importación correcta."),
+                subtype_xmlid="mail.mt_note",
+            )
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
                 "title": _("Importación validada"),
-                "message": _("Los datos obligatorios son correctos. Revise el checklist en el expediente."),
+                "message": _("Datos obligatorios correctos."),
                 "type": "success",
                 "sticky": False,
             },

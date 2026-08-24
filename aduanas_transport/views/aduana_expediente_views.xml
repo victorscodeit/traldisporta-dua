@@ -246,19 +246,9 @@
               <field name="exs_predeclaracion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
             </group>
             <group>
-              <div class="alert alert-info mb-0" role="alert" colspan="2"
-                   attrs="{'invisible': [('direction', '!=', 'export')]}">
-                <strong>Perfil Traldis:</strong> representación indirecta (Traldis = declarante AES),
-                remitente = exportador del cliente. Complete <strong>matrícula</strong> en Transporte.
-              </div>
-              <div class="alert alert-info mb-0" role="alert" colspan="2"
-                   attrs="{'invisible': [('direction', '!=', 'import')]}">
-                <strong>Perfil Traldis:</strong> importación directa (CC415A) sin DDT/G4 por defecto.
-                Traldis = declarante H1; consignatario = importador. Active «Requiere DDT» solo con depósito temporal.
-              </div>
               <div class="alert alert-warning mb-0" role="alert" colspan="2"
                    attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('mrn_ddt', '!=', False)]}">
-                Requiere DDT pero falta MRN DDT/G4. Use botón <strong>0. G4 / DDT</strong> o indique MRN de 18 caracteres.
+                Falta MRN DDT/G4.
               </div>
               <field name="remitente"/>
               <field name="consignatario"/>
@@ -281,8 +271,6 @@
               <field name="import_declare_duty_a00" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_tax_method_of_payment" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
-              <separator string="Depósito temporal (opcional)" colspan="2"
-                         attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="requiere_ddt" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="ddt_type" attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"/>
               <field name="mrn_ddt" placeholder="24ES00280180000019"
@@ -291,8 +279,6 @@
               <field name="import_previous_document_type" invisible="1"/>
               <field name="import_previous_document_ref" invisible="1"/>
               <field name="import_previous_document_is_g4" invisible="1"/>
-              <field name="import_checklist_html" nolabel="1" colspan="2"
-                     attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="incoterm_info" nolabel="1" invisible="1"/>
             </group>
           </group>
@@ -308,7 +294,7 @@
             <field name="fecha_recepcion"/>
           </group>
           
-          <group string="Transporte (flota Traldis)" col="2">
+          <group string="Transporte" col="2">
             <group>
               <field name="referencia_transporte"/>
               <field name="matricula"/>

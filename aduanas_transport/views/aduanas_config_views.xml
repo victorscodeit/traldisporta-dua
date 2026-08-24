@@ -85,8 +85,7 @@
               <field name="default_oficina_export"/>
               <field name="default_oficina_import"/>
               <div class="text-muted" style="margin-top: 8px;">
-                Valores aplicados al crear expedientes nuevos. Representación indirecta + transportista propio;
-                importación sin DDT/G4 salvo que se marque «Requiere DDT» en el expediente.
+                Valores por defecto al crear expedientes nuevos.
               </div>
             </group>
           </group>
