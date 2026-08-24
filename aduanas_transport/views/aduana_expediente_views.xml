@@ -254,6 +254,12 @@
             <field name="iva_exportacion_exento" readonly="1"/>
           </group>
 
+          <group string="Exportación — entrega" col="2"
+                 attrs="{'invisible': [('direction', '!=', 'export')]}">
+            <field name="export_delivery_partner_id"/>
+            <field name="export_delivery_location" invisible="1"/>
+          </group>
+
           <group string="Importación — factura y entrega" col="2"
                  attrs="{'invisible': [('direction', '!=', 'import')]}">
             <group>

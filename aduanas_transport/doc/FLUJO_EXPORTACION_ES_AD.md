@@ -8,7 +8,7 @@ Este documento describe cómo un usuario de Odoo ejecuta el ciclo completo de un
 
 1. **Certificado electrónico** de la empresa declarante (agente de aduanas) en Aduanas → Configuración. Ver `CONFIGURAR_CERTIFICADO_AEAT.md`.
 2. **Endpoints** en preproducción o producción (`aeat_endpoint_cc515c`, `ccaesc`, `cc507c`, bandeja).
-3. Expediente con **dirección = Exportación**, líneas de mercancía, remitente (exportador, p. ej. Dorel), consignatario (Andorra), oficina de exportación/salida.
+3. Expediente con **dirección = Exportación**, líneas de mercancía, remitente (exportador, p. ej. Dorel), consignatario (Andorra), **lugar de entrega** si difiere del consignatario (almacén/centro logístico), oficina de exportación/salida.
 4. **Representación aduanera**: campo `tipo_representacion` en exportación (`indirecta` por defecto). **Directa** solo export: Declarant = remitente, Representative = empresa Odoo. Importación: siempre indirecta.
 5. **Facturas:** bloque **Facturas** permite varios PDF por expediente; **N380 por línea** desde el nº de cada factura (v16.0.1.0.21+).
 

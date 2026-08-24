@@ -189,6 +189,17 @@ class AduanaExpediente(models.Model):
     fecha_recepcion = fields.Datetime(string="Fecha Recepción")
     numero_factura = fields.Char(string="Nº Factura Comercial", help="Referencia N380 por defecto. Si hay varias facturas en el bloque Facturas, cada una puede tener su propio Nº y prevalece en sus líneas.")
     referencia_transporte = fields.Char(string="Referencia Transporte")
+    export_delivery_partner_id = fields.Many2one(
+        "res.partner",
+        string="Lugar de entrega",
+        help="Partner de DeliveryTerms (Incoterm) en exportación. Por defecto el consignatario. "
+             "Elija otro contacto si se entrega en un punto distinto (almacén, centro logístico, frontera).",
+    )
+    export_delivery_location = fields.Char(
+        string="Municipio entrega export (AEAT)",
+        compute="_compute_export_delivery_location",
+        help="Texto enviado a AEAT en DeliveryTerms/location (municipio del partner, máx. 35).",
+    )
     import_delivery_partner_id = fields.Many2one(
         "res.partner",
         string="Lugar de entrega",
@@ -426,7 +437,7 @@ class AduanaExpediente(models.Model):
                         'datas': vals['factura_pdf']
                     })
         records._sync_country_fields_from_partners()
-        records._sync_import_delivery_partner()
+        records._sync_delivery_partners()
         return records
     
     def write(self, vals):
@@ -477,24 +488,29 @@ class AduanaExpediente(models.Model):
             field in vals for field in ("direction", "remitente", "consignatario")
         ):
             self._sync_country_fields_from_partners()
-        if not self.env.context.get("skip_import_delivery_sync") and any(
-            field in vals for field in ("direction", "consignatario", "import_delivery_partner_id")
+        if not self.env.context.get("skip_delivery_partner_sync") and any(
+            field in vals for field in (
+                "direction", "consignatario",
+                "import_delivery_partner_id", "export_delivery_partner_id",
+            )
         ):
-            self._sync_import_delivery_partner()
+            self._sync_delivery_partners()
         return result
 
-    def _sync_import_delivery_partner(self):
-        """Si no hay lugar de entrega, usar el consignatario en importación."""
-        if self.env.context.get("skip_import_delivery_sync"):
+    def _sync_delivery_partners(self):
+        """Si no hay lugar de entrega, usar el consignatario según el sentido del expediente."""
+        if self.env.context.get("skip_delivery_partner_sync"):
             return
         for rec in self:
-            if rec.direction != "import":
+            if not rec.consignatario:
                 continue
-            if rec.import_delivery_partner_id or not rec.consignatario:
-                continue
-            rec.with_context(skip_import_delivery_sync=True).write({
-                "import_delivery_partner_id": rec.consignatario.id,
-            })
+            vals = {}
+            if rec.direction == "import" and not rec.import_delivery_partner_id:
+                vals["import_delivery_partner_id"] = rec.consignatario.id
+            elif rec.direction == "export" and not rec.export_delivery_partner_id:
+                vals["export_delivery_partner_id"] = rec.consignatario.id
+            if vals:
+                rec.with_context(skip_delivery_partner_sync=True).write(vals)
 
     def copy(self, default=None):
         """Duplica el expediente conservando la información operativa editable.
@@ -807,6 +823,8 @@ class AduanaExpediente(models.Model):
                 rec[field] = value
             if rec.direction == "import" and rec.consignatario and not rec.import_delivery_partner_id:
                 rec.import_delivery_partner_id = rec.consignatario
+            elif rec.direction == "export" and rec.consignatario and not rec.export_delivery_partner_id:
+                rec.export_delivery_partner_id = rec.consignatario
 
     @api.onchange("direction")
     def _onchange_direction_traldis_profile(self):
@@ -818,6 +836,20 @@ class AduanaExpediente(models.Model):
             for key, value in profile.items():
                 if key in rec._fields:
                     rec[key] = value
+
+    @api.depends(
+        "export_delivery_partner_id",
+        "export_delivery_partner_id.city",
+        "export_delivery_partner_id.name",
+        "consignatario",
+        "consignatario.city",
+        "consignatario.name",
+        "pais_destino",
+    )
+    def _compute_export_delivery_location(self):
+        for rec in self:
+            location, _country = rec._exp_delivery_terms_values(raise_if_missing=False)
+            rec.export_delivery_location = location or False
 
     @api.depends(
         "import_delivery_partner_id",
@@ -832,21 +864,15 @@ class AduanaExpediente(models.Model):
             location, _country = rec._imp_delivery_terms_values(raise_if_missing=False)
             rec.import_delivery_location = location or False
 
-    def _imp_delivery_partner(self):
-        """Partner de DeliveryTerms: lugar de entrega explícito o consignatario."""
-        self.ensure_one()
-        return self.import_delivery_partner_id or self.consignatario
-
-    def _imp_delivery_terms_values(self, raise_if_missing=True):
+    def _delivery_terms_values_from_partner(self, partner, country_fallback, raise_if_missing=True):
         """location + country para DeliveryTerms (máx. 35 en location)."""
         self.ensure_one()
-        partner = self._imp_delivery_partner()
         if not partner:
             if raise_if_missing:
                 raise UserError(
                     _("Indique el consignatario o un «Lugar de entrega» para DeliveryTerms.")
                 )
-            return "", (self.pais_destino or "ES").strip().upper()[:2]
+            return "", (country_fallback or "ES").strip().upper()[:2]
         location = (partner.city or partner.name or "").strip()
         if not location:
             if raise_if_missing:
@@ -862,8 +888,53 @@ class AduanaExpediente(models.Model):
         if partner.country_id and partner.country_id.code:
             country = partner.country_id.code.strip().upper()
         if not country:
-            country = (self.pais_destino or "ES").strip().upper()
+            country = (country_fallback or "ES").strip().upper()
         return location[:35], country[:2]
+
+    def _exp_delivery_partner(self):
+        """Partner de DeliveryTerms en exportación: lugar explícito o consignatario."""
+        self.ensure_one()
+        return self.export_delivery_partner_id or self.consignatario
+
+    def _exp_delivery_terms_values(self, raise_if_missing=True):
+        """location + country para DeliveryTerms en CC515C."""
+        self.ensure_one()
+        partner = self._exp_delivery_partner()
+        country_fallback = (self.pais_destino or "").strip().upper()
+        if not country_fallback and self.consignatario and self.consignatario.country_id:
+            country_fallback = (self.consignatario.country_id.code or "").strip().upper()
+        location, country = self._delivery_terms_values_from_partner(
+            partner, country_fallback, raise_if_missing=raise_if_missing,
+        )
+        if not location:
+            pais_dest = (self.pais_destino or country_fallback or "").upper()
+            if pais_dest == "AD":
+                location = "ANDORRA LA VELLA"
+            elif raise_if_missing:
+                raise UserError(
+                    _("Indique el consignatario o un «Lugar de entrega» con municipio para DeliveryTerms.")
+                )
+            else:
+                location = "N/A"
+        if not country:
+            country = (self.pais_destino or "").strip().upper()[:2]
+        return location[:35], country[:2]
+
+    def _imp_delivery_partner(self):
+        """Partner de DeliveryTerms: lugar de entrega explícito o consignatario."""
+        self.ensure_one()
+        return self.import_delivery_partner_id or self.consignatario
+
+    def _imp_delivery_terms_values(self, raise_if_missing=True):
+        """location + country para DeliveryTerms en CC415A."""
+        self.ensure_one()
+        partner = self._imp_delivery_partner()
+        country_fallback = (self.pais_destino or "ES").strip().upper()
+        return self._delivery_terms_values_from_partner(
+            partner, country_fallback, raise_if_missing=raise_if_missing,
+        )
+
+    def _get_mrn_ddt(self):
         """MRN DDT/G4 efectivo (campo nuevo o legacy)."""
         self.ensure_one()
         return (self.mrn_ddt or self.import_previous_document_ref or "").strip()
@@ -1723,11 +1794,12 @@ class AduanaExpediente(models.Model):
 </cc5:ContactPerson>
 </cc5:Representative>""" % (xml_escape(company_id), xml_escape(contact_company_name), xml_escape(contact_company_phone), xml_escape(contact_company_email))
         # DeliveryTerms: si incoterm != XXX, AEAT exige location+country o UNLocode (error 1384)
-        delivery_location = (self.consignatario and self.consignatario.city) or ("ANDORRA LA VELLA" if (pais_dest or "").upper() == "AD" else "N/A")
-        delivery_country = pais_dest or ""
+        delivery_location, delivery_country = self._exp_delivery_terms_values()
         delivery_terms_extra = ""
         if (incoterm or "").upper() != "XXX":
-            delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (xml_escape(delivery_location[:35]), xml_escape(delivery_country))
+            delivery_terms_extra = "\n<cc5:location>%s</cc5:location>\n<cc5:country>%s</cc5:country>" % (
+                xml_escape(delivery_location[:35]), xml_escape(delivery_country),
+            )
         # Consignment: en salida directa AEAT no permite inlandModeOfTransport (error 1763).
         is_direct_exit = oficina_export == oficina_exit
         inland_mode_xml = "" if is_direct_exit else "\n<cc5:inlandModeOfTransport>3</cc5:inlandModeOfTransport>"

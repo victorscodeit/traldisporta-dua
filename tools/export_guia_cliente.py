@@ -26,7 +26,7 @@ OUT = ROOT / "aduanas_transport" / "doc" / "GUIA_TRALDIS_PORTA_CLIENTE.html"
 CLIENT_NAME = "Traldis Porta"
 PRODUCT = "Módulo Odoo Aduanas (aduanas_transport)"
 MANIFEST = ROOT / "aduanas_transport" / "__manifest__.py"
-VERSION = "1.5"
+VERSION = "1.6"
 
 
 def _module_version() -> str:

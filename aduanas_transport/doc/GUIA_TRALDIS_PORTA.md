@@ -120,7 +120,7 @@ Factura PDF → Procesar factura → (opc.) Verificación IA
 
 ### 4.2 Campos clave
 
-- Remitente (exportador), consignatario (Andorra), oficina exportación y salida.
+- Remitente (exportador), consignatario (Andorra), **lugar de entrega** (opcional; CC515C DeliveryTerms), oficina exportación y salida.
 - Matrícula / `referencia_transporte` → documento transporte **N705**.
 - **N380:** por línea desde factura vinculada o `numero_factura` cabecera.
 - Líneas: partida 10 dígitos, pesos, valor.

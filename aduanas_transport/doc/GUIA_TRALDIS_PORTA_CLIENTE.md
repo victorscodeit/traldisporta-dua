@@ -1,6 +1,6 @@
 # Guía del módulo Aduanas — Traldis Porta
 
-Documentación operativa del módulo Odoo **aduanas_transport** (versión **16.0.1.0.22**) para **Traldis Porta** como **agente de aduanas** y **transportista**:
+Documentación operativa del módulo Odoo **aduanas_transport** (versión **16.0.1.0.23**) para **Traldis Porta** como **agente de aduanas** y **transportista**:
 
 | Flujo | Sentido | Mensaje AEAT | Servicio |
 |-------|---------|--------------|----------|
@@ -113,6 +113,7 @@ Tras **Presentar DUA a AEAT** (CC515C), si AEAT admite la declaración el expedi
 4. Completar si falta:
    - **Remitente** (exportador, p. ej. planta en España).
    - **Consignatario** (cliente en Andorra).
+   - **Lugar de entrega** (opcional; por defecto el consignatario). Use otro contacto si la mercancía se entrega en almacén o centro logístico distinto.
    - **Oficina** de exportación y **oficina de salida** declarada.
    - **Matrícula** del vehículo y, si aplica, referencia de transporte.
 
