@@ -251,7 +251,7 @@ El XML incluye por línea: procedimiento 40/00, origen AD, TARIC, IVA B00, factu
 2. Odoo comprueba primero el certificado (existencia, contraseña y caducidad); si falla, muestra el error sin enviar.
 3. Si el certificado es válido, envía **CC415A** al servicio ADIP-JDIT.
 4. **Aceptación:** MRN de importación, estado **Aceptado**, mensaje en chatter.
-5. **Rechazo o error HTTP:** estado **Error**, detalle en *Mensaje de error* e incidencias; los adjuntos y notas del chatter se conservan (no se pierde la trazabilidad). Corregir datos y repetir desde validar/generar si cambió el XML.
+5. **Rechazo o error HTTP:** estado **Error**, detalle en *Mensaje de error* e incidencias; los adjuntos y notas del chatter se conservan. **Corregir los datos en el expediente** y pulsar otra vez **4. Presentar importación**: el sistema **regenera el CC415A** con los datos corregidos (no reenvía el XML antiguo). Opcional: pulsar antes **2. Generar CC415A** solo si quieren revisar el adjunto antes de enviar.
 6. AEAT puede devolver **401/403 en página HTML** aun con HTTP 200; el módulo detecta este caso y muestra un mensaje claro (certificado caducado o no enviado).
 
 Quedan adjuntos `EXP-xxx_CC415A_request.xml` y `_response.xml`.
