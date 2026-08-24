@@ -155,6 +155,13 @@ class AduanaValidator(models.AbstractModel):
         tax_pay_method = (getattr(expediente, "import_tax_method_of_payment", "") or "E").strip().upper()[:1]
         if not re.match(r"^[A-Z]$", tax_pay_method):
             errors.append(_("El modo de pago de tributos debe ser una letra A-Z (ej: E)."))
+        delivery_partner = getattr(expediente, "import_delivery_partner_id", False) or expediente.consignatario
+        if not delivery_partner:
+            errors.append(_("Indique consignatario o «Lugar de entrega» para DeliveryTerms."))
+        elif not ((delivery_partner.city or delivery_partner.name or "").strip()):
+            errors.append(
+                _("El lugar de entrega debe tener municipio o nombre (DeliveryTerms/location).")
+            )
 
         requiere_ddt = bool(getattr(expediente, "requiere_ddt", False))
         ddt_type = getattr(expediente, "ddt_type", "none") or "none"

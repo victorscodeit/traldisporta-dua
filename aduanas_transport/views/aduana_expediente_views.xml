@@ -83,8 +83,8 @@
 
           <!-- Importación H1 -->
           <button name="action_abrir_g4_ddt" string="0. G4 / DDT (MRN)" type="object"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="G4Dec (depósito temporal): generar y presentar DDT/G4; el MRN se copia a «MRN DDT/G4» del expediente."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"
+                  help="Solo si «Requiere DDT/G4 previo» está activo. G4Dec (depósito temporal)."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
                   attrs="{'invisible': [('direction', '!=', 'import')]}"
                   help="Comprueba datos obligatorios antes de generar CC415A."/>
@@ -247,13 +247,18 @@
             </group>
             <group>
               <div class="alert alert-info mb-0" role="alert" colspan="2"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}">
+                <strong>Perfil Traldis:</strong> representación indirecta (Traldis = declarante AES),
+                remitente = exportador del cliente. Complete <strong>matrícula</strong> en Transporte.
+              </div>
+              <div class="alert alert-info mb-0" role="alert" colspan="2"
                    attrs="{'invisible': [('direction', '!=', 'import')]}">
-                <strong>CC415A (H1)</strong> es independiente de <strong>G4/DDT</strong> y <strong>G3</strong> (endpoints y XML distintos).
-                MRN de cabecera = importación aceptada. Si marca «Requiere DDT», rellene <strong>MRN DDT/G4</strong> o use botón <strong>0. G4 / DDT</strong>.
+                <strong>Perfil Traldis:</strong> importación directa (CC415A) sin DDT/G4 por defecto.
+                Traldis = declarante H1; consignatario = importador. Active «Requiere DDT» solo con depósito temporal.
               </div>
               <div class="alert alert-warning mb-0" role="alert" colspan="2"
                    attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('mrn_ddt', '!=', False)]}">
-                Requiere DDT pero falta MRN DDT/G4. Presente G4 (futuro) o indique el MRN de 18 caracteres.
+                Requiere DDT pero falta MRN DDT/G4. Use botón <strong>0. G4 / DDT</strong> o indique MRN de 18 caracteres.
               </div>
               <field name="remitente"/>
               <field name="consignatario"/>
@@ -268,6 +273,7 @@
                      attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="pais_destino" string="País destino (ISO)" readonly="1"
                      attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <field name="import_delivery_partner_id" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_delivery_location" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_region_of_destination" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_preference" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
@@ -275,6 +281,8 @@
               <field name="import_declare_duty_a00" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_tax_method_of_payment" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="import_valuation_method" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+              <separator string="Depósito temporal (opcional)" colspan="2"
+                         attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="requiere_ddt" attrs="{'invisible': [('direction', '!=', 'import')]}"/>
               <field name="ddt_type" attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"/>
               <field name="mrn_ddt" placeholder="24ES00280180000019"
@@ -300,7 +308,7 @@
             <field name="fecha_recepcion"/>
           </group>
           
-          <group string="Transporte" col="2">
+          <group string="Transporte (flota Traldis)" col="2">
             <group>
               <field name="referencia_transporte"/>
               <field name="matricula"/>

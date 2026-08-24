@@ -136,9 +136,8 @@ class AduanaExpediente(models.Model):
         ("directa", "Representación directa"),
         ("indirecta", "Representación indirecta"),
     ], string="Tipo representación", default="indirecta",
-       help="Solo aplica cuando la empresa actúa como representante (remitente ≠ empresa). "
-            "Indirecta: Declarant = empresa (Traldis), Exporter = remitente (Dorel). "
-            "Directa: Exporter = Declarant = remitente (Dorel), Representative = empresa (Traldis).")
+       help="Perfil Traldis (agente aduanas): use «Indirecta» — Declarant = empresa Odoo (Traldis), "
+            "Exporter = remitente del cliente. «Directa» solo si el cliente firma y Traldis actúa como representante.")
     transportista = fields.Char(string="Transportista")
     matricula = fields.Char(string="Matrícula")
     pais_transporte = fields.Char(string="País transporte", default="ES")
@@ -190,10 +189,16 @@ class AduanaExpediente(models.Model):
     fecha_recepcion = fields.Datetime(string="Fecha Recepción")
     numero_factura = fields.Char(string="Nº Factura Comercial")
     referencia_transporte = fields.Char(string="Referencia Transporte")
+    import_delivery_partner_id = fields.Many2one(
+        "res.partner",
+        string="Lugar de entrega",
+        help="Partner de DeliveryTerms (Incoterm). Por defecto el consignatario. "
+             "Elija otro contacto si se entrega en un punto distinto (almacén, aduana, frontera).",
+    )
     import_delivery_location = fields.Char(
-        string="Lugar entrega importación",
-        default="LA FARGA DE MOLES",
-        help="DeliveryTerms/location para H1 importación. Ejemplo Andorra → España: LA FARGA DE MOLES.",
+        string="Municipio entrega (AEAT)",
+        compute="_compute_import_delivery_location",
+        help="Texto enviado a AEAT en DeliveryTerms/location (municipio del partner, máx. 35).",
     )
     import_region_of_destination = fields.Char(
         string="Región destino importación",
@@ -229,8 +234,8 @@ class AduanaExpediente(models.Model):
     requiere_ddt = fields.Boolean(
         string="Requiere DDT/G4 previo",
         default=False,
-        help="Si está marcado, la importación CC415A debe datar un documento previo N337 (MRN DDT/G4). "
-             "Si no está marcado, puede presentarse CC415A sin MRN de depósito temporal.",
+        help="Solo marcar si la mercancía pasa por depósito temporal (ADT). "
+             "Flujo habitual Traldis (importación directa en frontera): dejar desmarcado.",
     )
     mrn_ddt = fields.Char(
         string="MRN DDT/G4",
@@ -397,6 +402,11 @@ class AduanaExpediente(models.Model):
         for vals in vals_list:
             if not vals.get('name') or vals.get('name') == _("Nuevo"):
                 vals['name'] = self.env['ir.sequence'].next_by_code('aduana.expediente') or _("Nuevo")
+            direction = vals.get("direction") or "export"
+            profile = self._get_expediente_profile_defaults(direction)
+            for key, value in profile.items():
+                if key not in vals or vals.get(key) in (False, None, ""):
+                    vals[key] = value
             # Si se sube una factura, cambiar el estado a "pendiente", si no, mantener "sin_factura"
             if vals.get('factura_pdf') and not vals.get('factura_estado_procesamiento'):
                 vals['factura_estado_procesamiento'] = 'pendiente'
@@ -421,6 +431,7 @@ class AduanaExpediente(models.Model):
                         'datas': vals['factura_pdf']
                     })
         records._sync_country_fields_from_partners()
+        records._sync_import_delivery_partner()
         return records
     
     def write(self, vals):
@@ -471,7 +482,24 @@ class AduanaExpediente(models.Model):
             field in vals for field in ("direction", "remitente", "consignatario")
         ):
             self._sync_country_fields_from_partners()
+        if not self.env.context.get("skip_import_delivery_sync") and any(
+            field in vals for field in ("direction", "consignatario", "import_delivery_partner_id")
+        ):
+            self._sync_import_delivery_partner()
         return result
+
+    def _sync_import_delivery_partner(self):
+        """Si no hay lugar de entrega, usar el consignatario en importación."""
+        if self.env.context.get("skip_import_delivery_sync"):
+            return
+        for rec in self:
+            if rec.direction != "import":
+                continue
+            if rec.import_delivery_partner_id or not rec.consignatario:
+                continue
+            rec.with_context(skip_import_delivery_sync=True).write({
+                "import_delivery_partner_id": rec.consignatario.id,
+            })
 
     def copy(self, default=None):
         """Duplica el expediente conservando la información operativa editable.
@@ -676,6 +704,60 @@ class AduanaExpediente(models.Model):
         ("error","Error"),
     ], default="draft", tracking=True)
 
+    @api.model
+    def _get_expediente_profile_defaults(self, direction=None):
+        """Valores por defecto perfil agente aduanas + transportista (Traldis Porta)."""
+        icp = self.env["ir.config_parameter"].sudo()
+        company = self.env.company
+        direction = direction or "export"
+        transportista = (icp.get_param("aduanas_transport.default_transportista") or "").strip()
+        if not transportista:
+            transportista = company.name or ""
+        tipo_repr = icp.get_param("aduanas_transport.default_tipo_representacion") or "indirecta"
+        if tipo_repr not in ("directa", "indirecta"):
+            tipo_repr = "indirecta"
+        defaults = {
+            "tipo_representacion": tipo_repr,
+            "transportista": transportista,
+            "pais_transporte": icp.get_param("aduanas_transport.default_pais_transporte") or "ES",
+            "incoterm": "DAP",
+            "moneda": "EUR",
+            "requiere_ddt": False,
+            "ddt_type": "none",
+        }
+        if direction == "import":
+            defaults.update({
+                "pais_origen": "AD",
+                "pais_destino": "ES",
+                "oficina": (
+                    icp.get_param("aduanas_transport.default_oficina_import") or "ES000101"
+                ).strip(),
+                "import_region_of_destination": "25",
+                "import_preference": "100",
+                "import_vat_rate": 21.0,
+                "import_tax_method_of_payment": "E",
+                "import_valuation_method": "1",
+            })
+        else:
+            defaults.update({
+                "pais_origen": "ES",
+                "region_of_dispatch": "46",
+                "oficina": (
+                    icp.get_param("aduanas_transport.default_oficina_export") or "ES000101"
+                ).strip(),
+            })
+        return defaults
+
+    @api.model
+    def default_get(self, fields_list):
+        res = super().default_get(fields_list)
+        direction = res.get("direction") or "export"
+        profile = self._get_expediente_profile_defaults(direction)
+        for key, value in profile.items():
+            if key in fields_list and res.get(key) in (False, None, ""):
+                res[key] = value
+        return res
+
     @api.depends("state", "aes_estado", "mrn", "fecha_levante", "fecha_salida_real", "iva_exportacion_exento")
     def _compute_levante_estado_color(self):
         for rec in self:
@@ -728,8 +810,65 @@ class AduanaExpediente(models.Model):
         for rec in self:
             for field, value in rec._get_country_values_from_partners().items():
                 rec[field] = value
+            if rec.direction == "import" and rec.consignatario and not rec.import_delivery_partner_id:
+                rec.import_delivery_partner_id = rec.consignatario
 
-    def _get_mrn_ddt(self):
+    @api.onchange("direction")
+    def _onchange_direction_traldis_profile(self):
+        """En expedientes nuevos, aplicar perfil agente + flota al cambiar sentido."""
+        for rec in self:
+            if rec.id:
+                continue
+            profile = rec._get_expediente_profile_defaults(rec.direction)
+            for key, value in profile.items():
+                if key in rec._fields:
+                    rec[key] = value
+
+    @api.depends(
+        "import_delivery_partner_id",
+        "import_delivery_partner_id.city",
+        "import_delivery_partner_id.name",
+        "consignatario",
+        "consignatario.city",
+        "consignatario.name",
+    )
+    def _compute_import_delivery_location(self):
+        for rec in self:
+            location, _country = rec._imp_delivery_terms_values(raise_if_missing=False)
+            rec.import_delivery_location = location or False
+
+    def _imp_delivery_partner(self):
+        """Partner de DeliveryTerms: lugar de entrega explícito o consignatario."""
+        self.ensure_one()
+        return self.import_delivery_partner_id or self.consignatario
+
+    def _imp_delivery_terms_values(self, raise_if_missing=True):
+        """location + country para DeliveryTerms (máx. 35 en location)."""
+        self.ensure_one()
+        partner = self._imp_delivery_partner()
+        if not partner:
+            if raise_if_missing:
+                raise UserError(
+                    _("Indique el consignatario o un «Lugar de entrega» para DeliveryTerms.")
+                )
+            return "", (self.pais_destino or "ES").strip().upper()[:2]
+        location = (partner.city or partner.name or "").strip()
+        if not location:
+            if raise_if_missing:
+                raise UserError(
+                    _(
+                        "El lugar de entrega «%s» no tiene municipio ni nombre. "
+                        "Complete la ciudad del contacto o elija otro partner."
+                    )
+                    % (partner.display_name or partner.name or partner.id)
+                )
+            location = ""
+        country = ""
+        if partner.country_id and partner.country_id.code:
+            country = partner.country_id.code.strip().upper()
+        if not country:
+            country = (self.pais_destino or "ES").strip().upper()
+        return location[:35], country[:2]
         """MRN DDT/G4 efectivo (campo nuevo o legacy)."""
         self.ensure_one()
         return (self.mrn_ddt or self.import_previous_document_ref or "").strip()
@@ -845,6 +984,7 @@ class AduanaExpediente(models.Model):
             (_("Configuración AEAT (certificado + endpoint CC415A)"), cert_ok and endpoint_ok),
             (_("Remitente con país expedición AD"), (self.pais_origen or "").upper() == "AD"),
             (_("Consignatario español con NIF"), bool(self.consignatario and self.consignatario.vat)),
+            (_("Lugar de entrega (municipio)"), bool(self.import_delivery_location)),
             (_("Oficina aduanas informada"), bool((self.oficina or "").strip())),
             (_("Líneas de mercancía con TARIC 10 dígitos"), lineas_ok and taric_ok),
             (_("Valor factura y moneda"), (self.valor_factura or 0) > 0),
@@ -859,6 +999,7 @@ class AduanaExpediente(models.Model):
     @api.depends(
         "direction", "line_ids", "line_ids.taric_completo", "line_ids.partida",
         "remitente", "consignatario", "oficina", "valor_factura", "moneda",
+        "import_delivery_partner_id", "import_delivery_location",
         "requiere_ddt", "mrn_ddt", "ddt_type",
         "import_previous_document_ref", "import_previous_document_type",
         "pais_origen", "state", "mrn",
@@ -2754,7 +2895,7 @@ class AduanaExpediente(models.Model):
             declarant_name = "<name>%s</name>" % xml_escape((declarant_partner.name or "")[:70]) if declarant_partner and declarant_partner.name else ""
             declarant_address = self._imp_address_xml(declarant_partner)
         incoterm = self.incoterm or "DAP"
-        delivery_location = self.import_delivery_location or "LA FARGA DE MOLES"
+        delivery_location, delivery_country = self._imp_delivery_terms_values()
         ns = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aduanas/es/aeat/adip/jdit/ws/cci/CC415AV1Ent.xsd"
         return """<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:imp="%s">
@@ -2845,8 +2986,8 @@ class AduanaExpediente(models.Model):
             xml_escape(self.moneda or "EUR"),
             seller_xml,
             xml_escape(incoterm),
-            xml_escape(delivery_location[:35]),
-            xml_escape(destination_country),
+            xml_escape(delivery_location),
+            xml_escape(delivery_country),
             xml_escape(origin_country),
             xml_escape(destination_country),
             xml_escape(region_destination),

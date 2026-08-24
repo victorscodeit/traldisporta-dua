@@ -27,6 +27,19 @@ class AduanasConfigSettings(models.TransientModel):
     msoft_pass = fields.Char(string="MSoft Pass")
     openai_api_key = fields.Char(string="OpenAI API Key")
 
+    default_tipo_representacion = fields.Selection(
+        [("indirecta", "Indirecta (agente)"), ("directa", "Directa")],
+        string="Representación por defecto",
+        default="indirecta",
+    )
+    default_transportista = fields.Char(
+        string="Transportista por defecto",
+        help="Vacío = nombre de la empresa Odoo en cada expediente nuevo.",
+    )
+    default_oficina_export = fields.Char(string="Oficina exportación por defecto", default="ES000101")
+    default_oficina_import = fields.Char(string="Oficina importación por defecto", default="ES000101")
+    default_pais_transporte = fields.Char(string="País transporte por defecto", default="ES")
+
     _PARAMS = {
         "aeat_endpoint_cc515c": ("aduanas_transport.endpoint.cc515c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP"),
         "aeat_endpoint_cc511c": ("aduanas_transport.endpoint.cc511c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP"),
@@ -44,6 +57,11 @@ class AduanasConfigSettings(models.TransientModel):
         "msoft_user": ("aduanas_transport.msoft.user", ""),
         "msoft_pass": ("aduanas_transport.msoft.pass", ""),
         "openai_api_key": ("aduanas_transport.openai_api_key", ""),
+        "default_tipo_representacion": ("aduanas_transport.default_tipo_representacion", "indirecta"),
+        "default_transportista": ("aduanas_transport.default_transportista", ""),
+        "default_oficina_export": ("aduanas_transport.default_oficina_export", "ES000101"),
+        "default_oficina_import": ("aduanas_transport.default_oficina_import", "ES000101"),
+        "default_pais_transporte": ("aduanas_transport.default_pais_transporte", "ES"),
     }
 
     @api.model

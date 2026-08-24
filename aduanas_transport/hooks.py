@@ -83,9 +83,25 @@ def migrate_import_ddt_fields(env):
             })
 
 
+def init_expediente_profile_defaults(env):
+    """Perfil operativo por defecto: agente aduanas + transportista (Traldis Porta)."""
+    icp = env["ir.config_parameter"].sudo()
+    defaults = {
+        "aduanas_transport.default_tipo_representacion": "indirecta",
+        "aduanas_transport.default_transportista": "",
+        "aduanas_transport.default_oficina_export": "ES000101",
+        "aduanas_transport.default_oficina_import": "ES000101",
+        "aduanas_transport.default_pais_transporte": "ES",
+    }
+    for key, value in defaults.items():
+        if not icp.get_param(key):
+            icp.set_param(key, value)
+
+
 def post_init_hook(cr, registry):
     from odoo import api, SUPERUSER_ID
 
     env = api.Environment(cr, SUPERUSER_ID, {})
     migrate_aeat_config_to_companies(env)
     migrate_import_ddt_fields(env)
+    init_expediente_profile_defaults(env)

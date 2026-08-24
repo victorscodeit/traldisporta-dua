@@ -74,6 +74,22 @@
               </div>
             </group>
           </group>
+
+          <group string="Perfil operativo expedientes (agente + flota)">
+            <group>
+              <field name="default_tipo_representacion"/>
+              <field name="default_transportista" placeholder="Vacío = nombre empresa Odoo"/>
+              <field name="default_pais_transporte"/>
+            </group>
+            <group>
+              <field name="default_oficina_export"/>
+              <field name="default_oficina_import"/>
+              <div class="text-muted" style="margin-top: 8px;">
+                Valores aplicados al crear expedientes nuevos. Representación indirecta + transportista propio;
+                importación sin DDT/G4 salvo que se marque «Requiere DDT» en el expediente.
+              </div>
+            </group>
+          </group>
         </sheet>
       </form>
     </field>
