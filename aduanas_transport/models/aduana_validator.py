@@ -60,6 +60,26 @@ class AduanaValidator(models.AbstractModel):
             "o formato vuelo+conocimiento con «+» en posición 17 o 19."
         )
 
+    def _validate_n380_references(self, expediente):
+        """Comprueba referencias N380 por línea (factura vinculada o cabecera del expediente)."""
+        errors = []
+        fallback = (expediente.numero_factura or "").strip()
+        for idx, line in enumerate(expediente.line_ids, 1):
+            factura = line.factura_id
+            if factura:
+                if not (factura.numero_factura or "").strip() and not fallback:
+                    errors.append(
+                        _("Línea %d: la factura «%s» no tiene Nº comercial (N380). "
+                          "Procésela de nuevo, rellénelo en la factura o indique un Nº en el expediente.")
+                        % (idx, factura.display_name)
+                    )
+            elif expediente.factura_ids and not fallback:
+                errors.append(
+                    _("Línea %d: sin factura vinculada y sin Nº factura comercial en el expediente (N380).")
+                    % idx
+                )
+        return errors
+
     def validate_expediente_export(self, expediente):
         """Valida expediente de exportación antes de enviar"""
         errors = []
@@ -106,6 +126,8 @@ class AduanaValidator(models.AbstractModel):
             if not line.valor_linea or line.valor_linea <= 0:
                 errors.append(_("Línea %d: El valor de la línea debe ser mayor que 0") % idx)
         
+        errors.extend(self._validate_n380_references(expediente))
+
         if errors:
             raise ValidationError("\n".join(errors))
         
@@ -208,6 +230,8 @@ class AduanaValidator(models.AbstractModel):
             if not line.peso_neto or line.peso_neto <= 0:
                 errors.append(_("Línea %d: El peso neto debe ser mayor que 0") % idx)
         
+        errors.extend(self._validate_n380_references(expediente))
+
         if errors:
             raise ValidationError("\n".join(errors))
         

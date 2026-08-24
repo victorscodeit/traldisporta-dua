@@ -88,6 +88,10 @@
                 Valores por defecto al crear expedientes nuevos.
               </div>
             </group>
+            <group string="Cierre de expedientes">
+              <field name="auto_close_export_on_exited"/>
+              <field name="auto_close_import_on_accepted"/>
+            </group>
           </group>
         </sheet>
       </form>

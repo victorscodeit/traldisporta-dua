@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Guía operativa — Traldis Porta</title>
+  <style>
+    :root {
+      --brand: #1a4d6d;
+      --brand-light: #e8f1f6;
+      --accent: #c45c26;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.55;
+      color: var(--text);
+      margin: 0;
+      background: #f3f4f6;
+    }
+    .page {
+      max-width: 210mm;
+      margin: 0 auto 24px;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+    .cover {
+      position: relative;
+      min-height: 297mm;
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: #fff;
+      page-break-after: always;
+      overflow: hidden;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .cover-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-color: #1a4d6d;
+      background-image: linear-gradient(160deg, #1a4d6d 0%, #0f3347 55%, #1a4d6d 100%);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .cover-inner,
+    .cover-meta {
+      position: relative;
+      z-index: 1;
+    }
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.35);
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 10pt;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .cover h1 {
+      font-size: 28pt;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 32px 0 12px;
+      max-width: 14ch;
+      color: #fff;
+    }
+    .cover .subtitle {
+      font-size: 14pt;
+      opacity: .92;
+      max-width: 36ch;
+      color: #fff;
+    }
+    .cover-meta {
+      border-top: 1px solid rgba(255,255,255,.3);
+      padding-top: 24px;
+      font-size: 10pt;
+      opacity: .9;
+      color: #fff;
+    }
+    .cover-meta p { margin: 4px 0; color: #fff; }
+    .cover-badge { color: #fff; }
+    .content {
+      padding: 40px 56px 56px;
+    }
+    h1, h2, h3 { color: var(--brand); }
+    h2 {
+      font-size: 16pt;
+      margin-top: 2em;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--brand-light);
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 12pt;
+      margin-top: 1.4em;
+      page-break-after: avoid;
+    }
+    p { margin: .6em 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0 1.4em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--brand-light);
+      color: var(--brand);
+      font-weight: 600;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9pt;
+    }
+    pre {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      padding: 12px 14px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      page-break-inside: avoid;
+    }
+    blockquote {
+      margin: 1em 0;
+      padding: 10px 16px;
+      background: var(--brand-light);
+      border-left: 4px solid var(--brand);
+      color: #374151;
+    }
+    ul { padding-left: 1.4em; }
+    li { margin: .35em 0; }
+    li input[type=checkbox] { margin-right: 6px; }
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2em 0;
+    }
+    @media print {
+      html, body {
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page { box-shadow: none; margin: 0; max-width: none; }
+      .no-print { display: none; }
+      h2 { page-break-before: auto; }
+      th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      tr:nth-child(even) td {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .cover {
+        min-height: 297mm;
+        height: 297mm;
+        padding: 22mm 20mm 18mm;
+        margin: 0;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+      }
+      .cover-bg {
+        inset: 0;
+      }
+    }
+    @page {
+      size: A4;
+      margin: 18mm 16mm;
+    }
+    @page :first {
+      margin: 0;
+    }
+    .print-hint {
+      max-width: 210mm;
+      margin: 12px auto;
+      padding: 12px 16px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 6px;
+      font-size: 10pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-hint no-print">
+    <strong>Exportar a PDF:</strong> Ctrl+P → «Guardar como PDF». Si la portada sale sin fondo azul, active «Gráficos de fondo» / «Background graphics» en opciones de impresión.
+  </div>
+  <div class="page">
+    <section class="cover">
+      <div class="cover-bg" aria-hidden="true"></div>
+      <div class="cover-inner">
+        <span class="cover-badge">Documentación operativa</span>
+        <h1>Guía de uso Aduanas</h1>
+        <p class="subtitle">Módulo Odoo Aduanas (aduanas_transport)<br/>Perfil agente aduanero y transportista</p>
+      </div>
+      <div class="cover-meta">
+        <p><strong>Versión documento:</strong> 1.5</p>
+        <p><strong>Módulo Odoo:</strong> 16.0.1.0.22</p>
+      </div>
+    </section>
+    <article class="content">
+      <p>Documentación operativa del módulo Odoo <strong>aduanas_transport</strong> (versión <strong>16.0.1.0.22</strong>) para <strong>Traldis Porta</strong> como <strong>agente de aduanas</strong> y <strong>transportista</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Flujo</th>
+<th>Sentido</th>
+<th>Mensaje AEAT</th>
+<th>Servicio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Exportación</strong></td>
+<td>España → Andorra / terceros</td>
+<td>CC515C (AES)</td>
+<td>ADEX-JDIT</td>
+</tr>
+<tr>
+<td><strong>Importación</strong></td>
+<td>Andorra → España</td>
+<td>CC415A (H1)</td>
+<td>ADIP-JDIT</td>
+</tr>
+</tbody>
+</table>
+<p>Perfil habitual Traldis: representación <strong>indirecta</strong>, transportista = empresa Odoo, importación <strong>sin DDT/G4</strong> salvo depósito temporal.</p>
+<hr />
+<h2>1. Rol de Traldis Porta en el módulo</h2>
+<table>
+<thead>
+<tr>
+<th>Rol</th>
+<th>En Odoo</th>
+<th>En el XML AEAT (export, indirecta)</th>
+<th>En el XML AEAT (import)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agente aduanero</strong></td>
+<td>Compañía Odoo (NIF de la empresa)</td>
+<td>Declarant</td>
+<td>Declarant</td>
+</tr>
+<tr>
+<td><strong>Exportador / vendedor</strong></td>
+<td>Remitente (cliente)</td>
+<td>Exporter</td>
+<td>Seller / Exporter</td>
+</tr>
+<tr>
+<td><strong>Importador</strong></td>
+<td>Consignatario español</td>
+<td>—</td>
+<td>Importer</td>
+</tr>
+<tr>
+<td><strong>Transportista</strong></td>
+<td>Campo transportista</td>
+<td>Medios transporte / N705</td>
+<td>Datos transporte CC415A</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Representación indirecta (recomendada):</strong> Traldis declara en nombre del cliente. El exportador o importador es el partner del expediente.</p>
+<p><strong>Representación directa (solo exportación):</strong> el <strong>declarante</strong> en el XML es el remitente (cliente) y Traldis figura como <strong>Representative</strong>. Campo <strong>Tipo representación</strong> en expedientes de exportación. Requiere mandato legal del cliente. <strong>Importación:</strong> el módulo usa siempre representación indirecta (Declarant = Traldis).</p>
+<hr />
+<h2>2. Configuración inicial (una vez)</h2>
+<h3>2.1 Certificado electrónico AEAT</h3>
+<p>Obligatorio para <strong>Presentar</strong> declaraciones (exportación e importación).</p>
+<ol>
+<li>Menú <strong>Aduanas → Configuración</strong> (o <strong>Compañía → pestaña AEAT</strong>).</li>
+<li>Subir certificado <strong>.p12 / .pfx</strong> y contraseña (puede configurarse a nivel global o en la ficha de compañía).</li>
+<li>Verificar vigencia: un certificado caducado provoca rechazo AEAT (401 o página HTML de error aunque HTTP sea 200).</li>
+</ol>
+<p><strong>Antes de presentar importación</strong>, el sistema valida automáticamente que el P12 exista, la contraseña sea correcta y el certificado no esté caducado; si falla, muestra el error y no envía la petición. En exportación la comprobación ocurre al realizar la llamada HTTPS (mismos síntomas si el certificado no es válido).</p>
+<h3>2.2 Endpoints (preproducción por defecto)</h3>
+<table>
+<thead>
+<tr>
+<th>Servicio</th>
+<th>Uso</th>
+<th>URL preprod (valores por defecto del módulo)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CC515C</td>
+<td>Presentar exportación</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP</code></td>
+</tr>
+<tr>
+<td>CCAESC</td>
+<td>Consultar estado export</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CCAESCV1SOAP</code></td>
+</tr>
+<tr>
+<td>CC507C</td>
+<td>Llegada en aduana de salida</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC507CV1SOAP</code></td>
+</tr>
+<tr>
+<td>CC415A</td>
+<td>Presentar importación H1</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP</code></td>
+</tr>
+<tr>
+<td>Consulta import V3</td>
+<td>Estado importación por MRN</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP</code></td>
+</tr>
+<tr>
+<td>Bandeja</td>
+<td>Levantes y salidas</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP</code></td>
+</tr>
+<tr>
+<td>EXS (IE615)</td>
+<td>Declaración sumaria export</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADRX-JDIT/ws/IE615V5SOAP</code></td>
+</tr>
+<tr>
+<td>G4Dec</td>
+<td>Depósito temporal (DDT/G4)</td>
+<td><code>https://prewww1.aeat.es/wlpl/ADDS-JDIT/ws/G4DecV1SOAP</code></td>
+</tr>
+</tbody>
+</table>
+<p>En <strong>producción</strong> el administrador cambiará el host según el certificado (<code>www1</code> o <code>www10</code> según guías AEAT).</p>
+<h3>2.3 Perfil Traldis (valores por defecto)</h3>
+<p>En <strong>Aduanas → Configuración → Perfil expediente</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Parámetro</th>
+<th>Valor habitual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tipo representación</td>
+<td>Indirecta</td>
+</tr>
+<tr>
+<td>Transportista</td>
+<td>Traldis Porta</td>
+</tr>
+<tr>
+<td>País transporte</td>
+<td>ES</td>
+</tr>
+<tr>
+<td>Oficina export / import</td>
+<td>ES000101 (preprod); en producción la oficina real (p. ej. ES002501)</td>
+</tr>
+<tr>
+<td>Requiere DDT/G4</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Incoterm</td>
+<td>DAP</td>
+</tr>
+<tr>
+<td>Moneda</td>
+<td>EUR</td>
+</tr>
+</tbody>
+</table>
+<p>Al crear un expediente, estos valores se aplican según el sentido (import / export).</p>
+<h3>2.4 Datos maestros</h3>
+<ul>
+<li><strong>Compañía Odoo:</strong> NIF configurado en la ficha de compañía (actúa como declarante en importación).</li>
+<li><strong>Partners:</strong> remitentes y consignatarios con NIF/EORI dados de alta en el censo AEAT del entorno que se use (preprod o producción).</li>
+</ul>
+<h3>2.5 Varias facturas, un expediente y documento N380</h3>
+<table>
+<thead>
+<tr>
+<th>Concepto</th>
+<th>Comportamiento del módulo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Un expediente</strong></td>
+<td>Una presentación AEAT (un CC515C o un CC415A) con todas las líneas de mercancía</td>
+</tr>
+<tr>
+<td><strong>Varias facturas PDF</strong></td>
+<td>Permitido en el bloque <strong>Facturas</strong> del mismo expediente (p. ej. un camión, varios albaranes)</td>
+</tr>
+<tr>
+<td><strong>Un expediente por factura</strong></td>
+<td>El wizard <strong>Subir facturas</strong> sin expediente previo crea <strong>un expediente por PDF</strong> (alternativa habitual si cada factura es una operación distinta)</td>
+</tr>
+<tr>
+<td><strong>N380 en AEAT</strong></td>
+<td>Referencia de factura comercial <strong>por línea</strong> en el XML; <strong>no se envía el PDF</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>N380 — prioridad por línea</strong> (desde v16.0.1.0.21):</p>
+<ol>
+<li><strong>Nº factura (N380)</strong> de la factura PDF vinculada a la línea (columna en bloque Facturas; el OCR lo rellena al procesar).</li>
+<li>Si no hay factura vinculada o falta nº: <strong>Nº factura comercial</strong> de cabecera del expediente.</li>
+<li>Si tampoco hay: nombre del expediente (<code>EXP-xxx</code>).</li>
+</ol>
+<p>Antes de <strong>Generar DUA</strong> / <strong>Generar CC415A</strong>, comprobar que cada factura tiene su <strong>Nº factura (N380)</strong> o que la cabecera del expediente tiene un valor común. Si falta, la validación mostrará error.</p>
+<hr />
+<h2>3. Flujo exportación (España → Andorra)</h2>
+<h3>3.1 Visión general</h3>
+<p>Traldis actúa como <strong>declarante</strong>; el <strong>remitente</strong> es el exportador español y el <strong>consignatario</strong> el destinatario en Andorra (u otro país tercero). El ciclo completo cubre desde la carga de la factura hasta la <strong>salida efectiva</strong> de la mercancía de la UE (relevante para IVA exportación exento).</p>
+<pre><code>Borrador → Predeclarado → Aceptado (MRN) → Levante → Salida efectiva → Cerrado
+</code></pre>
+<p>Tras <strong>Presentar DUA a AEAT</strong> (CC515C), si AEAT admite la declaración el expediente pasa directamente a <strong>Aceptado</strong> con MRN. El estado <em>Presentado</em> existe en la barra de estados pero <strong>no se usa</strong> en el flujo habitual CC515C.</p>
+<h3>3.2 Paso A — Crear expediente y cargar factura</h3>
+<ol>
+<li><strong>Aduanas → Expedientes → Crear.</strong></li>
+<li>Sentido: <strong>Exportación</strong>.</li>
+<li>En el bloque <strong>Facturas</strong> del formulario, subir el PDF comercial con <strong>Subir facturas</strong> (varios PDF a la vez) o desde la pestaña <strong>Facturas</strong>.</li>
+<li>Completar si falta:<br />
+   - <strong>Remitente</strong> (exportador, p. ej. planta en España).<br />
+   - <strong>Consignatario</strong> (cliente en Andorra).<br />
+   - <strong>Oficina</strong> de exportación y <strong>oficina de salida</strong> declarada.<br />
+   - <strong>Matrícula</strong> del vehículo y, si aplica, referencia de transporte.</li>
+</ol>
+<h3>3.3 Paso B — Procesar factura PDF</h3>
+<ol>
+<li>En el bloque <strong>Facturas</strong>, pulsar <strong>Procesar facturas</strong> (todas las pendientes) o <strong>Procesar</strong> en cada línea de factura.</li>
+<li>El procesamiento se ejecuta en <strong>segundo plano</strong> (cola <code>queue_job</code>); la vista se actualiza al terminar. Aparece el estado por factura: pendiente, procesando, completado, advertencia o error.</li>
+<li>El botón de cabecera <strong>Procesar Factura PDF</strong> solo aplica al campo legacy de factura única en el expediente; el flujo habitual es el bloque <strong>Facturas</strong>.</li>
+<li>El sistema extrae (IA/OCR): líneas de mercancía, partidas, pesos, valores y número de factura.</li>
+<li>Revisar pestaña <strong>Líneas de mercancía</strong>:<br />
+   - Partida arancelaria <strong>10 dígitos</strong>.<br />
+   - Peso bruto y neto por línea.<br />
+   - Valor línea coherente con total factura.</li>
+<li>Revisar en el bloque <strong>Facturas</strong> la columna <strong>Nº factura (N380)</strong> de cada PDF procesado (editable si el OCR no lo detectó). Opcional: <strong>Nº factura comercial</strong> en cabecera como valor común para líneas sin factura vinculada.</li>
+</ol>
+<p><strong>Si algo falla:</strong> corregir manualmente las líneas o volver a procesar tras ajustar el PDF.</p>
+<h3>3.4 Paso C — Verificación IA (opcional)</h3>
+<ol>
+<li><strong>Realizar Verificación IA</strong> — normaliza partidas a 10 dígitos y señala incoherencias valor/peso.</li>
+<li>Corregir líneas marcadas antes de generar el DUA.</li>
+</ol>
+<h3>3.5 Paso D — Generar DUA</h3>
+<ol>
+<li>Pulsar <strong>Generar DUA</strong>.</li>
+<li>El sistema valida datos obligatorios y genera documentación interna; el expediente pasa a <strong>Predeclarado</strong>.</li>
+<li>Revisar adjuntos en <strong>Documentos</strong> (XML interno y, si el servidor lo permite, PDF resumen).</li>
+</ol>
+<p><strong>Importante:</strong> este paso prepara y valida el expediente. La presentación real a AEAT usa el mensaje <strong>CC515C</strong> (paso siguiente).</p>
+<h3>3.6 Paso E — Presentar DUA a AEAT</h3>
+<ol>
+<li>Con el DUA generado, pulsar <strong>Presentar DUA a AEAT</strong>.</li>
+<li>Odoo valida datos de exportación, construye <strong>CC515C</strong> y lo envía al servicio AES con el certificado configurado.</li>
+<li><strong>Si AEAT acepta:</strong> se guarda el <strong>MRN</strong>, estado <strong>Aceptado</strong>, y datos AES (estado, circuito, CSV si vienen en respuesta).</li>
+<li><strong>Si AEAT rechaza:</strong> estado <strong>Error</strong>, mensaje en el expediente e <strong>incidencias</strong> con el detalle funcional (EORI, partida, consignatario, etc.). Corregir y volver a presentar.</li>
+<li><strong>Errores de certificado</strong> (403 HTTP, 401 o página HTML de la AEAT): revisar P12, contraseña y fecha de caducidad en <strong>Aduanas → Configuración</strong>.</li>
+</ol>
+<p>Los XML de petición y respuesta quedan adjuntos al expediente y en el chatter.</p>
+<h3>3.7 Paso F — Seguimiento post-admisión</h3>
+<p>Con <strong>MRN</strong> asignado el seguimiento puede ser <strong>manual</strong> (botones) o <strong>parcialmente automático</strong> (cron de bandeja, ver §9).</p>
+<table>
+<thead>
+<tr>
+<th>Acción</th>
+<th>Cuándo usarla</th>
+<th>Qué aporta</th>
+<th>Automatizable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Consultar Estado DUA</strong></td>
+<td>Tras admisión o si hay dudas</td>
+<td>Estado AES, circuito, fechas vía CCAESC</td>
+<td>No (solo manual)</td>
+</tr>
+<tr>
+<td><strong>Notificar Llegada Salida</strong></td>
+<td>Mercancía en aduana de salida</td>
+<td>CC507C</td>
+<td>No (depende del momento físico del transporte)</td>
+</tr>
+<tr>
+<td><strong>Consultar Bandeja AEAT</strong></td>
+<td>Levante y salida efectiva</td>
+<td>CLEVEX, CSALID, IVA exento</td>
+<td><strong>Sí</strong> — cron opcional</td>
+</tr>
+</tbody>
+</table>
+<p>Cuando la bandeja confirma <strong>salida efectiva</strong>, el expediente refleja <strong>Salida efectiva</strong> e <strong>IVA exportación exento</strong>.</p>
+<h3>3.8 Campos críticos exportación</h3>
+<table>
+<thead>
+<tr>
+<th>Campo Odoo</th>
+<th>Efecto en AEAT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Remitente (NIF/EORI)</td>
+<td>Exportador</td>
+</tr>
+<tr>
+<td>Consignatario</td>
+<td>Destinatario en Andorra</td>
+</tr>
+<tr>
+<td>Oficina / oficina destino</td>
+<td>Aduanas exportación y salida</td>
+</tr>
+<tr>
+<td>Matrícula</td>
+<td>Identificación transporte y doc. N705</td>
+</tr>
+<tr>
+<td>Nº factura (por factura o cabecera)</td>
+<td>Referencia <strong>N380</strong> en cada línea del XML</td>
+</tr>
+<tr>
+<td>Incoterm</td>
+<td>Condiciones entrega</td>
+</tr>
+<tr>
+<td>Líneas (partida, peso, valor)</td>
+<td>Partidas CC515C</td>
+</tr>
+</tbody>
+</table>
+<h3>3.9 Estados del expediente (export)</h3>
+<table>
+<thead>
+<tr>
+<th>Estado</th>
+<th>Significado operativo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Borrador</td>
+<td>En preparación</td>
+</tr>
+<tr>
+<td>Predeclarado</td>
+<td>DUA generado, listo para presentar</td>
+</tr>
+<tr>
+<td>Presentado</td>
+<td>Reservado (no usado en flujo CC515C habitual)</td>
+</tr>
+<tr>
+<td>Aceptado</td>
+<td>MRN recibido tras presentación CC515C</td>
+</tr>
+<tr>
+<td>Levante</td>
+<td>Mercancía liberada para salir</td>
+</tr>
+<tr>
+<td>Salida efectiva</td>
+<td>Confirmada salida de la UE</td>
+</tr>
+<tr>
+<td>Error</td>
+<td>Rechazo o incidencia; revisar mensaje</td>
+</tr>
+<tr>
+<td>Cerrado</td>
+<td>Expediente archivado / terminado (manual o automático, ver §8.4)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Flujo importación (Andorra → España)</h2>
+<p>Flujo <strong>habitual Traldis:</strong> importación directa en frontera, <strong>sin</strong> depósito temporal (no marcar <em>Requiere DDT/G4</em>).</p>
+<h3>4.1 Visión general</h3>
+<p>Traldis es <strong>declarante</strong>; el <strong>remitente</strong> está en Andorra y el <strong>consignatario</strong> es el importador español. La declaración es <strong>H1 (CC415A)</strong> al servicio de importación ADIP-JDIT.</p>
+<pre><code>Borrador → Predeclarado → Aceptado (MRN) → consulta / bandeja → Cerrado
+</code></pre>
+<h3>4.2 Paso A — Crear expediente y cargar factura</h3>
+<ol>
+<li><strong>Aduanas → Expedientes → Crear.</strong></li>
+<li>Sentido: <strong>Importación</strong>.</li>
+<li>Subir factura PDF en el bloque <strong>Facturas</strong> (<strong>Subir facturas</strong> o pestaña <strong>Facturas</strong>).</li>
+<li>Completar:<br />
+   - <strong>Remitente</strong> (proveedor en Andorra) — país origen AD.<br />
+   - <strong>Consignatario</strong> (importador en España) — debe tener NIF/EORI español válido.<br />
+   - <strong>Oficina</strong> de importación / presentación.<br />
+   - <strong>Lugar de entrega</strong> (partner de entrega; por defecto el consignatario).<br />
+   - <strong>Incoterm</strong> (habitual DAP) y datos de transporte (matrícula).</li>
+</ol>
+<p>Verificar que <strong>Requiere DDT/G4</strong> esté <strong>desmarcado</strong> salvo mercancía en depósito temporal.</p>
+<h3>4.3 Paso B — Procesar factura PDF</h3>
+<ol>
+<li><strong>Procesar facturas</strong> (bloque Facturas) o <strong>Procesar</strong> en cada línea; el OCR/IA corre en segundo plano.</li>
+<li>Revisar líneas y, en <strong>Facturas</strong>, el <strong>Nº factura (N380)</strong> de cada PDF.<br />
+   - <strong>TARIC completo 10 dígitos</strong> (obligatorio en H1).<br />
+   - Pesos bruto/neto y valor por línea.</li>
+<li>Revisar bloque <strong>Importación — factura y entrega</strong> e <strong>Importación — tributos H1</strong>:<br />
+   - Región destino (p. ej. 25).<br />
+   - Preferencia 100, método valoración 1.<br />
+   - Tipo IVA 21 % (casilla 47 / tributo B00).<br />
+   - Modo de pago tributos (E).</li>
+</ol>
+<h3>4.4 Paso C — Validar importación</h3>
+<ol>
+<li>Pulsar <strong>1. Validar importación</strong>.</li>
+<li>El sistema comprueba: partners, oficina, países AD→ES, TARIC, valores, lugar entrega, campos H1.</li>
+<li>Si hay errores, aparecen en pantalla; corregir antes de generar el XML.</li>
+</ol>
+<h3>4.5 Paso D — Generar CC415A</h3>
+<ol>
+<li>Pulsar <strong>2. Generar CC415A</strong> (incluye validación automática de datos obligatorios, equivalente a <strong>1. Validar importación</strong>).</li>
+<li>Se crea el adjunto <code>EXP-xxx_CC415A.xml</code> y el estado pasa a <strong>Predeclarado</strong>.</li>
+<li>Opcional: <strong>3. Previsualizar CC415A</strong> para revisar el XML antes de enviar.</li>
+</ol>
+<p>El XML incluye por línea: procedimiento 40/00, origen AD, TARIC, IVA B00, factura N380, incoterm y datos de Traldis como declarante.</p>
+<h3>4.6 Paso E — Presentar importación</h3>
+<ol>
+<li>Pulsar <strong>4. Presentar importación</strong>.</li>
+<li>Odoo comprueba primero el certificado (existencia, contraseña y caducidad); si falla, muestra el error sin enviar.</li>
+<li>Si el certificado es válido, envía <strong>CC415A</strong> al servicio ADIP-JDIT.</li>
+<li><strong>Aceptación:</strong> MRN de importación, estado <strong>Aceptado</strong>, mensaje en chatter.</li>
+<li><strong>Rechazo o error HTTP:</strong> estado <strong>Error</strong>, detalle en <em>Mensaje de error</em> e incidencias; los adjuntos y notas del chatter se conservan (no se pierde la trazabilidad). Corregir datos y repetir desde validar/generar si cambió el XML.</li>
+<li>AEAT puede devolver <strong>401/403 en página HTML</strong> aun con HTTP 200; el módulo detecta este caso y muestra un mensaje claro (certificado caducado o no enviado).</li>
+</ol>
+<p>Quedan adjuntos <code>EXP-xxx_CC415A_request.xml</code> y <code>_response.xml</code>.</p>
+<h3>4.7 Paso F — Seguimiento post-admisión</h3>
+<table>
+<thead>
+<tr>
+<th>Acción</th>
+<th>Uso</th>
+<th>Automatizable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>5. Consultar estado</strong></td>
+<td>Consulta completa por MRN (ConsultaImportacionV3)</td>
+<td>No (solo manual)</td>
+</tr>
+<tr>
+<td><strong>6. Bandeja importación</strong></td>
+<td>Mensajes AEAT de importación (levantes, incidencias)</td>
+<td><strong>Sí</strong> — cron opcional (misma acción que export, bandeja IMPORAES)</td>
+</tr>
+</tbody>
+</table>
+<h3>4.8 Campos críticos importación</h3>
+<table>
+<thead>
+<tr>
+<th>Campo / bloque</th>
+<th>Detalle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Remitente AD</td>
+<td>countryOfDispatch = AD</td>
+</tr>
+<tr>
+<td>Consignatario ES</td>
+<td>Importer con EORI ES</td>
+</tr>
+<tr>
+<td>Oficina</td>
+<td>CustomsOfficeOfImport y Presentation</td>
+</tr>
+<tr>
+<td>Lugar entrega</td>
+<td>DeliveryTerms (incoterm + municipio)</td>
+</tr>
+<tr>
+<td>Región destino</td>
+<td>p. ej. 25 (Lleida / demarcación habitual)</td>
+</tr>
+<tr>
+<td>Tributos H1</td>
+<td>IVA B00, preferencia, valoración</td>
+</tr>
+<tr>
+<td>Líneas TARIC 10</td>
+<td>hs + cn + taric, masas, valor factura</td>
+</tr>
+</tbody>
+</table>
+<h3>4.9 Importación con DDT/G4 (caso excepcional)</h3>
+<p>Solo si la mercancía procede de <strong>depósito temporal</strong>:</p>
+<ol>
+<li>Activar <strong>Requiere DDT/G4 previo</strong> y tipo DSDT o G4.</li>
+<li><strong>0. G4 / DDT</strong> — presentar depósito y obtener MRN DDT.</li>
+<li>Indicar MRN DDT y partida DDT por línea.</li>
+<li>Continuar con validar → CC415A → presentar (el XML incluirá PreviousDocument N337).</li>
+</ol>
+<p>Este flujo <strong>no es el habitual</strong> en Traldis para entradas directas AD→ES.</p>
+<h3>4.10 Estados del expediente (import)</h3>
+<table>
+<thead>
+<tr>
+<th>Estado</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Borrador</td>
+<td>En preparación</td>
+</tr>
+<tr>
+<td>Predeclarado</td>
+<td>CC415A generado</td>
+</tr>
+<tr>
+<td>Aceptado</td>
+<td>MRN importación recibido</td>
+</tr>
+<tr>
+<td>Error</td>
+<td>Rechazo AEAT</td>
+</tr>
+<tr>
+<td>Cerrado</td>
+<td>Finalizado</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. EXS (exportación avanzada)</h2>
+<p>Pestaña <strong>EXS (avanzado)</strong> en expedientes de exportación, con botón <strong>Presentar EXS</strong> (mensaje IE615 al endpoint configurado). <strong>No sustituye</strong> el flujo CC515C salvo requisito operativo concreto. No es el procedimiento principal de Traldis.</p>
+<hr />
+<h2>6. Adjuntos y trazabilidad</h2>
+<p>Tras presentar, en <strong>Documentos</strong> o <strong>chatter</strong> del expediente:</p>
+<table>
+<thead>
+<tr>
+<th>Archivo</th>
+<th>Cuándo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXP-xxx_CC415A_request/response.xml</td>
+<td>Importación presentada</td>
+</tr>
+<tr>
+<td>DUA_CC515C_soap/response.xml</td>
+<td>Exportación presentada</td>
+</tr>
+<tr>
+<td>Factura PDF</td>
+<td>Subida al inicio</td>
+</tr>
+<tr>
+<td>DUA_EXP-xxx_OFICIAL.pdf</td>
+<td>Tras Generar DUA (export, interno)</td>
+</tr>
+</tbody>
+</table>
+<p>Errores AEAT: campo <em>Mensaje de error</em>, incidencias enlazadas y notas del chatter.</p>
+<hr />
+<h2>7. Errores frecuentes</h2>
+<table>
+<thead>
+<tr>
+<th>Síntoma</th>
+<th>Causa probable</th>
+<th>Acción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Error 403 / no detecta certificado</td>
+<td>Certificado no configurado o no usable en HTTPS</td>
+<td>Aduanas → Configuración → P12; comprobar <code>cryptography</code> en servidor</td>
+</tr>
+<tr>
+<td>Error 401 (HTTP o HTML AEAT)</td>
+<td>Certificado caducado o no autorizado</td>
+<td>Renovar P12; revisar censo AEAT del entorno (preprod/prod)</td>
+</tr>
+<tr>
+<td>«Certificado AEAT caducó el…» al presentar import</td>
+<td>Validación previa del módulo</td>
+<td>Renovar certificado antes de pulsar Presentar</td>
+</tr>
+<tr>
+<td>Página HTML en lugar de XML SOAP</td>
+<td>AEAT rechaza autenticación</td>
+<td>Mismo tratamiento que 401/403; revisar adjunto <code>_response.xml</code></td>
+</tr>
+<tr>
+<td>Rechazo funcional (cas. xxx)</td>
+<td>EORI, partida, partner, N380</td>
+<td>Corregir según incidencia</td>
+</tr>
+<tr>
+<td>Validación N380 al generar/presentar</td>
+<td>Factura sin Nº comercial ni valor en cabecera</td>
+<td>Rellenar <strong>Nº factura (N380)</strong> en la factura o en el expediente</td>
+</tr>
+<tr>
+<td>9007 / 1092 (preprod)</td>
+<td>Partner no en censo pruebas</td>
+<td>Alta en entorno preproducción AEAT</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>8. Integraciones y automatización</h2>
+<table>
+<thead>
+<tr>
+<th>Función</th>
+<th>Uso Traldis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Subir facturas (wizard)</td>
+<td>Crear expedientes (1 PDF = 1 expediente) o añadir PDFs a uno existente</td>
+</tr>
+<tr>
+<td>Import MSoft</td>
+<td>Carga desde sistema origen (si configurado)</td>
+</tr>
+<tr>
+<td>Documentos requeridos TARIC</td>
+<td>Certificados según partida (consulta API UE)</td>
+</tr>
+</tbody>
+</table>
+<h3>8.1 Seguimiento post-MRN: manual vs cron</h3>
+<p><strong>Por defecto</strong> el seguimiento tras el MRN es <strong>manual</strong>: el operador pulsa <strong>Consultar estado</strong> y/o <strong>Consultar Bandeja AEAT</strong> cuando corresponda.</p>
+<table>
+<thead>
+<tr>
+<th>Tarea</th>
+<th>Manual</th>
+<th>Cron en el módulo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Consultar estado (CCAESC / ConsultaImportacionV3)</td>
+<td>Botones en expediente</td>
+<td><strong>No desarrollado</strong></td>
+</tr>
+<tr>
+<td>Bandeja AEAT (levante, salida, mensajes)</td>
+<td>Botón bandeja</td>
+<td><strong>Sí</strong> — ver abajo</td>
+</tr>
+<tr>
+<td>Notificar llegada salida (CC507C, export)</td>
+<td>Botón en expediente</td>
+<td><strong>No</strong> (requiere acción en el momento del transporte)</td>
+</tr>
+</tbody>
+</table>
+<h3>8.2 Cron de bandeja AEAT (opcional)</h3>
+<ul>
+<li><strong>Nombre en Odoo:</strong> «Aduanas (Unificado): Consultar Bandeja AEAT»</li>
+<li><strong>Ubicación:</strong> Ajustes → Técnico → Automatización → Acciones planificadas</li>
+<li><strong>Estado por defecto:</strong> <strong>desactivado</strong> (<code>active = False</code> al instalar)</li>
+<li><strong>Frecuencia:</strong> cada <strong>3 minutos</strong> (configurable)</li>
+<li><strong>Alcance:</strong> hasta <strong>50 expedientes</strong> en estados <code>predeclared</code>, <code>presented</code>, <code>accepted</code> o <code>released</code>; ejecuta la misma lógica que el botón manual (<code>action_poll_bandeja</code>). Export usa bandeja EXPORAES; import IMPORAES.</li>
+<li><strong>Activación:</strong> marcar <strong>Activo</strong> en la acción planificada. Requiere certificado AEAT válido en el servidor.</li>
+<li><strong>Nota:</strong> si una consulta de bandeja falla de forma grave, el expediente puede pasar a <strong>Error</strong>; conviene monitorizar incidencias tras activar el cron en producción.</li>
+</ul>
+<h3>8.3 Otros crons del módulo</h3>
+<table>
+<thead>
+<tr>
+<th>Cron</th>
+<th>Activo por defecto</th>
+<th>Función</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Procesar facturas PDF en cola (expedientes)</td>
+<td>Sí</td>
+<td>Procesa OCR en background</td>
+</tr>
+<tr>
+<td>Procesar facturas pendientes (carga masiva)</td>
+<td>No</td>
+<td>Cola alternativa de facturas</td>
+</tr>
+<tr>
+<td>Consultar Bandeja AEAT</td>
+<td>No</td>
+<td>Seguimiento post-MRN automático</td>
+</tr>
+</tbody>
+</table>
+<h3>8.4 Cierre del expediente (estado «Cerrado»)</h3>
+<table>
+<thead>
+<tr>
+<th>Modo</th>
+<th>Exportación</th>
+<th>Importación</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Manual</strong></td>
+<td>Botón <strong>Cerrar expediente</strong> cuando el estado es <em>Salida efectiva</em></td>
+<td>Botón <strong>Cerrar expediente</strong> cuando el estado es <em>Aceptado</em> (MRN)</td>
+</tr>
+<tr>
+<td><strong>Automático</strong></td>
+<td><strong>Activado por defecto:</strong> al confirmar salida efectiva AEAT (bandeja/CCAESC) → <em>Cerrado</em></td>
+<td><strong>Desactivado por defecto:</strong> opcional al admitir CC415A → <em>Cerrado</em></td>
+</tr>
+</tbody>
+</table>
+<p>Configuración en <strong>Aduanas → Configuración → Cierre de expedientes</strong>:</p>
+<ul>
+<li><em>Cerrar export al confirmar salida efectiva</em></li>
+<li><em>Cerrar import al admitir MRN</em></li>
+</ul>
+<p>No se cierra si hay <strong>incidencias pendientes</strong>. El estado sigue siendo de solo lectura en formulario; el cierre se hace con el botón o la automatización.</p>
+    </article>
+  </div>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # Flujo exportación España → Andorra (Guía WEB Exp / AES)
 
+> Guía complementaria. Resumen operativo Traldis: ver **[GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md)** §4.
+
 Este documento describe cómo un usuario de Odoo ejecuta el ciclo completo de un DUA de exportación con el módulo `aduanas_transport`, alineado con la [Guía WEB Exp](GuiaWEBExp.pdf) de la AEAT.
 
 ## Requisitos previos
@@ -7,7 +9,8 @@ Este documento describe cómo un usuario de Odoo ejecuta el ciclo completo de un
 1. **Certificado electrónico** de la empresa declarante (agente de aduanas) en Aduanas → Configuración. Ver `CONFIGURAR_CERTIFICADO_AEAT.md`.
 2. **Endpoints** en preproducción o producción (`aeat_endpoint_cc515c`, `ccaesc`, `cc507c`, bandeja).
 3. Expediente con **dirección = Exportación**, líneas de mercancía, remitente (exportador, p. ej. Dorel), consignatario (Andorra), oficina de exportación/salida.
-4. **Representación aduanera**: campo `tipo_representacion` en el expediente (`indirecta` por defecto: declarante = empresa Odoo, exportador = remitente).
+4. **Representación aduanera**: campo `tipo_representacion` en exportación (`indirecta` por defecto). **Directa** solo export: Declarant = remitente, Representative = empresa Odoo. Importación: siempre indirecta.
+5. **Facturas:** bloque **Facturas** permite varios PDF por expediente; **N380 por línea** desde el nº de cada factura (v16.0.1.0.21+).
 
 ## Mapa Guía AEAT ↔ Odoo
 
@@ -25,9 +28,10 @@ Este documento describe cómo un usuario de Odoo ejecuta el ciclo completo de un
 ### 1. Preparar expediente
 
 1. Crear expediente **Exportación**.
-2. Subir factura (**Procesar Factura PDF**) o rellenar líneas manualmente.
-3. Opcional: **Verificación IA** de partidas.
-4. **Generar DUA** (PDF/informe interno y validación de datos).
+2. Subir factura(s) en bloque **Facturas** → **Procesar facturas** (o rellenar líneas manualmente).
+3. Comprobar **Nº factura (N380)** en cada factura o en cabecera del expediente.
+4. Opcional: **Verificación IA** de partidas.
+5. **Generar DUA** (PDF/informe interno y validación de datos).
 
 ### 2. Presentar DUA (CC515C)
 
@@ -56,15 +60,19 @@ Cuando la mercancía esté físicamente en la aduana de salida:
 
 ### 5. Salida efectiva e IVA exento (bandeja / IE599)
 
-1. **Consultar Bandeja AEAT** (también puede ejecutarse por cron si está activo).
+1. **Consultar Bandeja AEAT** (manual) **o** cron «Aduanas (Unificado): Consultar Bandeja AEAT» si está activo (cada 3 min, desactivado por defecto).
 2. Procesa mensajes `CLEVEX` (levante exportación), `CSALID` / salida efectiva, etc.
 3. Al confirmar **salida efectiva**: estado **Salida efectiva**, `iva_exportacion_exento = True`, `fecha_salida_real` rellenada.
+
+No hay cron para **Consultar Estado DUA** (CCAESC); solo manual.
 
 Esto cubre el requisito fiscal de acreditar que la mercancía **salió de la UE**.
 
 ## Estados del expediente
 
-`draft` → `predeclared` → `presented` → **`accepted`** (MRN) → **`released`** (levante) → **`exited`** (salida UE / IVA exento) → `closed`
+`draft` → `predeclared` → **`accepted`** (MRN, tras CC515C) → **`released`** (levante) → **`exited`** (salida UE / IVA exento) → `closed`
+
+(`presented` existe pero no se usa en el flujo CC515C habitual.)
 
 ## Campos útiles en formulario
 
@@ -79,6 +87,6 @@ Por defecto los endpoints apuntan a **prewww1.aeat.es**. En preprod los EORI y c
 
 ## Referencia técnica
 
-- Modelo: `aduana.expediente` — `action_send_cc515c`, `action_consultar_estado_dua`, `action_notificar_llegada_salida`, `action_poll_bandeja`
+- Modelo: `aduana.expediente` — `action_send_cc515c`, `action_consultar_estado_dua`, `action_notificar_llegada_salida`, `action_poll_bandeja`, `cron_poll_bandeja_all`
 - Parser: `aduanas.xml.parser` — `parse_aes_export_response`, `parse_bandeja_response`
 - Cliente HTTPS: `aduanas.aeat.client` con certificado P12

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Preguntas reunión — Traldis Porta</title>
+  <style>
+    :root {
+      --brand: #1a4d6d;
+      --brand-light: #e8f1f6;
+      --accent: #c45c26;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.55;
+      color: var(--text);
+      margin: 0;
+      background: #f3f4f6;
+    }
+    .page {
+      max-width: 210mm;
+      margin: 0 auto 24px;
+      background: #fff;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+    .cover {
+      position: relative;
+      min-height: 220px;
+      padding: 40px 48px 32px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #fff;
+      overflow: hidden;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .cover-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-color: #1a4d6d;
+      background-image: linear-gradient(160deg, #1a4d6d 0%, #0f3347 55%, #1a4d6d 100%);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .cover-inner { position: relative; z-index: 1; }
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.35);
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 10pt;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+    .cover h1 {
+      font-size: 22pt;
+      font-weight: 700;
+      margin: 20px 0 8px;
+      color: #fff;
+    }
+    .cover .subtitle {
+      font-size: 12pt;
+      opacity: .92;
+      color: #fff;
+      margin: 0;
+    }
+    .content { padding: 36px 48px 48px; }
+    h2 {
+      font-size: 14pt;
+      color: var(--brand);
+      margin: 1.8em 0 .6em;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--brand-light);
+      page-break-after: avoid;
+    }
+    h2:first-child { margin-top: 0; }
+    ol {
+      margin: .5em 0 1.2em;
+      padding-left: 0;
+      list-style: none;
+      counter-reset: q;
+    }
+    ol > li {
+      counter-increment: q;
+      margin: .65em 0;
+      padding: 10px 12px 10px 44px;
+      position: relative;
+      background: #fafbfc;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    ol > li::before {
+      content: counter(q);
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      width: 22px;
+      height: 22px;
+      line-height: 22px;
+      text-align: center;
+      font-size: 9pt;
+      font-weight: 700;
+      color: #fff;
+      background: var(--brand);
+      border-radius: 50%;
+    }
+    .notes-box {
+      margin-top: 2em;
+      padding: 14px 18px;
+      background: var(--brand-light);
+      border-left: 4px solid var(--brand);
+      border-radius: 0 6px 6px 0;
+    }
+    .notes-box h2 {
+      margin-top: 0;
+      font-size: 12pt;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .notes-box ul {
+      margin: .4em 0 0;
+      padding-left: 1.2em;
+    }
+    .notes-box li { margin: .35em 0; }
+    .answer-line {
+      display: block;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px dashed #cbd5e1;
+      font-size: 9.5pt;
+      color: var(--muted);
+    }
+    @media print {
+      html, body {
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page { box-shadow: none; margin: 0; max-width: none; }
+      .no-print { display: none; }
+      .cover {
+        min-height: 180px;
+        padding: 22mm 20mm 16mm;
+        page-break-after: always;
+      }
+      @page { size: A4; margin: 18mm 16mm; }
+      @page :first { margin: 0; }
+    }
+    .print-hint {
+      max-width: 210mm;
+      margin: 12px auto;
+      padding: 12px 16px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 6px;
+      font-size: 10pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-hint no-print">
+    <strong>Imprimir / PDF:</strong> Ctrl+P → «Guardar como PDF». Active «Gráficos de fondo» si la portada sale sin azul.
+  </div>
+  <div class="page">
+    <section class="cover">
+      <div class="cover-bg" aria-hidden="true"></div>
+      <div class="cover-inner">
+        <span class="cover-badge">Reunión Traldis Porta</span>
+        <h1>Preguntas a contrastar</h1>
+        <p class="subtitle">Módulo Odoo Aduanas (aduanas_transport) — uso operativo y funcionalidades</p>
+      </div>
+    </section>
+
+    <article class="content">
+      <h2>1. Modelo operativo y roles</h2>
+      <ol>
+        <li>¿Siempre representación <strong>indirecta</strong> (Traldis declarante, cliente exportador/importador)? ¿Hay casos de representación directa?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Quién declara en la práctica? ¿Siempre el departamento de aduanas de Traldis, o a veces el cliente presenta por su cuenta?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Un expediente = un transporte / una factura / un DUA? El wizard «Subir facturas» crea un expediente por PDF si no hay expediente previo. ¿Es el modelo real?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Quién usa Odoo día a día? (aduanas, tráfico, administración…) ¿Cuántos usuarios y con qué responsabilidades?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Hay que separar permisos? Hoy cualquier usuario interno puede crear, presentar a AEAT y cambiar configuración.<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      </ol>
+
+      <h2>2. Rutas y datos maestros (AD ↔ ES)</h2>
+      <ol start="6">
+        <li>¿Solo Andorra ↔ España? La validación de importación exige origen <strong>AD</strong> y destino <strong>ES</strong>. ¿Hay otros flujos?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Destinos de exportación habituales? ¿Solo Andorra u otros países terceros? ¿Influye en la oficina de salida?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Oficinas aduaneras reales en producción: ¿cuáles usan? (p. ej. La Seu, Jonquera). El default del módulo es ES000101 (preprod).<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Región destino importación (default <strong>25</strong>): ¿siempre Lleida/demarcación 25 o depende del consignatario?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Región expedición export (default <strong>46</strong> Cataluña): ¿todas las salidas son desde Cataluña?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Incoterm <strong>DAP</strong>: ¿es el habitual en todos los casos o a veces EXW, DDP, etc.?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Partners y EORI: ¿quién da de alta remitentes/consignatarios en Odoo? ¿Están en censo AEAT?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      </ol>
+
+      <h2>3. Flujo exportación (ES → AD)</h2>
+      <ol start="13">
+        <li>¿Es obligatorio procesar factura PDF antes de generar DUA? ¿O rellenan líneas manualmente?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Usan la <strong>Verificación IA</strong>? ¿Debe ser paso obligatorio antes de presentar?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>PDF DUA generado internamente: ¿lo envían al cliente? ¿Es documento legal o solo control interno?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Cuándo pulsan <strong>Notificar Llegada Salida</strong> (CC507C)? ¿En qué momento del transporte?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Seguimiento post-MRN: ¿consultan estado y bandeja manualmente o quieren automatización (cron)?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>IVA exportación exento: ¿cómo lo reflejan contablemente cuando hay salida efectiva?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Estado <strong>Cerrado</strong>: en Odoo el campo es de solo lectura; hemos añadido botón <strong>Cerrar expediente</strong> (export tras salida efectiva, import tras MRN aceptado) y cierre automático configurable. ¿Les encaja? ¿Quieren auto-cierre en import al admitir MRN?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      </ol>
+
+      <h2>4. Flujo importación (AD → ES)</h2>
+      <ol start="20">
+        <li>¿Confirman que <strong>nunca usan DDT/G4</strong> en entradas directas en frontera?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Tributos H1 por defecto (IVA 21 % B00, preferencia 100, valoración 1, pago E): ¿hay casos con tipos reducidos o exenciones?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Lugar de entrega: ¿siempre el consignatario o a veces otro almacén/centro logístico?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Validan siempre con «1. Validar importación» o confían solo en «2. Generar CC415A»?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Tras un rechazo AEAT: ¿regeneran CC415A siempre o a veces reintentan sin regenerar?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Qué documentación entregan al importador tras el MRN?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      </ol>
+
+      <h2>5. Funcionalidades avanzadas y alcance</h2>
+      <ol start="26">
+        <li><strong>EXS (IE615):</strong> ¿lo usan alguna vez o se descarta en formación?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li><strong>Documentos requeridos TARIC</strong> (consulta API UE): ¿lo usan para certificados, CITES, etc.?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>Gestión de <strong>incidencias AEAT</strong>: ¿tienen proceso interno (responsable, plazos) cuando AEAT rechaza?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Necesitan informes/listados adicionales? (por matrícula, cliente, pendientes de salida…)<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Integración con facturación/contabilidad Odoo o el módulo aduanero es independiente?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      </ol>
+
+      <div class="notes-box">
+        <h2>Referencia — ya alineado con el módulo</h2>
+        <ul>
+          <li>Presentación exportación = mensaje <strong>CC515C</strong> (no el PDF DUA).</li>
+          <li>Presentación importación = mensaje <strong>CC415A</strong> (H1).</li>
+          <li>La factura PDF <strong>no se envía a AEAT</strong>; solo la referencia N380.</li>
+          <li>Traldis como declarante en representación indirecta.</li>
+          <li>Validación de certificado antes de presentar importación.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</body>
+</html>

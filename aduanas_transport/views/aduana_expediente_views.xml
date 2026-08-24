@@ -115,6 +115,10 @@
                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
                   help="Bandeja IMPORAES: comunicaciones AEAT de importación."/>
 
+          <button name="action_cerrar_expediente" string="Cerrar expediente" type="object"
+                  attrs="{'invisible': ['|', ('state', '=', 'closed'), '|', '&amp;', ('direction', '=', 'export'), ('state', '!=', 'exited'), '&amp;', ('direction', '=', 'import'), ('state', 'not in', ('accepted', 'exited'))]}"
+                  help="Archiva el expediente como terminado. Export: tras salida efectiva. Import: tras MRN aceptado."/>
+
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
         </header>
@@ -151,6 +155,7 @@
                    context="{'default_expediente_id': id}">
               <tree>
                 <field name="name"/>
+                <field name="numero_factura" string="Nº factura (N380)"/>
                 <field name="factura_procesada" column_invisible="1"/>
                 <field name="factura_pdf_filename"/>
                 <field name="factura_estado_procesamiento" widget="badge"
@@ -172,6 +177,7 @@
                 <sheet>
                   <group>
                     <field name="name"/>
+                    <field name="numero_factura" string="Nº factura comercial (N380)"/>
                     <field name="expediente_id" readonly="1"/>
                     <field name="factura_pdf" filename="factura_pdf_filename" widget="binary" required="1"/>
                     <field name="factura_pdf_filename"/>

@@ -1,5 +1,7 @@
 # Flujo de importación en Odoo (H1 CC415A + G4/DDT + G3)
 
+> Guía complementaria. Operación diaria Traldis (sin DDT): ver **[GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md)** §5.
+
 ## Servicios separados (no mezclar)
 
 | Servicio | Modelo Odoo (stub/real) | Endpoint típico | XML raíz |
@@ -21,9 +23,9 @@
 
 ### Sin DDT previo (`requiere_ddt = false`)
 
-1. Completar expediente y líneas.
+1. Completar expediente y líneas (bloque **Facturas** si aplica; revisar **N380** por factura).
 2. **1. Validar** → **2. Generar CC415A** → **4. Presentar**.
-3. **5. Consultar** / **6. Bandeja** con MRN de importación.
+3. **5. Consultar** (manual) / **6. Bandeja** (manual o cron bandeja activo) con MRN de importación.
 
 No se genera bloque `PreviousDocument` N337 en el XML.
 
@@ -52,3 +54,8 @@ No se genera bloque `PreviousDocument` N337 en el XML.
 
 - Con `requiere_ddt`: exige `mrn_ddt` válido (18 chars o vuelo+conocimiento), tipo DSDT/G4, partida DDT por línea.
 - Sin `requiere_ddt`: no exige MRN DDT; permite CC415A sin `PreviousDocument` N337.
+- **N380:** cada línea debe tener referencia (nº en factura vinculada o cabecera expediente).
+
+## Cron bandeja (import y export)
+
+Acción planificada «Aduanas (Unificado): Consultar Bandeja AEAT» — `cron_poll_bandeja_all()`, cada 3 min, **desactivada por defecto**. No hay cron de consulta de estado import (ConsultaImportacionV3).

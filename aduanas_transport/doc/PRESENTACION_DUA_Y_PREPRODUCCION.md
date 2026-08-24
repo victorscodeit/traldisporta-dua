@@ -1,5 +1,7 @@
 # Presentación del DUA y uso en preproducción
 
+> **Documento parcialmente desactualizado.** Para el flujo operativo de Traldis Porta use **[GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md)**. Importación: endpoint **CC415AV1SOAP** (no `DeclaracionSOAP` legacy). Exportación: presentación principal vía **CC515C**.
+
 Este documento resume los pasos de presentación del DUA en el módulo y cómo usar el entorno de **preproducción** de la AEAT. Para el procedimiento oficial detallado y requisitos de la AEAT, consultar el **GT_EXS.pdf** (Guía Técnica Exportación).
 
 ---
@@ -36,7 +38,7 @@ Por defecto el módulo usa **entorno de preproducción** de la AEAT (`prewww1.ag
 |-----------------|------------------|------------------------------------------|
 | **CC515C**      | Envío DUA Export | `https://prewww1.agenciatributaria.gob.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP` |
 | **CC511C**      | Presentación     | `https://prewww1.agenciatributaria.gob.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP` |
-| **Declaración Import** | Importación | `https://prewww1.agenciatributaria.gob.es/wlpl/ADIM-JDIT/ws/imp/DeclaracionSOAP` |
+| **Declaración Import** | Importación H1 CC415A | `https://prewww1.aeat.es/wlpl/ADIP-JDIT/ws/cci/CC415AV1SOAP` |
 | **Bandeja**     | Consulta bandeja | `https://prewww1.agenciatributaria.gob.es/wlpl/ADHT-BAND/ws/det/DetalleV5SOAP` |
 
 ### Dónde configurar

@@ -187,7 +187,7 @@ class AduanaExpediente(models.Model):
     fecha_entrada_real = fields.Datetime(string="Fecha Entrada Real")
     fecha_levante = fields.Datetime(string="Fecha Levante")
     fecha_recepcion = fields.Datetime(string="Fecha Recepción")
-    numero_factura = fields.Char(string="Nº Factura Comercial")
+    numero_factura = fields.Char(string="Nº Factura Comercial", help="Referencia N380 por defecto. Si hay varias facturas en el bloque Facturas, cada una puede tener su propio Nº y prevalece en sus líneas.")
     referencia_transporte = fields.Char(string="Referencia Transporte")
     import_delivery_partner_id = fields.Many2one(
         "res.partner",
@@ -1477,6 +1477,58 @@ class AduanaExpediente(models.Model):
             body = False
         if body:
             self.with_context(mail_notrack=True).message_post(body=body, subtype_xmlid="mail.mt_note")
+        if updates.get("state") == "exited":
+            self._auto_close_expediente_if_configured(trigger="exited")
+
+    def _auto_close_expediente_if_configured(self, trigger="exited"):
+        """Cierra el expediente si la automatización está activa en configuración."""
+        self.ensure_one()
+        if self.state == "closed":
+            return
+        icp = self.env["ir.config_parameter"].sudo()
+        if trigger == "exited":
+            if self.direction != "export" or self.state != "exited":
+                return
+            if icp.get_param("aduanas_transport.auto_close_export_on_exited", "1") != "1":
+                return
+            msg = _("Expediente cerrado automáticamente tras salida efectiva confirmada por AEAT.")
+        elif trigger == "accepted":
+            if self.direction != "import" or self.state != "accepted":
+                return
+            if icp.get_param("aduanas_transport.auto_close_import_on_accepted", "0") != "1":
+                return
+            msg = _("Expediente cerrado automáticamente tras admisión importación (MRN).")
+        else:
+            return
+        self.with_context(mail_notrack=True).write({"state": "closed"})
+        self.with_context(mail_notrack=True).message_post(body=msg, subtype_xmlid="mail.mt_note")
+
+    def action_cerrar_expediente(self):
+        """Marca el expediente como cerrado (archivado operativamente)."""
+        for rec in self:
+            if rec.state == "closed":
+                raise UserError(_("El expediente %s ya está cerrado.") % rec.name)
+            if rec.incidencias_pendientes_count:
+                raise UserError(
+                    _("No se puede cerrar %s: hay %s incidencia(s) pendiente(s). Resuélvalas antes.")
+                    % (rec.name, rec.incidencias_pendientes_count)
+                )
+            if rec.direction == "export" and rec.state != "exited":
+                raise UserError(
+                    _("Exportación %s: cierre habitual tras salida efectiva (estado «Salida/Entrada confirmada»).")
+                    % rec.name
+                )
+            if rec.direction == "import" and rec.state not in ("accepted", "exited"):
+                raise UserError(
+                    _("Importación %s: cierre habitual con MRN aceptado (estado «Aceptado»).")
+                    % rec.name
+                )
+            rec.write({"state": "closed"})
+            rec.message_post(
+                body=_("Expediente cerrado manualmente por el operador."),
+                subtype_xmlid="mail.mt_note",
+            )
+        return True
 
     def action_anadir_documento(self):
         """Abre el formulario para subir un nuevo documento (PDF u otro) al expediente."""
@@ -1552,6 +1604,16 @@ class AduanaExpediente(models.Model):
         return True
 
 
+
+    def _get_line_n380_reference(self, line, default_label="FAC"):
+        """Referencia N380 por línea: factura vinculada → cabecera expediente → nombre expediente."""
+        self.ensure_one()
+        if line and line.factura_id and (line.factura_id.numero_factura or "").strip():
+            return line.factura_id.numero_factura.strip()[:35]
+        header = (self.numero_factura or "").strip()
+        if header:
+            return header[:35]
+        return (self.name or default_label).strip()[:35]
 
     def _build_cc515c_native_body(self):
         """Genera el contenido del mensaje CC515C en formato nativo AES según GuiaWEBExp (no CUSDEC)."""
@@ -1725,13 +1787,13 @@ class AduanaExpediente(models.Model):
             xml_escape(transport_doc_ref),
         )
         region_dispatch = ((self.region_of_dispatch or "46").strip()[:2]).rjust(2, "0")
-        factura_ref = (self.numero_factura or self.name or "FAC").strip()[:35]
         lines = (self.line_ids or self.env["aduana.expediente.line"]).sorted(key=lambda l: l.item_number or l.id or 0)
         tot_gross = sum((l.peso_bruto or 0) for l in lines) or 0.0
         # Construir GoodsItem por línea. El Consignee común va en Consignment, no repetido por partida.
         goods_items_xml = []
         for idx, line in enumerate(lines):
             item_num = line.item_number or (idx + 1)
+            factura_ref = self._get_line_n380_reference(line, default_label="FAC")
             partida = (line.partida or "0000000000").replace(" ", "")[:10].ljust(10, "0")
             hs = partida[:6]
             cn = partida[6:8] if len(partida) >= 8 else "00"
@@ -2724,6 +2786,7 @@ class AduanaExpediente(models.Model):
             taric = partida[8:10] if len(partida) >= 10 else ""
             taric_xml = "<taricCode>%s</taricCode>" % xml_escape(taric) if taric else ""
             goods_item_number = line.item_number or idx
+            n380_ref = self._get_line_n380_reference(line, default_label="FACTURA")
             packages_type = (line.type_of_packages or "CT").strip().upper()
             packages_count = int(line.bultos or 1)
             lines_xml.append("""<GoodsShipmentItem>
@@ -2786,7 +2849,7 @@ class AduanaExpediente(models.Model):
                     else ""
                 ),
                 self._imp_previous_document_xml(line, packages_type),
-                xml_escape((self.numero_factura or self.name or "FACTURA")[:35]),
+                xml_escape(n380_ref),
                 goods_item_number,
                 xml_escape(valuation_method),
             ))
@@ -3005,6 +3068,7 @@ class AduanaExpediente(models.Model):
                 )
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
+                rec._auto_close_expediente_if_configured(trigger="accepted")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")

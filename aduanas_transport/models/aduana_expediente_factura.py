@@ -21,6 +21,10 @@ class AduanaExpedienteFactura(models.Model):
 
     expediente_id = fields.Many2one("aduana.expediente", string="Expediente", required=True, ondelete="cascade", index=True)
     name = fields.Char(string="Factura", default="Factura", help="Nombre o referencia de la factura (p. ej. nombre del archivo)")
+    numero_factura = fields.Char(
+        string="Nº factura comercial",
+        help="Número de factura extraído por OCR o indicado manualmente. Se envía a AEAT como documento N380 en las líneas vinculadas a esta factura.",
+    )
     factura_pdf = fields.Binary(string="Factura PDF", attachment=True)
     factura_pdf_filename = fields.Char(string="Nombre archivo")
     factura_estado_procesamiento = fields.Selection([

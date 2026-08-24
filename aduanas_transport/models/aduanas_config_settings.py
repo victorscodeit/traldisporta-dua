@@ -40,6 +40,17 @@ class AduanasConfigSettings(models.TransientModel):
     default_oficina_import = fields.Char(string="Oficina importación por defecto", default="ES000101")
     default_pais_transporte = fields.Char(string="País transporte por defecto", default="ES")
 
+    auto_close_export_on_exited = fields.Boolean(
+        string="Cerrar export al confirmar salida efectiva",
+        default=True,
+        help="Tras salida efectiva AEAT (bandeja/CCAESC), pasa el expediente de exportación a «Cerrado».",
+    )
+    auto_close_import_on_accepted = fields.Boolean(
+        string="Cerrar import al admitir MRN",
+        default=False,
+        help="Tras presentación CC415A aceptada, cierra el expediente de importación automáticamente.",
+    )
+
     _PARAMS = {
         "aeat_endpoint_cc515c": ("aduanas_transport.endpoint.cc515c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP"),
         "aeat_endpoint_cc511c": ("aduanas_transport.endpoint.cc511c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP"),
@@ -76,6 +87,14 @@ class AduanasConfigSettings(models.TransientModel):
                 values[field_name] = value
         if "cert_attachment_id" in fields_list:
             values["cert_attachment_id"] = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0) or False
+        if "auto_close_export_on_exited" in fields_list:
+            values["auto_close_export_on_exited"] = icp.get_param(
+                "aduanas_transport.auto_close_export_on_exited", "1"
+            ) == "1"
+        if "auto_close_import_on_accepted" in fields_list:
+            values["auto_close_import_on_accepted"] = icp.get_param(
+                "aduanas_transport.auto_close_import_on_accepted", "0"
+            ) == "1"
         return values
 
     def action_apply(self):
@@ -100,6 +119,14 @@ class AduanasConfigSettings(models.TransientModel):
             icp.set_param("aduanas_transport.cert_attachment_id", attachment.id)
         elif self.cert_attachment_id:
             icp.set_param("aduanas_transport.cert_attachment_id", self.cert_attachment_id.id)
+        icp.set_param(
+            "aduanas_transport.auto_close_export_on_exited",
+            "1" if self.auto_close_export_on_exited else "0",
+        )
+        icp.set_param(
+            "aduanas_transport.auto_close_import_on_accepted",
+            "1" if self.auto_close_import_on_accepted else "0",
+        )
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",

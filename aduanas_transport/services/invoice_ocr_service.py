@@ -1530,9 +1530,15 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         # Preparar valores para actualización masiva sin tracking
         vals = {}
         
-        # Actualizar número de factura (solo en modo legacy, sin factura específica)
-        if not factura and invoice_data.get("numero_factura"):
-            vals["numero_factura"] = invoice_data["numero_factura"]
+        # Nº factura comercial (N380): en cabecera legacy o en cada factura del bloque Facturas
+        numero = (invoice_data.get("numero_factura") or "").strip()
+        if numero:
+            if factura:
+                factura.with_context(mail_notrack=True, tracking_disable=True).write(
+                    {"numero_factura": numero[:64]}
+                )
+            else:
+                vals["numero_factura"] = numero[:64]
         
         # valor_factura es campo computado (suma de line_ids.valor_linea); se actualiza al crear/actualizar líneas
         
