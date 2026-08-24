@@ -36,6 +36,50 @@ def _extract_mrn_from_raw_text(text):
                 return val
     return None
 
+
+def _detect_aeat_html_error(text):
+    """
+    AEAT devuelve a veces HTTP 200 con página HTML (401/403) en lugar de SOAP.
+    Retorna dict con error traducible o None si no parece HTML de error AEAT.
+    """
+    if not text or not isinstance(text, str):
+        return None
+    stripped = text.lstrip()
+    lower = stripped.lower()
+    if not (lower.startswith("<!doctype html") or lower.startswith("<html")):
+        return None
+    code = None
+    title_match = re.search(
+        r"<title>\s*Agencia Tributaria:\s*(\d{3})\s*</title>",
+        text,
+        re.IGNORECASE,
+    )
+    if title_match:
+        code = title_match.group(1)
+    elif re.search(r">\s*401\s*<", text):
+        code = "401"
+    elif re.search(r">\s*403\s*<", text):
+        code = "403"
+    messages = {
+        "401": _(
+            "AEAT no autoriza el certificado (401). Causas habituales: certificado caducado, "
+            "no reconocido o sin permiso para el servicio de importación (ADIP-JDIT). "
+            "Renueve el P12 en Aduanas > Configuración."
+        ),
+        "403": _(
+            "AEAT no detecta certificado electrónico (403). Configure el P12 en "
+            "Aduanas > Configuración y compruebe que el servidor Odoo puede usarlo en HTTPS."
+        ),
+    }
+    return {
+        "http_error_code": code,
+        "error": messages.get(code) or _(
+            "AEAT devolvió una página HTML de error (código %s) en lugar de XML SOAP. "
+            "Revise el adjunto de respuesta."
+        ) % (code or "?"),
+    }
+
+
 class AduanaXmlParser(models.AbstractModel):
     _name = "aduanas.xml.parser"
     _description = "Parser de respuestas XML de AEAT"
@@ -58,10 +102,198 @@ class AduanaXmlParser(models.AbstractModel):
                 values.append((elem.text or "").strip())
         return values
 
+    def _find_all_text(self, root, *local_names):
+        names = {name.lower() for name in local_names}
+        values = []
+        for elem in root.iter():
+            if self._local_name(elem.tag).lower() in names and (elem.text or "").strip():
+                values.append((elem.text or "").strip())
+        return values
+
+    def parse_cc415a_response(self, xml_text, service_name="IMP_DECL"):
+        """
+        Parser respuestas importación H1 (CC415AV1Sal): CC415R, CC456A, CD917A, SOAP Fault.
+        """
+        if not xml_text or not xml_text.strip():
+            return {"success": False, "error": _("Respuesta vacía"), "errors": [_("Respuesta vacía")]}
+
+        html_err = _detect_aeat_html_error(xml_text)
+        if html_err:
+            err = html_err["error"]
+            return {
+                "success": False,
+                "error": err,
+                "errors": [err],
+                "http_error_code": html_err.get("http_error_code"),
+                "raw_xml": xml_text,
+            }
+
+        result = {
+            "success": False,
+            "mrn": None,
+            "lrn": None,
+            "accepted": False,
+            "errors": [],
+            "warnings": [],
+            "messages": [],
+            "incidencias": [],
+            "response_type": None,
+            "raw_xml": xml_text,
+        }
+        try:
+            root, ok = _parse_with_lxml_recover(xml_text)
+            if not ok or root is None:
+                root = ET.fromstring(xml_text)
+
+            fault = self._find_first_text(root, "faultstring", "FaultString", "faultcode", "FaultCode")
+            if fault:
+                result["errors"].append(fault)
+                result["error"] = fault
+                return result
+
+            body_msg = None
+            for elem in root.iter():
+                local = self._local_name(elem.tag)
+                if local in ("CC415AV1Sal", "CC415R", "CC456A", "CD917A", "CC415A"):
+                    body_msg = elem
+                    if local != "CC415AV1Sal":
+                        result["response_type"] = local
+                        break
+            if body_msg is not None and self._local_name(body_msg.tag) == "CC415AV1Sal":
+                for child in body_msg:
+                    local = self._local_name(child.tag)
+                    if local in ("CC415R", "CC456A", "CD917A"):
+                        body_msg = child
+                        result["response_type"] = local
+                        break
+
+            if result["response_type"] is None and body_msg is not None:
+                result["response_type"] = self._local_name(body_msg.tag)
+
+            result["mrn"] = self._find_first_text(root, "MRN") or _extract_mrn_from_raw_text(xml_text)
+            result["lrn"] = self._find_first_text(root, "LRN")
+
+            for fe in self._find_functional_errors(root):
+                msg = self._format_functional_error(fe)
+                result["errors"].append(msg)
+                result["incidencias"].append(
+                    {"tipo": "error", "codigo": fe.get("error_code") or "", "mensaje": msg}
+                )
+
+            for xe in self._find_xml_errors(root):
+                msg = xe.get("error_text") or xe.get("error_code") or _("Error XML AEAT")
+                result["errors"].append(msg)
+                result["incidencias"].append({"tipo": "error", "codigo": xe.get("error_code") or "", "mensaje": msg})
+
+            response_type = (result.get("response_type") or "").upper()
+            if response_type == "CC415R" or (result["mrn"] and not result["errors"]):
+                result["accepted"] = True
+                result["success"] = True
+                if result["mrn"]:
+                    result["messages"].append(_("MRN: %s") % result["mrn"])
+            elif result["errors"]:
+                result["success"] = False
+                result["error"] = "\n".join(result["errors"])
+            elif result["mrn"]:
+                result["accepted"] = True
+                result["success"] = True
+            else:
+                result["error"] = _(
+                    "Respuesta AEAT importación sin MRN ni errores reconocidos. Revise el adjunto."
+                )
+                result["errors"].append(result["error"])
+            return result
+        except ParseError as e:
+            mrn = _extract_mrn_from_raw_text(xml_text)
+            if mrn:
+                return {
+                    "success": True,
+                    "mrn": mrn,
+                    "accepted": True,
+                    "errors": [],
+                    "warnings": [_("XML con errores de formato; MRN extraído por texto.")],
+                    "messages": [],
+                    "incidencias": [],
+                    "raw_xml": xml_text,
+                }
+            err = _("La respuesta AEAT no es XML válido: %s") % e
+            return {"success": False, "error": err, "errors": [err], "raw_xml": xml_text}
+        except Exception as e:
+            _logger.exception("parse_cc415a_response %s", service_name)
+            mrn = _extract_mrn_from_raw_text(xml_text)
+            if mrn:
+                return {
+                    "success": True,
+                    "mrn": mrn,
+                    "accepted": True,
+                    "errors": [],
+                    "warnings": [str(e)],
+                    "messages": [],
+                    "incidencias": [],
+                    "raw_xml": xml_text,
+                }
+            err = _("Error parseando respuesta importación: %s") % e
+            return {"success": False, "error": err, "errors": [err], "raw_xml": xml_text}
+
+    def _find_functional_errors(self, root):
+        errors = []
+        for fe in root.iter():
+            if self._local_name(fe.tag) != "FunctionalError":
+                continue
+            errors.append({
+                "error_pointer": self._find_first_text(fe, "errorPointer", "ErrorPointer"),
+                "error_code": self._find_first_text(fe, "errorCode", "ErrorCode"),
+                "error_reason": self._find_first_text(fe, "errorReason", "ErrorReason"),
+                "error_description": self._find_first_text(
+                    fe, "errorDescription", "ErrorDescription", "remarks", "errorText"
+                ),
+            })
+        return errors
+
+    def _find_xml_errors(self, root):
+        errors = []
+        for xe in root.iter():
+            local = self._local_name(xe.tag)
+            if local not in ("XMLError", "XmlError", "XMLERR805"):
+                continue
+            errors.append({
+                "error_code": self._find_first_text(xe, "errorCode", "ErrorCode", "ErrReaXMLER802"),
+                "error_text": self._find_first_text(
+                    xe, "errorText", "ErrorText", "ErrReaXMLER802", "OriAttValXMLER804", "remarks"
+                ),
+            })
+        return errors
+
+    def _format_functional_error(self, fe):
+        parts = []
+        if fe.get("error_pointer"):
+            parts.append(fe["error_pointer"])
+        if fe.get("error_code"):
+            parts.append(_("código %s") % fe["error_code"])
+        if fe.get("error_reason"):
+            parts.append(fe["error_reason"])
+        if fe.get("error_description"):
+            parts.append(fe["error_description"])
+        return " - ".join(parts) or _("Error funcional AEAT importación")
+
     def parse_aeat_response(self, xml_text, service_name=""):
         """Parsea respuesta XML de AEAT y extrae información relevante"""
         if not xml_text:
             return {"success": False, "error": "Respuesta vacía"}
+
+        html_err = _detect_aeat_html_error(xml_text)
+        if html_err:
+            err = html_err["error"]
+            return {
+                "success": False,
+                "error": err,
+                "errors": [err],
+                "http_error_code": html_err.get("http_error_code"),
+                "raw_xml": xml_text,
+            }
+
+        if service_name in ("IMP_DECL", "IMP_QUERY_V3"):
+            return self.parse_cc415a_response(xml_text, service_name)
 
         if service_name in ("CC515C", "CCAESC", "CC507C", "RE515C", "RE507C", "REAESC"):
             aes = self.parse_aes_export_response(xml_text, service_name)

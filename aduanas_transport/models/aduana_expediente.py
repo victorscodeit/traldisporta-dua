@@ -2943,6 +2943,9 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "import":
                 raise UserError(_("Operación España → Andorra / país tercero: debe presentarse por AES CC515C, no por CC415A/H1."))
+            cert_err = client.check_certificate_ready()
+            if cert_err:
+                raise UserError(cert_err)
             settings = rec._get_settings()
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
@@ -2950,59 +2953,81 @@ class AduanaExpediente(models.Model):
             endpoint = settings.get("aeat_endpoint_imp_decl")
             rec._validate_aeat_endpoint_for_xml(endpoint, xml_content, "import")
             rec._attach_xml(f"{rec.name}_CC415A_request.xml", xml_content)
-            rec.state = "presented"
+            rec._post_chatter_soap_xml(
+                "CC415A",
+                endpoint,
+                xml_content,
+                filename=f"{rec.name}_CC415A_request.xml",
+            )
             status_code, resp_xml = client.send_xml(endpoint, xml_content, service="IMP_DECL")
+            rec.last_response_date = fields.Datetime.now()
             rec._attach_xml(f"{rec.name}_CC415A_response.xml", resp_xml or "")
             if status_code != 200:
                 rec.state = "error"
-                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
-                raise UserError(rec.error_message)
-            
-            # Parsear respuesta mejorada
+                if status_code == 0 and resp_xml and not resp_xml.strip().startswith("<"):
+                    rec.error_message = resp_xml
+                elif status_code == 403:
+                    rec.error_message = _(
+                        "AEAT respondió 403 Forbidden. Revise certificado P12 y permisos del servicio importación."
+                    )
+                else:
+                    rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                rec.with_context(mail_notrack=True).message_post(
+                    body=rec.error_message,
+                    subtype_xmlid="mail.mt_note",
+                )
+                if resp_xml:
+                    rec._post_chatter_soap_xml(
+                        "CC415A",
+                        endpoint,
+                        resp_xml,
+                        filename=f"{rec.name}_CC415A_response.xml",
+                        title=_("Respuesta AEAT (error HTTP)"),
+                    )
+                continue
+
             parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
-            rec.last_response_date = fields.Datetime.now()
-            
+
             if parsed.get("success") and (parsed.get("mrn") or parsed.get("accepted")):
+                rec.state = "accepted"
                 if parsed.get("mrn"):
                     rec.mrn = parsed["mrn"]
-                rec.state = "accepted"
                 rec.error_message = False
                 messages = parsed.get("messages") or []
-                body = _("Declaración importación H1 aceptada. MRN: %s") % (rec.mrn or _("pendiente/no informado en respuesta"))
+                body = _("Declaración importación H1 aceptada. MRN: %s") % (
+                    rec.mrn or _("pendiente/no informado en respuesta")
+                )
                 if messages:
                     body += _("\nMensajes: %s") % "\n".join(messages)
                 rec.with_context(mail_notrack=True).message_post(
                     body=body,
-                    subtype_xmlid='mail.mt_note'
+                    subtype_xmlid="mail.mt_note",
                 )
-                # Procesar incidencias si las hay
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
             else:
                 rec.state = "error"
-                error_msg = "\n".join(parsed.get("errors", [])) or parsed.get("error", _("Error desconocido"))
+                error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")
                 if error_msg == _("Error desconocido") and resp_xml:
-                    fault = None
-                    if resp_xml.strip().startswith("<"):
-                        try:
-                            fault = parser._find_first_text(
-                                ET.fromstring(resp_xml),
-                                "faultstring", "FaultString", "errorDescription", "errorText", "remarks"
-                            )
-                        except Exception:
-                            fault = None
-                    if fault:
-                        error_msg = fault
-                if error_msg == _("Error desconocido") and resp_xml:
-                    error_msg = _("AEAT devolvió una respuesta sin MRN ni detalle de error parseable. Revise el adjunto de respuesta. Extracto:\n%s") % (
-                        (resp_xml or "").strip()[:1200]
-                    )
+                    error_msg = _(
+                        "AEAT devolvió una respuesta sin MRN ni detalle reconocible. "
+                        "Revise el adjunto de respuesta. Extracto:\n%s"
+                    ) % (resp_xml or "").strip()[:1200]
                 rec.error_message = error_msg
-                rec.with_context(mail_notrack=True).message_post(body=_("Error al enviar declaración:\n%s") % error_msg, subtype_xmlid='mail.mt_note')
-                # Procesar incidencias de error
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("AEAT rechazó o no admitió la declaración CC415A:\n%s") % error_msg,
+                    subtype_xmlid="mail.mt_note",
+                )
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
-                raise UserError(_("Error al enviar a AEAT:\n%s") % error_msg)
+                if resp_xml:
+                    rec._post_chatter_soap_xml(
+                        "CC415A",
+                        endpoint,
+                        resp_xml,
+                        filename=f"{rec.name}_CC415A_response.xml",
+                        title=_("Respuesta AEAT"),
+                    )
         return True
 
     def _build_imp_query_v3_soap_envelope(self):
