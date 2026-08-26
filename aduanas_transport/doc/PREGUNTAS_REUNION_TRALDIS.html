@@ -77,7 +77,7 @@
     h2 {
       font-size: 14pt;
       color: var(--brand);
-      margin: 1.8em 0 .6em;
+      margin: 1.4em 0 .5em;
       padding-bottom: 6px;
       border-bottom: 2px solid var(--brand-light);
       page-break-after: avoid;
@@ -97,6 +97,7 @@
       background: #fafbfc;
       border: 1px solid var(--border);
       border-radius: 6px;
+      break-inside: avoid;
       page-break-inside: avoid;
     }
     ol > li::before {
@@ -114,6 +115,18 @@
       background: var(--brand);
       border-radius: 50%;
     }
+    .explanation {
+      display: block;
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: var(--brand-light);
+      border-left: 3px solid var(--brand);
+      border-radius: 0 4px 4px 0;
+      font-size: 10pt;
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .explanation strong { color: var(--brand); }
     .notes-box {
       margin-top: 2em;
       padding: 14px 18px;
@@ -132,29 +145,54 @@
       padding-left: 1.2em;
     }
     .notes-box li { margin: .35em 0; }
-    .answer-line {
-      display: block;
-      margin-top: 8px;
-      padding-top: 6px;
-      border-top: 1px dashed #cbd5e1;
-      font-size: 9.5pt;
-      color: var(--muted);
-    }
     @media print {
       html, body {
         background: #fff;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .page { box-shadow: none; margin: 0; max-width: none; }
-      .no-print { display: none; }
-      .cover {
-        min-height: 180px;
-        padding: 22mm 20mm 16mm;
-        page-break-after: always;
+      .page {
+        box-shadow: none;
+        margin: 0;
+        max-width: none;
+        width: 100%;
       }
-      @page { size: A4; margin: 18mm 16mm; }
-      @page :first { margin: 0; }
+      .no-print { display: none; }
+      /* Cabecera compacta: mismo flujo que el contenido (sin página de portada vacía) */
+      .cover {
+        min-height: 0;
+        height: auto;
+        padding: 10mm 14mm 8mm;
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+      .cover h1 {
+        font-size: 18pt;
+        margin: 12px 0 6px;
+      }
+      .cover .subtitle {
+        font-size: 10.5pt;
+      }
+      .content {
+        padding: 4mm 14mm 12mm;
+      }
+      h2 {
+        margin-top: 1.1em;
+        page-break-after: avoid;
+      }
+      h2:first-child {
+        margin-top: 0;
+        page-break-before: avoid;
+      }
+      .explanation,
+      .notes-box {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      @page {
+        size: A4;
+        margin: 12mm 14mm;
+      }
     }
     .print-hint {
       max-width: 210mm;
@@ -177,69 +215,85 @@
       <div class="cover-inner">
         <span class="cover-badge">Reunión Traldis Porta</span>
         <h1>Preguntas a contrastar</h1>
-        <p class="subtitle">Módulo Odoo Aduanas (aduanas_transport) — uso operativo y funcionalidades</p>
+        <p class="subtitle">Solo puntos pendientes de confirmar con Traldis — el resto ya está definido en el módulo</p>
       </div>
     </section>
 
     <article class="content">
       <h2>1. Modelo operativo y roles</h2>
       <ol>
-        <li>¿Siempre representación <strong>indirecta</strong> (Traldis declarante, cliente exportador/importador)? ¿Hay casos de representación directa?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Quién declara en la práctica? ¿Siempre el departamento de aduanas de Traldis, o a veces el cliente presenta por su cuenta?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Un expediente = un transporte / una factura / un DUA? El wizard «Subir facturas» crea un expediente por PDF si no hay expediente previo. ¿Es el modelo real?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Quién usa Odoo día a día? (aduanas, tráfico, administración…) ¿Cuántos usuarios y con qué responsabilidades?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Hay que separar permisos? Hoy cualquier usuario interno puede crear, presentar a AEAT y cambiar configuración.<span class="answer-line">Respuesta: _______________________________________________</span></li>
+        <li>¿Quién usa Odoo día a día? (aduanas, tráfico, administración…) ¿Cuántos usuarios y con qué responsabilidades?
+          <span class="explanation">Organizativo: definir el equipo del piloto, quién crea expedientes, quién presenta a AEAT y quién solo consulta. El módulo no restringe permisos por rol todavía.</span>
+        </li>
+        <li>¿Algún cliente de exportación usa <strong>representación directa</strong> (el exportador firma y Traldis es Representative)?
+          <span class="explanation">Por defecto el módulo viene en <strong>indirecta</strong> (Traldis = Declarant). La directa solo aplica a export CC515C. Importación H1 es siempre indirecta. Solo contrastar si existe algún caso real en cartera.</span>
+        </li>
       </ol>
 
       <h2>2. Rutas y datos maestros (AD ↔ ES)</h2>
-      <ol start="6">
-        <li>¿Solo Andorra ↔ España? La validación de importación exige origen <strong>AD</strong> y destino <strong>ES</strong>. ¿Hay otros flujos?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Destinos de exportación habituales? ¿Solo Andorra u otros países terceros? ¿Influye en la oficina de salida?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Oficinas aduaneras reales en producción: ¿cuáles usan? (p. ej. La Seu, Jonquera). El default del módulo es ES000101 (preprod).<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Región destino importación (default <strong>25</strong>): ¿siempre Lleida/demarcación 25 o depende del consignatario?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Región expedición export (default <strong>46</strong> Cataluña): ¿todas las salidas son desde Cataluña?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Incoterm <strong>DAP</strong>: ¿es el habitual en todos los casos o a veces EXW, DDP, etc.?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Partners y EORI: ¿quién da de alta remitentes/consignatarios en Odoo? ¿Están en censo AEAT?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      <ol>
+        <li>¿Destinos de exportación habituales? ¿Solo Andorra u otros países terceros? ¿Influye en la oficina de salida?
+          <span class="explanation">El módulo admite exportación ES → cualquier país tercero (código ISO en consignatario / país destino). La oficina de exportación y la de salida son campos separados. Confirmar destinos reales (AD, CH, etc.) y si cambian oficina según ruta.</span>
+        </li>
+        <li>Oficinas aduaneras reales en producción: ¿cuáles usan? (p. ej. La Seu, Jonquera). El default del módulo es ES000101 (preprod).
+          <span class="explanation">En preproducción AEAT suele usarse <strong>ES000101</strong>; en producción deben indicar códigos reales (p. ej. ES000801 La Seu, ES001741 Jonquera). Se configuran por expediente y en Aduanas → Configuración (defaults export/import).</span>
+        </li>
+        <li>Región destino importación (default <strong>25</strong>): ¿siempre Lleida/demarcación 25 o depende del consignatario?
+          <span class="explanation">Campo <strong>Región destino importación</strong> (CC415A, regionOfDestination). Por defecto <strong>25</strong> (demarcación Lleida / La Farga de Moles). Confirmar si todos los importadores caen en 25 o hay que variarlo según provincia del consignatario.</span>
+        </li>
+        <li>Región expedición export (default <strong>46</strong> Cataluña): ¿todas las salidas son desde Cataluña?
+          <span class="explanation">Campo <strong>Región de expedición</strong> (CC515C, regionOfDispatch). Obligatorio cuando countryOfExport es ES. Default <strong>46</strong> (Cataluña). Confirmar si todas las plantas/remitentes están en Cataluña o hay que usar otras regiones (p. ej. 46 vs otras CCAA).</span>
+        </li>
       </ol>
 
       <h2>3. Flujo exportación (ES → AD)</h2>
-      <ol start="13">
-        <li>¿Es obligatorio procesar factura PDF antes de generar DUA? ¿O rellenan líneas manualmente?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Usan la <strong>Verificación IA</strong>? ¿Debe ser paso obligatorio antes de presentar?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>PDF DUA generado internamente: ¿lo envían al cliente? ¿Es documento legal o solo control interno?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Cuándo pulsan <strong>Notificar Llegada Salida</strong> (CC507C)? ¿En qué momento del transporte?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Seguimiento post-MRN: ¿consultan estado y bandeja manualmente o quieren automatización (cron)?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>IVA exportación exento: ¿cómo lo reflejan contablemente cuando hay salida efectiva?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Estado <strong>Cerrado</strong>: en Odoo el campo es de solo lectura; hemos añadido botón <strong>Cerrar expediente</strong> (export tras salida efectiva, import tras MRN aceptado) y cierre automático configurable. ¿Les encaja? ¿Quieren auto-cierre en import al admitir MRN?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      <ol>
+        <li>PDF DUA generado internamente: ¿lo envían al cliente? ¿Es documento legal o solo control interno?
+          <span class="explanation">El botón <strong>Generar DUA</strong> crea un PDF informativo en Odoo. <strong>No es lo que se presenta a AEAT</strong> (eso es el mensaje CC515C). Aclarar si ese PDF lo usan como justificante al cliente, archivo interno o no lo necesitan.</span>
+        </li>
+        <li>¿Cuándo pulsan <strong>Notificar Llegada Salida</strong> (CC507C)? ¿En qué momento del transporte?
+          <span class="explanation">CC507C notifica la llegada de la mercancía en la aduana de salida. En el flujo AES suele ir <strong>después de admitir el MRN</strong> y antes o en paralelo al levante/salida. Contrastar el momento exacto en su operativa (frontera, parking aduanero, etc.).</span>
+        </li>
+        <li>IVA exportación exento: ¿cómo lo reflejan contablemente cuando hay salida efectiva?
+          <span class="explanation">El expediente marca <strong>IVA exportación exento</strong> cuando AEAT confirma salida efectiva (bandeja/CCAESC). El módulo no contabiliza automáticamente. Preguntar si necesitan enlace con contabilidad Odoo o proceso manual al cerrar el expediente.</span>
+        </li>
       </ol>
 
       <h2>4. Flujo importación (AD → ES)</h2>
-      <ol start="20">
-        <li>¿Confirman que <strong>nunca usan DDT/G4</strong> en entradas directas en frontera?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Tributos H1 por defecto (IVA 21 % B00, preferencia 100, valoración 1, pago E): ¿hay casos con tipos reducidos o exenciones?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Lugar de entrega: en import y export hay campo <strong>Lugar de entrega</strong> (por defecto consignatario; alternativa almacén/centro logístico). ¿Les encaja?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Validación previa: «1. Validar importación» solo comprueba datos; «2. Generar CC415A» comprueba lo mismo y crea el XML de revisión. ¿Lo usáis en dos pasos o vais directo a generar/presentar?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Tras rechazo AEAT: corregir datos en el expediente y pulsar de nuevo <strong>4. Presentar importación</strong> (Odoo regenera el XML automáticamente). ¿Quieren revisar antes con «2. Generar CC415A» o les basta presentar?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Qué documentación entregan al importador tras el MRN?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      <ol>
+        <li>¿Confirman que <strong>nunca usan DDT/G4</strong> en entradas directas en frontera?
+          <span class="explanation">Si la mercancía entra directamente en frontera sin depósito temporal, no debe marcarse «Requiere DDT/G4». El botón <strong>0. G4 / DDT</strong> y el MRN N337 solo aplican cuando hay depósito previo. Confirmar que sus importaciones AD→ES son siempre directas.</span>
+        </li>
+        <li>¿Qué documentación entregan al importador tras el MRN?
+          <span class="explanation">Tras admitir CC415A, Odoo guarda MRN, adjuntos request/response y mensajes en chatter. Preguntar qué pack entregan al cliente (copia DUA, MRN, factura, albarán) y si falta algún informe o exportación desde Odoo.</span>
+        </li>
       </ol>
 
       <h2>5. Funcionalidades avanzadas y alcance</h2>
-      <ol start="26">
-        <li><strong>EXS (IE615):</strong> ¿lo usan alguna vez o se descarta en formación?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li><strong>Documentos requeridos TARIC</strong> (consulta API UE): ¿lo usan para certificados, CITES, etc.?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>Gestión de <strong>incidencias AEAT</strong>: ¿tienen proceso interno (responsable, plazos) cuando AEAT rechaza?<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Necesitan informes/listados adicionales? (por matrícula, cliente, pendientes de salida…)<span class="answer-line">Respuesta: _______________________________________________</span></li>
-        <li>¿Integración con facturación/contabilidad Odoo o el módulo aduanero es independiente?<span class="answer-line">Respuesta: _______________________________________________</span></li>
+      <ol>
+        <li><strong>EXS (IE615):</strong> ¿lo usan alguna vez o se descarta en formación?
+          <span class="explanation">Declaración sumaria de exportación (EXS) distinta del DUA completo CC515C. El módulo tiene servicio IE615 configurado. Confirmar si Traldis la usa en algún flujo o se puede omitir en formación inicial.</span>
+        </li>
+        <li>Gestión de <strong>incidencias AEAT</strong>: ¿tienen proceso interno (responsable, plazos) cuando AEAT rechaza?
+          <span class="explanation">Los rechazos crean registros de <strong>incidencias</strong> en el expediente (tipo rechazo, pendiente/resuelta). No se puede cerrar un expediente con incidencias pendientes. Contrastar quién las resuelve y en qué plazo en su organización.</span>
+        </li>
+        <li>¿Necesitan informes/listados adicionales? (por matrícula, cliente, pendientes de salida…)
+          <span class="explanation">Hoy hay vistas de expedientes por estado, filtros y chatter. Preguntar si necesitan listados específicos (pendientes de salida efectiva, por matrícula, por cliente, KPIs mensuales) para desarrollo futuro.</span>
+        </li>
       </ol>
 
       <div class="notes-box">
-        <h2>Referencia — ya alineado con el módulo</h2>
+        <h2>Ya definido — no hace falta preguntar en reunión</h2>
         <ul>
-          <li>Presentación exportación = mensaje <strong>CC515C</strong> (no el PDF DUA).</li>
-          <li>Presentación importación = mensaje <strong>CC415A</strong> (H1).</li>
-          <li>La factura PDF <strong>no se envía a AEAT</strong>; solo la referencia N380.</li>
-          <li>Traldis como declarante en representación indirecta.</li>
-          <li>Validación de certificado antes de presentar importación.</li>
+          <li><strong>Expediente y facturas:</strong> 1 expediente = 1 DUA (1 presentación AEAT). Puede incluir <strong>varias facturas PDF</strong>; cada una aporta líneas y su N380. El wizard «Subir facturas» crea un expediente por PDF si no hay uno abierto.</li>
+          <li>Presentación exportación = <strong>CC515C</strong> (no el PDF DUA interno). Importación = <strong>CC415A</strong> (H1).</li>
+          <li>Factura PDF <strong>no se envía a AEAT</strong>; solo referencia <strong>N380</strong> (por línea / factura vinculada).</li>
+          <li><strong>Representación indirecta</strong> por defecto (Traldis declarante). Import siempre indirecta. Directa solo export si se elige en el expediente.</li>
+          <li><strong>Importación — flujo tras error:</strong> corregir datos → <strong>4. Presentar importación</strong> (regenera XML). «1. Validar» y «2. Generar CC415A» son opcionales (revisión previa).</li>
+          <li><strong>Lugar de entrega</strong> configurable en import y export (DeliveryTerms); consignatario = importer/consignee legal.</li>
+          <li>Estado <strong>Cerrado</strong>: botón manual + auto-cierre configurable (export al salir, import opcional al MRN).</li>
+          <li>Cron bandeja AEAT disponible (desactivado por defecto; EXPORAES / IMPORAES).</li>
+          <li>Validación certificado P12 antes de presentar importación.</li>
         </ul>
       </div>
     </article>

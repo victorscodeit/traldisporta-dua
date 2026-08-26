@@ -43,11 +43,13 @@ class AduanasConfigSettings(models.TransientModel):
     auto_close_export_on_exited = fields.Boolean(
         string="Cerrar export al confirmar salida efectiva",
         default=True,
+        store=False,
         help="Tras salida efectiva AEAT (bandeja/CCAESC), pasa el expediente de exportación a «Cerrado».",
     )
     auto_close_import_on_accepted = fields.Boolean(
         string="Cerrar import al admitir MRN",
         default=False,
+        store=False,
         help="Tras presentación CC415A aceptada, cierra el expediente de importación automáticamente.",
     )
 
@@ -105,20 +107,40 @@ class AduanasConfigSettings(models.TransientModel):
             if field_name == "aeat_endpoint_imp_decl" and "ADIM-JDIT/ws/imp/DeclaracionSOAP" in value:
                 value = default
             icp.set_param(param, value)
+        form_vals = {}
         if self.cert_upload:
             name = self.cert_upload_filename or "cert_aeat.p12"
             if not name.lower().endswith((".p12", ".pfx")):
                 name = name + ".p12" if "." not in name else name
-            attachment = self.env["ir.attachment"].sudo().create({
+            # No vincular al transient: Odoo limpia adjuntos de registros temporales
+            # y el certificado desaparecería; guardar como adjunto permanente.
+            Attachment = self.env["ir.attachment"].sudo()
+            old_id = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0)
+            attachment = Attachment.create({
                 "name": name,
                 "datas": self.cert_upload,
-                "res_model": "aduanas.config.settings",
-                "res_id": self.id,
+                "type": "binary",
                 "mimetype": "application/x-pkcs12",
+                "res_model": False,
+                "res_id": 0,
+                "public": False,
             })
-            icp.set_param("aduanas_transport.cert_attachment_id", attachment.id)
+            icp.set_param("aduanas_transport.cert_attachment_id", str(attachment.id))
+            if old_id and old_id != attachment.id:
+                old_att = Attachment.browse(old_id).exists()
+                if old_att and old_att.res_model in (False, "", "aduanas.config.settings"):
+                    # Solo borrar adjuntos de certificado huérfanos / del wizard
+                    try:
+                        old_att.unlink()
+                    except Exception:
+                        pass
+            form_vals.update({
+                "cert_attachment_id": attachment.id,
+                "cert_upload": False,
+                "cert_upload_filename": False,
+            })
         elif self.cert_attachment_id:
-            icp.set_param("aduanas_transport.cert_attachment_id", self.cert_attachment_id.id)
+            icp.set_param("aduanas_transport.cert_attachment_id", str(self.cert_attachment_id.id))
         icp.set_param(
             "aduanas_transport.auto_close_export_on_exited",
             "1" if self.auto_close_export_on_exited else "0",
@@ -127,6 +149,10 @@ class AduanasConfigSettings(models.TransientModel):
             "aduanas_transport.auto_close_import_on_accepted",
             "1" if self.auto_close_import_on_accepted else "0",
         )
+        if form_vals:
+            self.write(form_vals)
+        # Reabrir el formulario para que «Certificado actual» muestre el adjunto nuevo
+        action = self.env.ref("aduanas_transport.action_aduanas_config").sudo().read()[0]
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
@@ -135,5 +161,6 @@ class AduanasConfigSettings(models.TransientModel):
                 "message": _("Configuración Aduanas AEAT actualizada."),
                 "type": "success",
                 "sticky": False,
+                "next": action,
             },
         }
