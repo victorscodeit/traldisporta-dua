@@ -1515,6 +1515,7 @@ class AduanaExpediente(models.Model):
             if parsed.get(src):
                 updates[dst] = parsed[src]
         date_mapping = {
+            "fecha_hora_alta": "fecha_recepcion",
             "fecha_admision": "fecha_admision_aes",
             "fecha_levante": "fecha_levante",
             "fecha_llegada": "fecha_llegada_salida",
