@@ -48,46 +48,46 @@
     <field name="arch" type="xml">
       <form string="Expediente Aduanero">
         <header>
-          <!-- Botones principales en orden: Procesar Factura, Verificación IA, Generar DUA, Consultar bandeja -->
+          <!-- Preparación (solo borrador / predeclarado / error) -->
           <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('factura_pdf', '=', False), ('factura_procesada', '=', True), ('tiene_facturas_por_procesar', '=', False)]}"
-                  help="Extrae datos de la factura PDF usando IA/OCR. Se oculta si ya está procesada y no hay facturas pendientes."/>
+                  attrs="{'invisible': ['|', '|', '|', ('factura_pdf', '=', False), ('factura_procesada', '=', True), ('tiene_facturas_por_procesar', '=', False), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Extrae datos de la factura PDF (OCR). Solo en preparación."/>
           <button name="action_realizar_verificacion_ia" string="Realizar Verificación IA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('line_ids', '=', []), ('verificacion_ia_estado', '=', 'ok'), ('tiene_facturas_por_procesar', '=', True)]}"
-                  help="Verifica partidas y coherencia. Se oculta si la verificación ya está OK o aún hay facturas por procesar."/>
+                  attrs="{'invisible': ['|', '|', '|', ('line_ids', '=', []), ('verificacion_ia_estado', '=', 'ok'), ('tiene_facturas_por_procesar', '=', True), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Verifica partidas y coherencia. Solo en preparación si aún no está OK."/>
 
           <!-- Exportación AES -->
           <button name="action_generate_dua" string="Generar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('dua_generado', '=', True)]}"
-                  help="Genera el DUA de exportación (CUSDEC EX1). Conviene tener factura procesada o líneas rellenadas."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', True), ('state', 'not in', ('draft', 'error'))]}"
+                  help="Genera el DUA de exportación (CUSDEC EX1)."/>
           <button name="action_generate_dua" string="Regenerar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('dua_generado', '=', False)]}"
-                  help="Regenera el DUA de exportación (CUSDEC EX1)"/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'not in', ('draft', 'predeclared', 'presented', 'error'))]}"
+                  help="Regenera el DUA antes de presentar o tras un error."/>
           <button name="action_send_cc515c" string="Presentar DUA a AEAT" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                  help="Envía el DUA (CUSDEC EX1) al endpoint configurado. Por defecto preproducción. Configurar en Aduanas &gt; Configuración."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'not in', ('draft', 'predeclared', 'presented', 'error'))]}"
+                  help="Envía el DUA (CC515C) a AEAT. No disponible tras aceptación."/>
           <button name="action_consultar_estado_dua" string="Consultar Estado DUA" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
-                  help="Consulta CCAESC/estado AES para obtener aceptación, circuito, levantes, errores y salida efectiva."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', '=', 'closed')]}"
+                  help="Consulta CCAESC/estado AES por MRN."/>
           <button name="action_notificar_llegada_salida" string="Notificar Llegada Salida" type="object"
-                  attrs="{'invisible': ['|', '|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed', 'released')), ('fecha_llegada_salida', '!=', False)]}"
-                  help="CC507C solo en salida indirecta (aduana de salida distinta). No usar si ya hay llegada registrada o el DUA está en levante/salida."/>
+                  attrs="{'invisible': ['|', '|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', '!=', 'accepted'), ('fecha_llegada_salida', '!=', False)]}"
+                  help="CC507C solo con MRN aceptado y salida indirecta (sin llegada registrada)."/>
           <button name="action_poll_bandeja" string="Consultar Bandeja AEAT" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
-                  help="Bandeja EXPORAES: levante y salida efectiva de exportación."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', '=', 'closed')]}"
+                  help="Bandeja EXPORAES: levante y salida efectiva."/>
 
           <!-- Importación H1 -->
           <button name="action_abrir_g4_ddt" string="0. G4 / DDT (MRN)" type="object"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                  help="Solo si «Requiere DDT/G4 previo» está activo. G4Dec (depósito temporal)."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Solo si requiere DDT/G4 y el expediente aún está en preparación."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                  help="Comprueba datos obligatorios antes de generar la declaración de importación."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Comprueba datos obligatorios antes de generar/presentar."/>
 
           <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
@@ -100,25 +100,26 @@
 
           <button name="action_generate_imp_decl" string="2. Generar declaración" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                  help="Prepara la declaración de importación (XML H1 / CC415A) para país tercero → España."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Prepara o regenera el XML de importación (H1 / CC415A)."/>
+          <!-- Previsualizar XML: solo técnico; oculto para usuarios operativos -->
           <button name="action_preview_imp_decl" string="3. Previsualizar declaración" type="object"
-                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"
-                  help="Abre el XML de la declaración de importación (CC415A) para revisarlo."/>
-          <button name="action_send_imp_decl" string="4. Presentar importación" type="object"
+                  invisible="1"
+                  help="Abre el XML técnico CC415A (uso soporte)."/>
+          <button name="action_send_imp_decl" string="3. Presentar importación" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('mrn', '!=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                  help="Envía la declaración de importación (CC415A) al endpoint H1 de Aduanas &gt; Configuración."/>
-          <button name="action_consultar_estado_importacion" string="5. Consultar estado" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
-                  help="Consulta importación CAU/H1 por MRN (ConsultaImportacionV3)."/>
-          <button name="action_poll_bandeja" string="6. Bandeja importación" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('mrn', '!=', False), ('state', 'not in', ('draft', 'predeclared', 'presented', 'error'))]}"
+                  help="Envía la declaración a AEAT. Se oculta cuando ya hay MRN."/>
+          <button name="action_consultar_estado_importacion" string="4. Consultar estado" type="object"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('mrn', '=', False), ('state', '=', 'closed')]}"
+                  help="Consulta importación por MRN (ConsultaImportacionV3)."/>
+          <button name="action_poll_bandeja" string="5. Bandeja importación" type="object"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('mrn', '=', False), ('state', '=', 'closed')]}"
                   help="Bandeja IMPORAES: comunicaciones AEAT de importación."/>
 
           <button name="action_cerrar_expediente" string="Cerrar expediente" type="object"
                   attrs="{'invisible': ['|', ('state', '=', 'closed'), '|', '&amp;', ('direction', '=', 'export'), ('state', '!=', 'exited'), '&amp;', ('direction', '=', 'import'), ('state', 'not in', ('accepted', 'exited'))]}"
-                  help="Archiva el expediente como terminado. Export: tras salida efectiva. Import: tras MRN aceptado."/>
+                  help="Archiva el expediente. Export: tras salida efectiva. Import: tras MRN aceptado."/>
 
           <field name="state" widget="statusbar"
                  statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
@@ -146,14 +147,15 @@
             <button name="action_subir_facturas" string="Subir facturas" type="object"
                     class="oe_highlight"
                     icon="fa-upload"
-                    help="Sube múltiples facturas PDF de golpe y las añade a este expediente"/>
+                    attrs="{'invisible': [('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                    help="Sube facturas PDF. Solo en preparación (antes de aceptar el DUA)."/>
             <button name="action_procesar_todas_facturas" 
                     string="Procesar facturas" 
                     type="object"
                     class="oe_highlight"
                     icon="fa-cog"
-                    attrs="{'invisible': [('tiene_facturas_por_procesar', '=', False)]}"
-                    help="Procesa todas las facturas pendientes del expediente. Se oculta si no hay ninguna pendiente."/>
+                    attrs="{'invisible': ['|', ('tiene_facturas_por_procesar', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                    help="Procesa facturas pendientes. Solo en preparación."/>
             <field name="factura_ids" nolabel="1" colspan="2"
                    context="{'default_expediente_id': id}">
               <tree>
