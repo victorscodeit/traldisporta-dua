@@ -75,8 +75,8 @@
                   attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
                   help="Consulta CCAESC/estado AES para obtener aceptación, circuito, levantes, errores y salida efectiva."/>
           <button name="action_notificar_llegada_salida" string="Notificar Llegada Salida" type="object"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed'))]}"
-                  help="Envía CC507C: mercancía presentada en la aduana de salida."/>
+                  attrs="{'invisible': ['|', '|', '|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed', 'released')), ('fecha_llegada_salida', '!=', False)]}"
+                  help="CC507C solo en salida indirecta (aduana de salida distinta). No usar si ya hay llegada registrada o el DUA está en levante/salida."/>
           <button name="action_poll_bandeja" string="Consultar Bandeja AEAT" type="object"
                   attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
                   help="Bandeja EXPORAES: levante y salida efectiva de exportación."/>

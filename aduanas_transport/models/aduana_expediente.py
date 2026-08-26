@@ -2219,17 +2219,44 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("La notificación CC507C solo aplica a exportación."))
+            if not rec.mrn:
+                raise UserError(_("Debe tener MRN antes de notificar la llegada a aduana de salida."))
+            if rec.state in ("exited", "closed"):
+                raise UserError(
+                    _("El expediente %s ya está en salida efectiva o cerrado; no corresponde CC507C.")
+                    % rec.name
+                )
+            if rec.fecha_llegada_salida:
+                raise UserError(
+                    _(
+                        "La llegada a aduana de salida ya está registrada (%s). "
+                        "No vuelva a enviar CC507C. Use «Consultar Estado DUA» o «Consultar Bandeja AEAT» "
+                        "para seguir el levante/salida."
+                    )
+                    % fields.Datetime.to_string(rec.fecha_llegada_salida)
+                )
+            aes = (rec.aes_estado or "").upper()
+            if aes in ("PS", "SA", "SE", "ST"):
+                raise UserError(
+                    _(
+                        "El estado AES actual (%s) no permite notificar la llegada (CC507C). "
+                        "AEAT solo admite CC507C cuando la mercancía llega a una aduana de salida "
+                        "distinta (salida indirecta) y aún no se ha notificado. "
+                        "Use «Consultar Estado DUA» / «Consultar Bandeja AEAT»."
+                    )
+                    % aes
+                )
             settings = rec._get_settings()
             endpoint = settings.get("aeat_endpoint_cc507c")
             if not endpoint:
                 raise UserError(_("Configure el endpoint de llegada a aduana de salida (CC507C) en Aduanas > Configuración."))
             export_office, exit_declared_office, _base, _note = rec._get_cc515c_office_codes()
-            if export_office == exit_declared_office and not rec.oficina_destino:
+            if export_office == exit_declared_office:
                 raise UserError(_(
                     "No corresponde enviar CC507C para una salida directa: la aduana de exportación "
-                    "y la aduana de salida declarada son la misma (%s). Use Consultar Estado DUA o "
+                    "y la aduana de salida son la misma (%s). Use Consultar Estado DUA o "
                     "Consultar Bandeja AEAT. Solo use CC507C si la salida real es otra aduana española; "
-                    "en ese caso informe 'Oficina aduanas de salida' antes de notificar llegada."
+                    "en ese caso indique esa oficina en «Oficina aduanas de salida»."
                 ) % exit_declared_office)
             soap_payload = rec._build_cc507c_soap_envelope()
             rec._attach_xml("%s_CC507C_request.xml" % rec.name, soap_payload)

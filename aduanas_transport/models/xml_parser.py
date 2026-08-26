@@ -766,6 +766,7 @@ class AduanaXmlParser(models.AbstractModel):
             "csv_levante": aes.get("csv_levante_export"),
             "csv_levante_salida": aes.get("csv_levante_salida"),
             "csv_certificado_salida": aes.get("csv_certificado_salida"),
+            "fecha_admision": aes.get("fecha_admision"),
             "fecha_levante": aes.get("fecha_levante"),
             "fecha_llegada": aes.get("fecha_llegada"),
             "fecha_levante_salida": aes.get("fecha_levante_salida"),
@@ -829,6 +830,7 @@ class AduanaXmlParser(models.AbstractModel):
             "csv_levante_export": None,
             "csv_levante_salida": None,
             "csv_certificado_salida": None,
+            "fecha_admision": None,
             "fecha_levante": None,
             "fecha_llegada": None,
             "fecha_levante_salida": None,
@@ -856,6 +858,9 @@ class AduanaXmlParser(models.AbstractModel):
             result["csv_levante_export"] = self._xml_text(root, "CSVLevanteExportacion")
             result["csv_levante_salida"] = self._xml_text(root, "CSVLevanteSalida")
             result["csv_certificado_salida"] = self._xml_text(root, "CSVCertificadoSalida")
+            fecha_admision = self._xml_text(root, "fechaAdmision") or self._xml_text(root, "FechaAdmision")
+            if fecha_admision and len(fecha_admision) >= 10:
+                result["fecha_admision"] = fecha_admision[:10]
             fecha_levante = self._xml_text(root, "fechaLevante")
             if fecha_levante and len(fecha_levante) >= 10:
                 result["fecha_levante"] = fecha_levante[:10]
