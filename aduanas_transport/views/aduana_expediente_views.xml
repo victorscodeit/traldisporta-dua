@@ -28,13 +28,13 @@
         <field name="consignatario"/>
         <field name="oficina"/>
         <field name="mrn"/>
-        <field name="levante_estado_color" widget="badge"
+        <field name="levante_estado_color" widget="badge" optional="hide"
                decoration-muted="levante_estado_color == 'pendiente'"
                decoration-info="levante_estado_color in ('admitido', 'control')"
                decoration-warning="levante_estado_color == 'levante'"
                decoration-success="levante_estado_color in ('salida', 'cerrado')"
                decoration-danger="levante_estado_color == 'error'"/>
-        <field name="iva_exportacion_exento" widget="boolean_toggle"/>
+        <field name="iva_exportacion_exento" widget="boolean_toggle" optional="hide"/>
         <field name="state" string="Estado" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="create_date" string="Fecha creación"/>
       </tree>
@@ -122,7 +122,11 @@
                   help="Archiva el expediente. Export: tras salida efectiva. Import: tras MRN aceptado."/>
 
           <field name="state" widget="statusbar"
-                 statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"/>
+                 statusbar_visible="draft,predeclared,presented,accepted,released,exited,closed,error"
+                 attrs="{'invisible': [('direction', '=', 'import')]}"/>
+          <field name="state" widget="statusbar"
+                 statusbar_visible="draft,predeclared,presented,accepted,closed,error"
+                 attrs="{'invisible': [('direction', '!=', 'import')]}"/>
         </header>
 
         <sheet>
@@ -318,13 +322,19 @@
           
           <group string="Fechas" col="4">
             <field name="fecha_prevista"/>
-            <field name="fecha_salida_real"/>
-            <field name="fecha_entrada_real"/>
-            <field name="fecha_levante"/>
-            <field name="fecha_admision_aes" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
-            <field name="fecha_llegada_salida" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
-            <field name="fecha_levante_salida" readonly="1" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
             <field name="fecha_recepcion"/>
+            <field name="fecha_entrada_real"
+                   attrs="{'invisible': [('direction', '!=', 'import')]}"/>
+            <field name="fecha_salida_real"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_levante"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_admision_aes" readonly="1"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_llegada_salida" readonly="1"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+            <field name="fecha_levante_salida" readonly="1"
+                   attrs="{'invisible': [('direction', '!=', 'export')]}"/>
           </group>
           
           <group string="Transporte" col="2">
@@ -334,8 +344,7 @@
               <field name="pais_transporte"/>
               <field name="transportista"/>
               <field name="remolque"/>
-              <field name="location_authorisation_number"
-                     attrs="{'invisible': [('direction', 'not in', ('export', 'import'))]}"/>
+              <field name="location_authorisation_number"/>
               <field name="codigo_transporte"/>
             </group>
             <group>
@@ -448,13 +457,14 @@
                 </tree>
               </field>
             </page>
-            <page string="Totales">
+            <page string="Totales"
+                  attrs="{'invisible': [('direction', '=', 'import')]}">
               <group>
                 <field name="valor_factura"/>
                 <field name="moneda"/>
                 <field name="pais_origen" readonly="1" help="Se rellena automáticamente desde el sentido y el país del remitente/consignatario."/>
                 <field name="pais_destino" string="País destino (ISO)" readonly="1" help="Se rellena automáticamente desde el sentido y el país del remitente/consignatario."/>
-                <field name="region_of_dispatch" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
+                <field name="region_of_dispatch"/>
               </group>
             </page>
             <page string="Documentos Requeridos" name="documentos_requeridos">
