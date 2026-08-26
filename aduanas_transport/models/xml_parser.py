@@ -110,6 +110,36 @@ class AduanaXmlParser(models.AbstractModel):
                 values.append((elem.text or "").strip())
         return values
 
+    def _enrich_import_response_metadata(self, root, result):
+        """Extrae fechas, oficina y CSV de respuestas CC415A / ConsultaImportacionV3."""
+        prep = self._find_first_text(root, "preparationDateAndTime")
+        if prep:
+            result["fecha_hora_alta"] = prep.replace("T", " ")[:19]
+        accept = self._find_first_text(
+            root, "declarationAcceptanceDateAndTime", "declarationAcceptanceDate"
+        )
+        if accept:
+            result["fecha_aceptacion"] = accept.replace("T", " ")[:19]
+        reg = self._find_first_text(root, "declarationRegistrationDateAndTime")
+        if reg:
+            result["fecha_registro"] = reg.replace("T", " ")[:19]
+        reject = self._find_first_text(root, "rejectionDateAndTime")
+        if reject:
+            result["fecha_rechazo"] = reject.replace("T", " ")[:19]
+        for elem in root.iter():
+            if self._local_name(elem.tag) == "CustomsOfficeOfImport":
+                office = self._find_first_text(elem, "referenceNumber")
+                if office:
+                    result["oficina"] = office.strip()
+                break
+        csv_id = self._find_first_text(root, "edeclarationCSVId")
+        if csv_id:
+            result["csv_declaracion"] = csv_id.strip()
+        customs_reg = self._find_first_text(root, "customsRegistrationNumber")
+        if customs_reg and not result.get("mrn"):
+            result["mrn"] = customs_reg.strip()
+        return result
+
     def parse_cc415a_response(self, xml_text, service_name="IMP_DECL"):
         """
         Parser respuestas importación H1 (CC415AV1Sal): CC415R, CC456A, CD917A, SOAP Fault.
@@ -202,11 +232,12 @@ class AduanaXmlParser(models.AbstractModel):
                     "Respuesta AEAT importación sin MRN ni errores reconocidos. Revise el adjunto."
                 )
                 result["errors"].append(result["error"])
+            self._enrich_import_response_metadata(root, result)
             return result
         except ParseError as e:
             mrn = _extract_mrn_from_raw_text(xml_text)
             if mrn:
-                return {
+                fallback = {
                     "success": True,
                     "mrn": mrn,
                     "accepted": True,
@@ -216,6 +247,13 @@ class AduanaXmlParser(models.AbstractModel):
                     "incidencias": [],
                     "raw_xml": xml_text,
                 }
+                try:
+                    root_fb, _ok = _parse_with_lxml_recover(xml_text)
+                    if root_fb is not None:
+                        self._enrich_import_response_metadata(root_fb, fallback)
+                except Exception:
+                    pass
+                return fallback
             err = _("La respuesta AEAT no es XML válido: %s") % e
             return {"success": False, "error": err, "errors": [err], "raw_xml": xml_text}
         except Exception as e:

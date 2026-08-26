@@ -1516,6 +1516,20 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         # No limitar líneas - devolver todas las encontradas (pueden ser cientos en facturas grandes)
         return lineas
 
+    def _parse_invoice_date(self, date_str):
+        """Convierte fecha de factura (DD/MM/YYYY, DD.MM.YYYY, etc.) a datetime Odoo."""
+        if not date_str:
+            return False
+        text = str(date_str).strip()
+        for fmt in ("%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d"):
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(text[:10], fmt)
+                return fields.Datetime.to_datetime(dt)
+            except ValueError:
+                continue
+        return False
+
     def fill_expediente_from_invoice(self, expediente, invoice_data, factura=None):
         """
         Rellena los campos de un expediente con los datos extraídos de la factura.
@@ -1623,6 +1637,28 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         if invoice_data.get("codigo_transporte"):
             vals["codigo_transporte"] = invoice_data["codigo_transporte"]
+
+        # Fecha prevista desde la fecha de la factura
+        if invoice_data.get("fecha_factura") and not expediente.fecha_prevista:
+            parsed_date = self._parse_invoice_date(invoice_data["fecha_factura"])
+            if parsed_date:
+                vals["fecha_prevista"] = parsed_date
+
+        # Perfil Traldis: rellenar campos vacíos según sentido (oficina, tributos import, etc.)
+        direction = vals.get("direction") or expediente.direction
+        if direction:
+            profile = expediente._get_expediente_profile_defaults(direction)
+            for key, value in profile.items():
+                current = vals.get(key)
+                if current is None and key in expediente._fields:
+                    current = expediente[key]
+                if current in (False, None, "", 0.0) and value not in (False, None, ""):
+                    vals[key] = value
+
+        # LRN importación = referencia del expediente
+        if (vals.get("direction") or expediente.direction) == "import":
+            if not expediente.lrn and not vals.get("lrn") and expediente.name:
+                vals["lrn"] = expediente.name
         
         # Buscar o crear remitente
         if invoice_data.get("remitente_nif") or invoice_data.get("remitente_nombre"):
@@ -1689,6 +1725,8 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 else:
                     # Si es otro error, re-lanzar
                     raise
+
+        expediente._sync_delivery_partners()
         
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):

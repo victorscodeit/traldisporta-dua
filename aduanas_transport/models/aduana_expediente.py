@@ -413,6 +413,8 @@ class AduanaExpediente(models.Model):
             for key, value in profile.items():
                 if key not in vals or vals.get(key) in (False, None, ""):
                     vals[key] = value
+            if direction == "import" and not vals.get("lrn") and vals.get("name"):
+                vals["lrn"] = vals["name"]
             # Si se sube una factura, cambiar el estado a "pendiente", si no, mantener "sin_factura"
             if vals.get('factura_pdf') and not vals.get('factura_estado_procesamiento'):
                 vals['factura_estado_procesamiento'] = 'pendiente'
@@ -1578,6 +1580,65 @@ class AduanaExpediente(models.Model):
             self.with_context(mail_notrack=True).message_post(body=body, subtype_xmlid="mail.mt_note")
         if updates.get("state") == "exited":
             self._auto_close_expediente_if_configured(trigger="exited")
+
+    def _apply_import_parsed_response(self, parsed, source="AEAT"):
+        """Aplica MRN, LRN, fechas y oficina desde respuestas CC415A / consulta importación."""
+        self.ensure_one()
+        if self.direction != "import":
+            return
+        updates = {
+            "last_response_date": fields.Datetime.now(),
+            "error_message": False,
+        }
+        if parsed.get("mrn"):
+            updates["mrn"] = parsed["mrn"]
+        if parsed.get("lrn"):
+            updates["lrn"] = parsed["lrn"]
+        if parsed.get("oficina") and not self.oficina:
+            updates["oficina"] = parsed["oficina"]
+        if parsed.get("csv_declaracion"):
+            updates["aes_csv_declaracion"] = parsed["csv_declaracion"]
+
+        for src, dst in (
+            ("fecha_hora_alta", "fecha_recepcion"),
+            ("fecha_registro", "fecha_recepcion"),
+            ("fecha_aceptacion", "fecha_entrada_real"),
+            ("fecha_admision", "fecha_entrada_real"),
+        ):
+            if parsed.get(src) and not self[dst]:
+                dt = self._to_odoo_datetime(parsed[src])
+                if dt:
+                    updates[dst] = dt
+
+        if not self.fecha_recepcion and "fecha_recepcion" not in updates:
+            for src in ("fecha_hora_alta", "fecha_registro", "fecha_aceptacion"):
+                if parsed.get(src):
+                    dt = self._to_odoo_datetime(parsed[src])
+                    if dt:
+                        updates["fecha_recepcion"] = dt
+                    break
+
+        if parsed.get("accepted") or parsed.get("mrn"):
+            if self.state in ("draft", "predeclared", "presented", "error"):
+                updates["state"] = "accepted"
+
+        self.write(updates)
+
+        if updates.get("state") == "accepted":
+            body = _("Importación admitida por AEAT (%s). MRN: %s") % (
+                source,
+                self.mrn or _("no informado"),
+            )
+            if updates.get("fecha_recepcion"):
+                body += _("\nFecha recepción: %s") % updates["fecha_recepcion"]
+            self.with_context(mail_notrack=True).message_post(body=body, subtype_xmlid="mail.mt_note")
+            self._auto_close_expediente_if_configured(trigger="accepted")
+
+    def _ensure_import_lrn(self):
+        """LRN de importación H1: por defecto la referencia del expediente (EXP-xxx)."""
+        for rec in self:
+            if rec.direction == "import" and not rec.lrn and rec.name:
+                rec.lrn = rec.name
 
     def _auto_close_expediente_if_configured(self, trigger="exited"):
         """Cierra el expediente si la automatización está activa en configuración."""
@@ -3147,6 +3208,7 @@ class AduanaExpediente(models.Model):
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
+            rec._ensure_import_lrn()
             xml = rec._build_cc415a_soap_envelope()
             rec._attach_xml(f"{rec.name}_CC415A.xml", xml)
             rec.state = "predeclared"
@@ -3166,6 +3228,7 @@ class AduanaExpediente(models.Model):
             settings = rec._get_settings()
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
+            rec._ensure_import_lrn()
             xml_content = rec._build_cc415a_soap_envelope()
             endpoint = settings.get("aeat_endpoint_imp_decl")
             rec._validate_aeat_endpoint_for_xml(endpoint, xml_content, "import")
@@ -3206,23 +3269,15 @@ class AduanaExpediente(models.Model):
             parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
             
             if parsed.get("success") and (parsed.get("mrn") or parsed.get("accepted")):
-                rec.state = "accepted"
-                if parsed.get("mrn"):
-                    rec.mrn = parsed["mrn"]
-                rec.error_message = False
+                rec._apply_import_parsed_response(parsed, source="CC415A")
                 messages = parsed.get("messages") or []
-                body = _("Declaración importación H1 aceptada. MRN: %s") % (
-                    rec.mrn or _("pendiente/no informado en respuesta")
-                )
                 if messages:
-                    body += _("\nMensajes: %s") % "\n".join(messages)
                     rec.with_context(mail_notrack=True).message_post(
-                    body=body,
-                    subtype_xmlid="mail.mt_note",
-                )
+                        body=_("Mensajes AEAT: %s") % "\n".join(messages),
+                        subtype_xmlid="mail.mt_note",
+                    )
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
-                rec._auto_close_expediente_if_configured(trigger="accepted")
             else:
                 rec.state = "error"
                 error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")
@@ -3305,11 +3360,7 @@ class AduanaExpediente(models.Model):
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
                 raise UserError(_("La consulta de importación devolvió errores:\n%s") % rec.error_message)
-            if parsed.get("mrn"):
-                rec.mrn = parsed["mrn"]
-            rec.error_message = False
-            if rec.state in ("draft", "predeclared", "presented"):
-                rec.state = "accepted"
+            rec._apply_import_parsed_response(parsed, source="ConsultaImportacionV3")
             rec.with_context(mail_notrack=True).message_post(
                 body=_("Consulta importación V3 realizada correctamente para MRN %s.") % (rec.mrn or "-"),
                 subtype_xmlid="mail.mt_note",
