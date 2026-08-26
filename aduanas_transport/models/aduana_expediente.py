@@ -458,7 +458,7 @@ class AduanaExpediente(models.Model):
         if "requiere_ddt" in vals and not vals.get("requiere_ddt"):
             vals.setdefault("ddt_type", "none")
             vals.setdefault("mrn_ddt", False)
-
+        
         result = super().write(vals)
         if any(k in vals for k in ("requiere_ddt", "mrn_ddt", "ddt_type", "import_previous_document_ref")):
             self._sync_ddt_legacy_fields()
@@ -631,6 +631,11 @@ class AduanaExpediente(models.Model):
             else:
                 record.factura_pdf_url = False
     factura_procesada = fields.Boolean(string="Factura Procesada", default=False, help="Indica si la factura ha sido procesada con IA")
+    tiene_facturas_por_procesar = fields.Boolean(
+        string="Hay facturas por procesar",
+        compute="_compute_tiene_facturas_por_procesar",
+        help="True si hay PDF legacy o facturas del expediente pendientes de OCR.",
+    )
     factura_estado_procesamiento = fields.Selection([
         ("sin_factura", "Sin Factura"),
         ("pendiente", "Pendiente de Procesar"),
@@ -645,6 +650,28 @@ class AduanaExpediente(models.Model):
     factura_mensaje_html = fields.Html(string="Mensaje de Procesamiento", compute="_compute_factura_mensaje_html", store=False, sanitize=False)
     factura_datos_extraidos = fields.Text(string="Datos Extraídos de Factura", readonly=True, help="Datos extraídos de la factura por IA/OCR")
     
+    @api.depends(
+        "factura_pdf",
+        "factura_procesada",
+        "factura_ids.factura_pdf",
+        "factura_ids.factura_procesada",
+        "factura_ids.factura_estado_procesamiento",
+    )
+    def _compute_tiene_facturas_por_procesar(self):
+        estados_pendientes = ("pendiente", "sin_factura", "error")
+        for rec in self:
+            pending = bool(rec.factura_pdf and not rec.factura_procesada)
+            if not pending:
+                for factura in rec.factura_ids:
+                    if (
+                        factura.factura_pdf
+                        and not factura.factura_procesada
+                        and factura.factura_estado_procesamiento in estados_pendientes
+                    ):
+                        pending = True
+                        break
+            rec.tiene_facturas_por_procesar = pending
+
     @api.depends('factura_estado_procesamiento', 'factura_mensaje_error')
     def _compute_factura_mensaje_html(self):
         """Genera el mensaje HTML con colores según el estado"""
@@ -1265,7 +1292,7 @@ class AduanaExpediente(models.Model):
                 "mimetype": mimetype,
                 "datas": base64.b64encode((xml_text or "").encode("utf-8"))
             })
-
+    
     _CHATTER_XML_PREVIEW_MAX = 32000
 
     def _post_chatter_soap_xml(
@@ -2723,7 +2750,7 @@ class AduanaExpediente(models.Model):
         duty_tax_amount = 0.0
         if self.import_declare_duty_a00:
             blocks.append(
-                self._imp_duty_tax_block_xml(seq, "A00", customs_value, 0.0, 0.0, "R")
+                self._imp_duty_tax_block_xml(seq, "A00", customs_value, 0.0, 0.0, method_b00)
             )
             seq += 1
         vat_base = customs_value + duty_tax_amount
@@ -2737,13 +2764,41 @@ class AduanaExpediente(models.Model):
 </CalculationOfTaxes>""" % (xml_escape(preference), "\n".join(blocks))
 
     def _imp_previous_document_xml(self, line, type_of_packages="CT"):
-        """PreviousDocument por partida; solo si requiere_ddt (N337 + MRN DDT/G4)."""
+        """PreviousDocument por partida (obligatorio AEAT con additionalDeclarationType=A).
+
+        - Con DDT/G4: N337 + MRN y masa/bultos.
+        - Sin DDT: N730 (CMR / doc. transporte) con nº factura u otra ref.
+          (N380 va en SupportingDocument, no aquí.)
+        """
         self.ensure_one()
-        if not self.requiere_ddt:
-            return ""
         if not line:
             raise UserError(_("PreviousDocument requiere una línea de mercancía."))
-        doc_type = "N337"
+
+        if not self.requiere_ddt:
+            # CMR / documento de transporte como previo cuando no hay depósito temporal.
+            # N380 es SupportingDocument (factura), no PreviousDocument.
+            doc_type = (self.import_previous_document_type or "N730").strip().upper() or "N730"
+            if doc_type == "N337":
+                doc_type = "N730"
+            reference = (
+                (self.import_previous_document_ref or "").strip()
+                or (self.numero_factura or "").strip()
+                or (self.name or "").strip()
+            )
+            if not reference:
+                raise UserError(
+                    _("Indique el nº de factura o la referencia del documento previo "
+                      "(obligatorio en CC415A tipo A sin DDT).")
+                )
+            return """<PreviousDocument>
+<sequenceNumber>1</sequenceNumber>
+<type>%s</type>
+<referenceNumber>%s</referenceNumber>
+</PreviousDocument>""" % (
+                xml_escape(doc_type[:4]),
+                xml_escape(reference[:70]),
+            )
+
         gross = line.peso_bruto or 0.0
         if gross <= 0:
             raise UserError(
@@ -2751,45 +2806,44 @@ class AduanaExpediente(models.Model):
                 % (line.item_number or line.id)
             )
 
-        if doc_type == "N337":
-            reference = self._normalize_n337_reference(self._get_mrn_ddt())
-            is_g4 = self._ddt_quantity_allows_decimals()
-            if is_g4:
-                quantity = "%.2f" % gross
-            else:
-                quantity = str(int(round(gross)))
-            packages_type = (type_of_packages or line.type_of_packages or "CT").strip().upper()
-            packages = int(line.bultos or 0)
-            is_bulk = packages_type == "FR" or packages <= 0
-            # Orden obligatorio según MPreviousDocumentType01 (ES_ctypes.xsd):
-            # referenceNumber → typeOfPackages → numberOfPackages → measurement… → quantity → goodsItemIdentifier
-            type_of_packages_xml = ""
-            packages_xml = ""
-            if not is_bulk:
-                type_of_packages_xml = "\n<typeOfPackages>%s</typeOfPackages>" % xml_escape(packages_type)
-                packages_xml = "\n<numberOfPackages>%s</numberOfPackages>" % packages
-            goods_item_xml = ""
-            if self._n337_reference_uses_goods_item(reference):
-                ddt_item = line.import_ddt_goods_item or line.item_number
-                if not ddt_item:
-                    raise UserError(
-                        _("Línea %s: indique el nº de partida del DDT/G4 (campo «Nº partida DDT»).")
-                        % (line.item_number or line.id)
-                    )
-                goods_item_xml = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(ddt_item))
-            return """<PreviousDocument>
+        reference = self._normalize_n337_reference(self._get_mrn_ddt())
+        is_g4 = self._ddt_quantity_allows_decimals()
+        if is_g4:
+            quantity = "%.2f" % gross
+        else:
+            quantity = str(int(round(gross)))
+        packages_type = (type_of_packages or line.type_of_packages or "CT").strip().upper()
+        packages = int(line.bultos or 0)
+        is_bulk = packages_type == "FR" or packages <= 0
+        # Orden obligatorio según MPreviousDocumentType01 (ES_ctypes.xsd):
+        # referenceNumber → typeOfPackages → numberOfPackages → measurement… → quantity → goodsItemIdentifier
+        type_of_packages_xml = ""
+        packages_xml = ""
+        if not is_bulk:
+            type_of_packages_xml = "\n<typeOfPackages>%s</typeOfPackages>" % xml_escape(packages_type)
+            packages_xml = "\n<numberOfPackages>%s</numberOfPackages>" % packages
+        goods_item_xml = ""
+        if self._n337_reference_uses_goods_item(reference):
+            ddt_item = line.import_ddt_goods_item or line.item_number
+            if not ddt_item:
+                raise UserError(
+                    _("Línea %s: indique el nº de partida del DDT/G4 (campo «Nº partida DDT»).")
+                    % (line.item_number or line.id)
+                )
+            goods_item_xml = "\n<goodsItemIdentifier>%s</goodsItemIdentifier>" % xml_escape(str(ddt_item))
+        return """<PreviousDocument>
 <sequenceNumber>1</sequenceNumber>
 <type>N337</type>
 <referenceNumber>%s</referenceNumber>%s%s
 <measurementUnitAndQualifier>KGMG</measurementUnitAndQualifier>
 <quantity>%s</quantity>%s
 </PreviousDocument>""" % (
-                xml_escape(reference[:70]),
-                type_of_packages_xml,
-                packages_xml,
-                xml_escape(quantity),
-                goods_item_xml,
-            )
+            xml_escape(reference[:70]),
+            type_of_packages_xml,
+            packages_xml,
+            xml_escape(quantity),
+            goods_item_xml,
+        )
 
     def _validate_aeat_endpoint_for_xml(self, endpoint, xml_content, direction):
         endpoint = (endpoint or "").strip()
@@ -3150,7 +3204,7 @@ class AduanaExpediente(models.Model):
                 continue
 
             parsed = parser.parse_aeat_response(resp_xml, "IMP_DECL")
-
+            
             if parsed.get("success") and (parsed.get("mrn") or parsed.get("accepted")):
                 rec.state = "accepted"
                 if parsed.get("mrn"):
@@ -3162,7 +3216,7 @@ class AduanaExpediente(models.Model):
                 )
                 if messages:
                     body += _("\nMensajes: %s") % "\n".join(messages)
-                rec.with_context(mail_notrack=True).message_post(
+                    rec.with_context(mail_notrack=True).message_post(
                     body=body,
                     subtype_xmlid="mail.mt_note",
                 )
@@ -3363,7 +3417,7 @@ class AduanaExpediente(models.Model):
                 origen, self.name,
             )
             origen = "manual"
-
+        
         for inc_data in incidencias_data:
             # Determinar prioridad según tipo
             prioridad_map = {

@@ -51,12 +51,12 @@
           <!-- Botones principales en orden: Procesar Factura, Verificación IA, Generar DUA, Consultar bandeja -->
           <button name="action_process_invoice_pdf" string="Procesar Factura PDF" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', ('factura_pdf', '=', False), ('factura_procesada', '=', True)]}"
-                  help="Extrae datos de la factura PDF usando IA/OCR"/>
+                  attrs="{'invisible': ['|', '|', ('factura_pdf', '=', False), ('factura_procesada', '=', True), ('tiene_facturas_por_procesar', '=', False)]}"
+                  help="Extrae datos de la factura PDF usando IA/OCR. Se oculta si ya está procesada y no hay facturas pendientes."/>
           <button name="action_realizar_verificacion_ia" string="Realizar Verificación IA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': [('line_ids', '=', [])]}"
-                  help="Realiza una verificación IA de las partidas arancelarias y coherencia de las líneas del expediente. Normaliza las partidas a 10 dígitos."/>
+                  attrs="{'invisible': ['|', '|', ('line_ids', '=', []), ('verificacion_ia_estado', '=', 'ok'), ('tiene_facturas_por_procesar', '=', True)]}"
+                  help="Verifica partidas y coherencia. Se oculta si la verificación ya está OK o aún hay facturas por procesar."/>
 
           <!-- Exportación AES -->
           <button name="action_generate_dua" string="Generar DUA" type="object"
@@ -75,7 +75,7 @@
                   attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
                   help="Consulta CCAESC/estado AES para obtener aceptación, circuito, levantes, errores y salida efectiva."/>
           <button name="action_notificar_llegada_salida" string="Notificar Llegada Salida" type="object"
-                  attrs="{'invisible': ['|', '|', '|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed', 'released')), ('fecha_llegada_salida', '!=', False)]}"
+                  attrs="{'invisible': ['|', '|', '|', ('direction', '!=', 'export'), ('mrn', '=', False), ('state', 'in', ('exited', 'closed', 'released')), ('fecha_llegada_salida', '!=', False)]}"
                   help="CC507C solo en salida indirecta (aduana de salida distinta). No usar si ya hay llegada registrada o el DUA está en levante/salida."/>
           <button name="action_poll_bandeja" string="Consultar Bandeja AEAT" type="object"
                   attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('mrn', '=', False)]}"
@@ -83,11 +83,11 @@
 
           <!-- Importación H1 -->
           <button name="action_abrir_g4_ddt" string="0. G4 / DDT (MRN)" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False)]}"
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
                   help="Solo si «Requiere DDT/G4 previo» está activo. G4Dec (depósito temporal)."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="Comprueba datos obligatorios antes de generar CC415A."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                  help="Comprueba datos obligatorios antes de generar la declaración de importación."/>
 
           <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
@@ -98,16 +98,17 @@
           <button name="action_preview_cc511c" string="(Export) Previsualizar CC511C" type="object"
                   invisible="1"/>
 
-          <button name="action_generate_imp_decl" string="2. Generar CC415A" type="object"
+          <button name="action_generate_imp_decl" string="2. Generar declaración" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="Genera el XML CC415A (H1) para país tercero → España."/>
-          <button name="action_preview_imp_decl" string="3. Previsualizar CC415A" type="object"
-                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                  help="Prepara la declaración de importación (XML H1 / CC415A) para país tercero → España."/>
+          <button name="action_preview_imp_decl" string="3. Previsualizar declaración" type="object"
+                  attrs="{'invisible': ['|', ('id', '=', False), ('direction', '!=', 'import')]}"
+                  help="Abre el XML de la declaración de importación (CC415A) para revisarlo."/>
           <button name="action_send_imp_decl" string="4. Presentar importación" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': [('direction', '!=', 'import')]}"
-                  help="Envía CC415A al endpoint H1 configurado en Aduanas &gt; Configuración."/>
+                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('mrn', '!=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                  help="Envía la declaración de importación (CC415A) al endpoint H1 de Aduanas &gt; Configuración."/>
           <button name="action_consultar_estado_importacion" string="5. Consultar estado" type="object"
                   attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('mrn', '=', False)]}"
                   help="Consulta importación CAU/H1 por MRN (ConsultaImportacionV3)."/>
@@ -137,6 +138,8 @@
           <field name="dua_generado" invisible="1"/>
           <field name="factura_procesada" invisible="1"/>
           <field name="factura_pdf" invisible="1"/>
+          <field name="tiene_facturas_por_procesar" invisible="1"/>
+          <field name="verificacion_ia_estado" invisible="1"/>
           
           <!-- FACTURAS DEL EXPEDIENTE -->
           <group string="Facturas" colspan="2">
@@ -149,8 +152,8 @@
                     type="object"
                     class="oe_highlight"
                     icon="fa-cog"
-                    attrs="{'invisible': [('factura_ids', '=', [])]}"
-                    help="Procesa todas las facturas pendientes del expediente"/>
+                    attrs="{'invisible': [('tiene_facturas_por_procesar', '=', False)]}"
+                    help="Procesa todas las facturas pendientes del expediente. Se oculta si no hay ninguna pendiente."/>
             <field name="factura_ids" nolabel="1" colspan="2"
                    context="{'default_expediente_id': id}">
               <tree>
