@@ -80,8 +80,11 @@ class SubirFacturasWizard(models.TransientModel):
                         linea.factura_pdf_filename,
                     )
                 else:
+                    direction = self.env.context.get("default_direction") or "export"
+                    if direction not in ("export", "import"):
+                        direction = "export"
                     expediente = self.env["aduana.expediente"].create({
-                        "direction": "export",
+                        "direction": direction,
                         "factura_pdf": linea.factura_pdf,
                         "factura_pdf_filename": linea.factura_pdf_filename or linea.name,
                         "factura_estado_procesamiento": "pendiente",
@@ -106,6 +109,9 @@ class SubirFacturasWizard(models.TransientModel):
                 "context": {"form_view_initial_mode": "edit"},
             }
         if expedientes_creados:
+            direction = self.env.context.get("default_direction") or "export"
+            if direction not in ("export", "import"):
+                direction = "export"
             return {
                 "type": "ir.actions.act_window",
                 "name": _("Expediciones Creadas"),
@@ -113,7 +119,13 @@ class SubirFacturasWizard(models.TransientModel):
                 "domain": [("id", "in", expedientes_creados)],
                 "view_mode": "tree,form",
                 "target": "current",
-                "context": {"default_direction": "export"},
+                "context": {
+                    "default_direction": direction,
+                    "hide_direction": True,
+                    "lock_direction": True,
+                    "hide_direction_filters": True,
+                    "hide_export_tracking": direction == "import",
+                },
             }
         
         raise UserError(_("No se pudo crear ninguna expedición."))

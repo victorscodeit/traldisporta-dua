@@ -9,6 +9,7 @@ export class ExpedienteListController extends ListController {
    }
    
    onClickSubirFacturas() {
+       const ctx = this.props.context || {};
        this.actionService.doAction({
           type: 'ir.actions.act_window',
           res_model: 'aduanas.subir.facturas.wizard',
@@ -18,6 +19,9 @@ export class ExpedienteListController extends ListController {
           views: [[false, 'form']],
           target: 'new',
           res_id: false,
+          context: {
+              default_direction: ctx.default_direction || 'export',
+          },
       });
    }
 }
@@ -27,4 +31,3 @@ registry.category("views").add("expediente_list_button", {
    Controller: ExpedienteListController,
    buttonTemplate: "aduanas_transport.ListView.Buttons",
 });
-

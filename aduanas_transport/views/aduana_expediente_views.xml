@@ -23,18 +23,20 @@
                string="Verif. IA"
                invisible="context.get('hide_verificacion_ia', False)"/>
         <field name="matricula"/>
-        <field name="direction"/>
+        <field name="direction" invisible="context.get('hide_direction', False)"/>
         <field name="remitente"/>
         <field name="consignatario"/>
         <field name="oficina"/>
         <field name="mrn"/>
-        <field name="levante_estado_color" widget="badge" optional="hide"
+        <field name="levante_estado_color" widget="badge"
                decoration-muted="levante_estado_color == 'pendiente'"
                decoration-info="levante_estado_color in ('admitido', 'control')"
                decoration-warning="levante_estado_color == 'levante'"
                decoration-success="levante_estado_color in ('salida', 'cerrado')"
-               decoration-danger="levante_estado_color == 'error'"/>
-        <field name="iva_exportacion_exento" widget="boolean_toggle" optional="hide"/>
+               decoration-danger="levante_estado_color == 'error'"
+               invisible="context.get('hide_export_tracking', False)"/>
+        <field name="iva_exportacion_exento" widget="boolean_toggle"
+               invisible="context.get('hide_export_tracking', False)"/>
         <field name="state" string="Estado" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="create_date" string="Fecha creación"/>
       </tree>
@@ -232,7 +234,9 @@
           <group string="Información general" col="2">
             <group>
               <field name="name"/>
-              <field name="direction"/>
+              <field name="direction"
+                     invisible="context.get('hide_direction', False)"
+                     readonly="context.get('lock_direction', False)"/>
               <field name="state" readonly="1"/>
               <field name="lrn" string="LRN" attrs="{'readonly': [('direction', '=', 'import')]}"/>
               <field name="mrn" string="MRN importación"
@@ -606,16 +610,20 @@
         <field name="matricula"/>
         <field name="msoft_codigo"/>
         <filter string="Pendientes" name="pending" domain="[('state', 'in', ('draft', 'predeclared', 'presented', 'accepted', 'released'))]"/>
+        <filter string="Pendientes importación" name="pending_import" domain="[('state', 'in', ('draft', 'predeclared', 'presented', 'accepted'))]"/>
         <filter string="Con Error" name="error" domain="[('state', '=', 'error')]"/>
         <filter string="Cerrados" name="closed" domain="[('state', '=', 'closed')]"/>
-        <filter string="Exportación" name="export_filter" domain="[('direction', '=', 'export')]"/>
-        <filter string="Importación" name="import_filter" domain="[('direction', '=', 'import')]"/>
+        <filter string="Exportación" name="export_filter" domain="[('direction', '=', 'export')]"
+               invisible="context.get('hide_direction_filters', False)"/>
+        <filter string="Importación" name="import_filter" domain="[('direction', '=', 'import')]"
+               invisible="context.get('hide_direction_filters', False)"/>
         <filter string="Hoy" name="today_filter" domain="[('create_date', '>=', datetime.combine(context_today(), time.min)), ('create_date', '&lt;=', datetime.combine(context_today(), time.max))]"/>
         <filter string="Con Incidencias Pendientes" name="with_pending_incidents" domain="[('incidencias_pendientes_count', '&gt;', 0)]"/>
         <group expand="0" string="Agrupar por">
           <filter string="Matrícula" name="group_by_matricula" context="{'group_by': 'matricula'}" icon="fa-truck"/>
           <filter string="Estado" name="group_by_state" context="{'group_by': 'state'}"/>
-          <filter string="Sentido" name="group_by_direction" context="{'group_by': 'direction'}"/>
+          <filter string="Sentido" name="group_by_direction" context="{'group_by': 'direction'}"
+                 invisible="context.get('hide_direction_filters', False)"/>
           <filter string="Remitente" name="group_by_remitente" context="{'group_by': 'remitente'}"/>
           <filter string="Fecha Prevista" name="group_by_fecha_prevista" context="{'group_by': 'fecha_prevista'}"/>
           <filter string="Oficina" name="group_by_oficina" context="{'group_by': 'oficina'}"/>
@@ -648,7 +656,7 @@
                   </div>
                 </div>
                 <div class="o_kanban_record_body">
-                  <field name="direction"/>
+                  <field name="direction" invisible="context.get('hide_direction', False)"/>
                   <div t-if="record.mrn.raw_value">
                     <strong>MRN:</strong> <field name="mrn"/>
                   </div>
@@ -688,7 +696,7 @@ if records:
     <field name="target">current</field>
   </record>
 
-  <!-- Acción -->
+  <!-- Acción genérica (compatibilidad / accesos antiguos) -->
   <record id="action_aduana_expediente" model="ir.actions.act_window">
     <field name="name">Expedientes Aduaneros</field>
     <field name="res_model">aduana.expediente</field>
@@ -700,7 +708,57 @@ if records:
         No hay expedientes registrados
       </p>
       <p>
-        Crea un nuevo expediente o usa el botón "Subir Facturas" para crear múltiples expedientes desde facturas PDF.
+        Use los menús Exportación o Importación para crear expedientes del sentido correspondiente.
+      </p>
+    </field>
+  </record>
+
+  <!-- Acción Exportación AES -->
+  <record id="action_aduana_expediente_export" model="ir.actions.act_window">
+    <field name="name">Exportación</field>
+    <field name="res_model">aduana.expediente</field>
+    <field name="view_mode">tree,kanban,form</field>
+    <field name="domain">[('direction', '=', 'export')]</field>
+    <field name="context">{
+      'default_direction': 'export',
+      'search_default_pending': 1,
+      'hide_direction': True,
+      'lock_direction': True,
+      'hide_direction_filters': True,
+      'hide_export_tracking': False,
+    }</field>
+    <field name="search_view_id" ref="view_aduana_expediente_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        No hay expedientes de exportación
+      </p>
+      <p>
+        Crea un expediente de exportación (España → país tercero) o usa «Subir Facturas».
+      </p>
+    </field>
+  </record>
+
+  <!-- Acción Importación H1 -->
+  <record id="action_aduana_expediente_import" model="ir.actions.act_window">
+    <field name="name">Importación</field>
+    <field name="res_model">aduana.expediente</field>
+    <field name="view_mode">tree,kanban,form</field>
+    <field name="domain">[('direction', '=', 'import')]</field>
+    <field name="context">{
+      'default_direction': 'import',
+      'search_default_pending_import': 1,
+      'hide_direction': True,
+      'lock_direction': True,
+      'hide_direction_filters': True,
+      'hide_export_tracking': True,
+    }</field>
+    <field name="search_view_id" ref="view_aduana_expediente_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        No hay expedientes de importación
+      </p>
+      <p>
+        Crea un expediente de importación (país tercero → España) o usa «Subir Facturas».
       </p>
     </field>
   </record>
@@ -800,7 +858,15 @@ if records:
 
   <!-- Menú -->
   <menuitem id="menu_aduanas_root" name="Aduanas"/>
-  <menuitem id="menu_aduanas_expedientes" name="Expediciones"
-            parent="menu_aduanas_root" action="action_aduana_expediente" sequence="10"/>
+  <record id="menu_aduanas_expedientes" model="ir.ui.menu">
+    <field name="name">Expediciones</field>
+    <field name="parent_id" ref="menu_aduanas_root"/>
+    <field name="sequence">10</field>
+    <field name="action" eval="False"/>
+  </record>
+  <menuitem id="menu_aduanas_expedientes_export" name="Exportación"
+            parent="menu_aduanas_expedientes" action="action_aduana_expediente_export" sequence="10"/>
+  <menuitem id="menu_aduanas_expedientes_import" name="Importación"
+            parent="menu_aduanas_expedientes" action="action_aduana_expediente_import" sequence="20"/>
 
 </odoo>
