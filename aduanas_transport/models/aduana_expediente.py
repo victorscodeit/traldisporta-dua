@@ -66,35 +66,22 @@ class AduanaExpedienteLine(models.Model):
     
     @api.model_create_multi
     def create(self, vals_list):
-        """Calcular precio_unitario automáticamente si no está en los valores (valor_linea es el total)"""
+        """Calcular precio_unitario desde valor_linea / unidades si falta.
+        valor_linea es el total de línea (ya con descuento si aplica).
+        """
         for vals in vals_list:
-            # Calcular precio_unitario desde valor_linea (total) / unidades
-            # Solo si no viene de la IA (no está en vals o es None/0)
-            if 'precio_unitario' not in vals or vals.get('precio_unitario') is None or vals.get('precio_unitario') == 0:
+            if 'precio_unitario' not in vals or vals.get('precio_unitario') in (None, 0, 0.0):
                 if vals.get('valor_linea') and vals.get('unidades') and vals.get('unidades') > 0:
-                    # valor_linea es el total, calcular precio unitario
-                    descuento = vals.get('descuento', 0) or 0
-                    factor_descuento = 1.0 - (descuento / 100.0) if descuento else 1.0
-                    # Precio unitario = (total / unidades) * factor_descuento
-                    # Pero si ya aplicamos descuento en el total, solo dividir
-                    precio_unitario_sin_descuento = vals.get('valor_linea', 0) / vals.get('unidades', 1)
-                    vals['precio_unitario'] = precio_unitario_sin_descuento * factor_descuento
+                    vals['precio_unitario'] = vals['valor_linea'] / vals['unidades']
         return super().create(vals_list)
     
     def write(self, vals):
-        """Recalcular precio_unitario si cambian valor_linea, unidades o descuento"""
+        """Recalcular precio_unitario si cambian valor_linea o unidades."""
         result = super().write(vals)
-        
-        # Si se modifican campos base y no se está escribiendo precio_unitario directamente
-        if any(field in vals for field in ['valor_linea', 'unidades', 'descuento']):
-            if 'precio_unitario' not in vals:
-                for line in self:
-                    # Recalcular precio_unitario desde valor_linea (total) / unidades
-                    if line.valor_linea and line.unidades and line.unidades > 0:
-                        factor_descuento = 1.0 - (line.descuento / 100.0) if line.descuento else 1.0
-                        precio_unitario_sin_descuento = line.valor_linea / line.unidades
-                        line.precio_unitario = precio_unitario_sin_descuento * factor_descuento
-        
+        if any(field in vals for field in ['valor_linea', 'unidades']) and 'precio_unitario' not in vals:
+            for line in self:
+                if line.valor_linea and line.unidades and line.unidades > 0:
+                    line.precio_unitario = line.valor_linea / line.unidades
         return result
 
 class AduanaExpediente(models.Model):

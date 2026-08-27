@@ -381,6 +381,14 @@ class InvoiceOCRService(models.AbstractModel):
             "1) Todos los campos de cabecera visibles en ESTA página (null si no aparecen aquí).\n"
             "2) TODAS las líneas de producto de ESTA página (ninguna omitida).\n"
             "3) texto_pagina: transcripción literal COMPLETA de todo el texto visible.\n\n"
+            "IMPORTANTE IMPORTES POR LÍNEA (facturas tipo tabla):\n"
+            "- Suele haber: Cant. | Precio lista | Ud | Precio neto | %Dto | Importe.\n"
+            "- 'total' = SOLO la columna Importe/Total de la línea (ej. 9.97), NUNCA ×100.\n"
+            "- 'precio_unitario' = Importe/Cantidad (precio efectivo facturado). "
+            "NO uses Precio lista ni un precio de catálogo si no cuadra con Importe.\n"
+            "- 'descuento' = %Dto si aparece.\n"
+            "- Si hay conflicto, PRIORIZA Importe y calcula precio_unitario = total/cantidad.\n"
+            "- Decimales con punto (9.97, 1.60). Nunca conviertas 9,97 en 997.\n\n"
             "IGNORA secciones 'Pedido pendiente' / 'Pedidos pendientes' / Pending order.\n"
             "Si es página de continuación (solo tabla), cabecera en null y líneas sí.\n"
             "valor_total solo si el TOTAL de factura aparece en ESTA página.\n"
@@ -472,6 +480,25 @@ class InvoiceOCRService(models.AbstractModel):
         lineas = data.get("lineas") or []
         if not lineas:
             issues.append("sin_lineas")
+        for idx, lin in enumerate(lineas, 1):
+            try:
+                cantidad = float(lin.get("cantidad") or lin.get("unidades") or 0)
+                total = lin.get("total")
+                if total in (None, ""):
+                    total = lin.get("subtotal")
+                precio = lin.get("precio_unitario")
+                if cantidad > 0 and total not in (None, "") and precio not in (None, ""):
+                    total_f = float(total)
+                    precio_f = float(precio)
+                    if abs((precio_f * cantidad) - total_f) > 0.05:
+                        issues.append(
+                            f"linea_{idx}_precio_incoherente: {precio_f}*{cantidad}!={total_f} "
+                            "(precio_unitario debe ser total/cantidad)"
+                        )
+                        if len([i for i in issues if i.startswith("linea_")]) >= 5:
+                            break
+            except (TypeError, ValueError):
+                continue
         valor_total = data.get("valor_total")
         if valor_total not in (None, "") and lineas:
             try:
@@ -511,6 +538,9 @@ class InvoiceOCRService(models.AbstractModel):
             "Corrige el JSON de extracción de factura según los problemas detectados.\n"
             "Debes devolver el MISMO esquema (o superior en completitud): no elimines campos ni líneas correctas.\n"
             "Si faltan líneas, recupéralas del texto. Si el total no cuadra, revisa líneas y valor_total.\n"
+            "Si precio_unitario * cantidad != total de línea, PRIORIZA el total y pon precio_unitario = total/cantidad.\n"
+            "Si los importes parecen ×100 (ej. 997 en vez de 9.97), corrige la escala.\n"
+            "En tablas Cant.|Precio|Ud|Neto|%Dto|Importe usa Importe como total.\n"
             "IGNORA 'Pedido pendiente'. Responde ÚNICAMENTE JSON válido.\n\n"
             f"PROBLEMAS DETECTADOS:\n- " + "\n- ".join(issues) + "\n\n"
             f"ESQUEMA OBJETIVO:\n{schema}\n\n"
@@ -538,6 +568,295 @@ class InvoiceOCRService(models.AbstractModel):
             return None
         if "lineas" in data and not isinstance(data["lineas"], list):
             data["lineas"] = []
+        return data
+
+    def _parse_invoice_number(self, value):
+        """
+        Parsea importes/cantidades de factura.
+        Soporta: 9.97 | 9,97 | 1.234,56 | 1,234.56 | ya float.
+        Evita el bug de tratar '1.65' como miles → 165.
+        """
+        if value in (None, "", False):
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+        s = str(value).strip().replace("€", "").replace("EUR", "").replace("%", "").strip()
+        if not s:
+            return None
+        s = s.replace(" ", "").replace("\u00a0", "")
+        try:
+            if "," in s and "." in s:
+                if s.rfind(",") > s.rfind("."):
+                    # 1.234,56
+                    s = s.replace(".", "").replace(",", ".")
+                else:
+                    # 1,234.56
+                    s = s.replace(",", "")
+            elif "," in s:
+                # 9,97 o 1.234 mal escrito como 1234,56
+                s = s.replace(".", "").replace(",", ".")
+            elif "." in s:
+                parts = s.split(".")
+                # Solo punto decimal (1.65 / 9.97) vs miles (1.234)
+                if len(parts) == 2 and len(parts[-1]) <= 2:
+                    pass  # decimal point
+                elif len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+                    s = s.replace(".", "")
+                # si no, dejar el float natural
+            return float(s)
+        except (TypeError, ValueError):
+            return None
+
+    def _reconcile_line_amounts(self, linea):
+        """
+        Prioriza el total de línea; recalcula precio_unitario si no cuadra con cantidad.
+        Evita precios de tarifa/catálogo incoherentes con el importe facturado.
+        """
+        if not isinstance(linea, dict):
+            return linea
+
+        cantidad = self._parse_invoice_number(linea.get("cantidad") or linea.get("unidades"))
+        total = self._parse_invoice_number(linea.get("total"))
+        if total is None:
+            total = self._parse_invoice_number(linea.get("subtotal"))
+        precio = self._parse_invoice_number(linea.get("precio_unitario"))
+
+        if cantidad is not None and cantidad > 0:
+            linea["cantidad"] = cantidad
+            linea["unidades"] = cantidad
+
+        if total is not None:
+            linea["total"] = total
+        if linea.get("subtotal") not in (None, ""):
+            sub = self._parse_invoice_number(linea.get("subtotal"))
+            if sub is not None:
+                linea["subtotal"] = sub
+
+        if total is not None and cantidad and cantidad > 0:
+            precio_desde_total = total / cantidad
+            if precio is None or abs((precio * cantidad) - total) > 0.02:
+                if precio is not None:
+                    _logger.info(
+                        "Corrigiendo precio_unitario de línea '%s': %s → %.4f "
+                        "(total=%.2f, cantidad=%s)",
+                        (linea.get("descripcion") or linea.get("articulo") or "")[:60],
+                        precio,
+                        precio_desde_total,
+                        total,
+                        cantidad,
+                    )
+                linea["precio_unitario"] = round(precio_desde_total, 6)
+            else:
+                linea["precio_unitario"] = precio
+        elif precio is not None:
+            linea["precio_unitario"] = precio
+            if total is None and cantidad and cantidad > 0:
+                linea["total"] = round(precio * cantidad, 2)
+
+        return linea
+
+    def _line_amount_coherence_score(self, lineas, scale=1.0):
+        """Cuántas líneas cumplen precio*cantidad ≈ total tras aplicar scale a importes."""
+        ok = 0
+        checked = 0
+        for lin in lineas or []:
+            cantidad = self._parse_invoice_number(lin.get("cantidad") or lin.get("unidades"))
+            total = self._parse_invoice_number(lin.get("total"))
+            if total is None:
+                total = self._parse_invoice_number(lin.get("subtotal"))
+            precio = self._parse_invoice_number(lin.get("precio_unitario"))
+            if not cantidad or cantidad <= 0 or total is None or precio is None:
+                continue
+            checked += 1
+            total_s = total / scale
+            precio_s = precio / scale
+            if abs((precio_s * cantidad) - total_s) <= max(0.05, abs(total_s) * 0.02):
+                ok += 1
+        return ok, checked
+
+    def _detect_amount_scale_factor(self, data):
+        """
+        Detecta si Vision devolvió importes ×100 (9,97 → 997).
+        Compara coherencia precio×cantidad≈total a escala 1 vs 100.
+        """
+        lineas = data.get("lineas") or []
+        if len(lineas) < 3:
+            return 1.0
+        ok1, n = self._line_amount_coherence_score(lineas, 1.0)
+        ok100, _ = self._line_amount_coherence_score(lineas, 100.0)
+        precios = [
+            self._parse_invoice_number(l.get("precio_unitario"))
+            for l in lineas
+            if self._parse_invoice_number(l.get("precio_unitario")) is not None
+        ]
+        totales = []
+        for l in lineas:
+            t = self._parse_invoice_number(l.get("total"))
+            if t is None:
+                t = self._parse_invoice_number(l.get("subtotal"))
+            if t is not None:
+                totales.append(t)
+        high_ratio = 0.0
+        if precios:
+            high_ratio = sum(1 for p in precios if p >= 40) / float(len(precios))
+        median_precio = sorted(precios)[len(precios) // 2] if precios else 0
+        valor = self._parse_invoice_number(data.get("valor_total"))
+        # Escala 100 mejora claramente la coherencia
+        if n >= 3 and ok100 > ok1 and ok100 >= max(2, int(n * 0.5)):
+            return 100.0
+        # Precios típicos de retail hinchados (1,60 → 160) + factura enorme
+        if high_ratio >= 0.45 and median_precio >= 80 and len(lineas) >= 5:
+            if valor and valor >= 20000:
+                return 100.0
+            if totales and (sum(totales) / len(totales)) >= 200:
+                return 100.0
+        # Señal en texto: aparece "9,97" / "9.97" pero JSON tiene ~997
+        texto = data.get("texto_extraido") or ""
+        if texto and totales:
+            sample = [t for t in totales if 100 <= t <= 9999]
+            hits = 0
+            for t in sample[:15]:
+                euro = t / 100.0
+                token_comma = ("%.2f" % euro).replace(".", ",")
+                token_dot = "%.2f" % euro
+                if token_comma in texto or token_dot in texto:
+                    hits += 1
+            if sample and hits >= max(2, int(len(sample[:15]) * 0.4)):
+                return 100.0
+        return 1.0
+
+    def _apply_amount_scale(self, data, scale):
+        """Divide importes monetarios por scale (p. ej. 100)."""
+        if not data or not scale or scale == 1.0:
+            return data
+        _logger.warning(
+            "Corrigiendo escala de importes OCR: dividiendo importes por %s", scale
+        )
+        if data.get("valor_total") not in (None, ""):
+            vt = self._parse_invoice_number(data.get("valor_total"))
+            if vt is not None:
+                data["valor_total"] = round(vt / scale, 2)
+        for lin in data.get("lineas") or []:
+            if not isinstance(lin, dict):
+                continue
+            for campo in ("precio_unitario", "total", "subtotal"):
+                val = self._parse_invoice_number(lin.get(campo))
+                if val is not None:
+                    lin[campo] = round(val / scale, 6) if campo == "precio_unitario" else round(val / scale, 2)
+        return data
+
+    def _parse_solnatural_style_lines_from_texto(self, texto):
+        """
+        Parsea líneas tipo:
+        990505 DESC No Lote: ... Cant. 6 1,66 6 1,60 5,00 9,97
+        → articulo, cantidad, precio_lista, precio_neto, descuento%, importe
+        """
+        if not texto:
+            return []
+        pattern = re.compile(
+            r"(?P<art>\d{5,8})\s+"
+            r"(?P<desc>.+?)\s+"
+            r"(?:No\s*Lote:\s*\S+\s+Cad\.\s*\S+\s+)?"
+            r"Cant\.\s*(?P<cant>\d+[.,]?\d*)\s+"
+            r"(?P<p_lista>\d+[.,]\d+)\s+"
+            r"(?P<cant2>\d+[.,]?\d*)\s+"
+            r"(?P<p_neto>\d+[.,]\d+)\s+"
+            r"(?P<dto>\d+[.,]\d+)\s+"
+            r"(?P<importe>\d+[.,]\d+)",
+            re.IGNORECASE | re.DOTALL,
+        )
+        parsed = []
+        for match in pattern.finditer(texto):
+            art = match.group("art")
+            cant = self._parse_invoice_number(match.group("cant"))
+            p_lista = self._parse_invoice_number(match.group("p_lista"))
+            p_neto = self._parse_invoice_number(match.group("p_neto"))
+            dto = self._parse_invoice_number(match.group("dto"))
+            importe = self._parse_invoice_number(match.group("importe"))
+            if not cant or cant <= 0 or importe is None:
+                continue
+            desc = re.sub(r"\s+", " ", (match.group("desc") or "").strip())
+            # Precio efectivo facturado = Importe / Cantidad (lo que debe ir al DUA)
+            precio_efectivo = round(importe / cant, 6)
+            parsed.append({
+                "articulo": art,
+                "descripcion": desc,
+                "cantidad": cant,
+                "unidades": cant,
+                "precio_lista": p_lista,
+                "precio_neto": p_neto,
+                "descuento": dto,
+                "total": importe,
+                "precio_unitario": precio_efectivo,
+            })
+        return parsed
+
+    def _repair_line_amounts_from_texto(self, data):
+        """
+        Si el texto OCR trae el patrón Cant./Importe, corrige cantidad/total/precio
+        de las líneas Vision que hayan salido mal (escala o columna incorrecta).
+        """
+        texto = data.get("texto_extraido") or ""
+        parsed = self._parse_solnatural_style_lines_from_texto(texto)
+        if not parsed:
+            return data
+
+        by_art = {p["articulo"]: p for p in parsed if p.get("articulo")}
+        repaired = 0
+        for lin in data.get("lineas") or []:
+            if not isinstance(lin, dict):
+                continue
+            art = str(lin.get("articulo") or "").strip()
+            src = by_art.get(art) if art else None
+            if not src:
+                desc = (lin.get("descripcion") or "").upper()
+                for p in parsed:
+                    if p["descripcion"].upper()[:40] in desc or desc[:40] in p["descripcion"].upper():
+                        src = p
+                        break
+            if not src:
+                continue
+
+            old_total = self._parse_invoice_number(lin.get("total"))
+            old_precio = self._parse_invoice_number(lin.get("precio_unitario"))
+            new_total = src["total"]
+            new_precio = src["precio_unitario"]
+            # Reparar si escala ×100, o precio no cuadra con importe, o total muy distinto
+            needs_fix = False
+            if old_total is not None and new_total and abs(old_total - new_total * 100) < 1.0:
+                needs_fix = True
+            elif old_total is not None and new_total and abs(old_total - new_total) > 0.05:
+                needs_fix = True
+            elif old_precio is not None and new_precio and abs(old_precio - new_precio) > 0.02:
+                needs_fix = True
+            elif old_precio is not None and src["cantidad"] and new_total:
+                if abs((old_precio * src["cantidad"]) - new_total) > 0.05:
+                    needs_fix = True
+
+            if needs_fix:
+                lin["cantidad"] = src["cantidad"]
+                lin["unidades"] = src["cantidad"]
+                lin["total"] = new_total
+                lin["precio_unitario"] = new_precio
+                if src.get("descuento") is not None:
+                    lin["descuento"] = src["descuento"]
+                if not lin.get("articulo"):
+                    lin["articulo"] = src["articulo"]
+                repaired += 1
+
+        if repaired:
+            _logger.info(
+                "Reparadas %d líneas de importes desde patrón Cant./Importe del texto OCR",
+                repaired,
+            )
+            # Solo ajustar valor_total si sigue ×100 respecto a la suma del texto
+            if len(parsed) >= 5:
+                suma = sum(p["total"] for p in parsed if p.get("total") is not None)
+                vt = self._parse_invoice_number(data.get("valor_total"))
+                if suma > 0 and vt is not None and abs(vt - (suma * 100)) < max(1.0, suma):
+                    data["valor_total"] = round(suma, 2)
+                elif suma > 0 and vt is None:
+                    data["valor_total"] = round(suma, 2)
         return data
 
     def _normalize_structured_invoice_data(self, data):
@@ -593,16 +912,8 @@ class InvoiceOCRService(models.AbstractModel):
                 _logger.warning("Error procesando incoterm '%s': %s", data.get("incoterm"), e)
                 data["incoterm"] = None
 
-        if data.get("valor_total"):
-            try:
-                if isinstance(data["valor_total"], str):
-                    data["valor_total"] = float(
-                        data["valor_total"].replace(".", "").replace(",", ".")
-                    )
-                else:
-                    data["valor_total"] = float(data["valor_total"])
-            except Exception:
-                data["valor_total"] = None
+        if data.get("valor_total") not in (None, ""):
+            data["valor_total"] = self._parse_invoice_number(data.get("valor_total"))
 
         lineas_validas = []
         for linea in data.get("lineas", []):
@@ -616,55 +927,23 @@ class InvoiceOCRService(models.AbstractModel):
                 )
                 continue
 
-            if linea.get("cantidad"):
-                try:
-                    if isinstance(linea["cantidad"], str):
-                        linea["cantidad"] = float(linea["cantidad"].replace(",", "."))
-                    else:
-                        linea["cantidad"] = float(linea["cantidad"])
-                    if not linea.get("unidades"):
-                        linea["unidades"] = linea["cantidad"]
-                except Exception:
-                    pass
+            for campo in ("cantidad", "unidades", "precio_unitario", "total", "subtotal"):
+                if linea.get(campo) not in (None, ""):
+                    parsed = self._parse_invoice_number(linea.get(campo))
+                    if parsed is not None:
+                        linea[campo] = parsed
 
-            for campo_precio in ["precio_unitario", "total", "subtotal"]:
-                if linea.get(campo_precio):
-                    try:
-                        if isinstance(linea[campo_precio], str):
-                            linea[campo_precio] = float(
-                                linea[campo_precio].replace(".", "").replace(",", ".")
-                            )
-                        else:
-                            linea[campo_precio] = float(linea[campo_precio])
-                    except Exception:
-                        linea[campo_precio] = None
-
-            if linea.get("descuento"):
-                try:
-                    if isinstance(linea["descuento"], str):
-                        descuento_str = linea["descuento"].replace("%", "").replace(",", ".")
-                        linea["descuento"] = float(descuento_str)
-                    else:
-                        linea["descuento"] = float(linea["descuento"])
-                except Exception:
-                    linea["descuento"] = None
+            if linea.get("descuento") not in (None, ""):
+                linea["descuento"] = self._parse_invoice_number(linea.get("descuento"))
 
             for campo_peso in ["peso_bruto", "peso_neto"]:
-                if linea.get(campo_peso):
-                    try:
-                        if isinstance(linea[campo_peso], str):
-                            linea[campo_peso] = float(linea[campo_peso].replace(",", "."))
-                        else:
-                            linea[campo_peso] = float(linea[campo_peso])
-                    except Exception:
-                        linea[campo_peso] = None
+                if linea.get(campo_peso) not in (None, ""):
+                    linea[campo_peso] = self._parse_invoice_number(linea.get(campo_peso))
 
-            if linea.get("bultos"):
+            if linea.get("bultos") not in (None, ""):
                 try:
-                    if isinstance(linea["bultos"], str):
-                        linea["bultos"] = int(float(linea["bultos"].replace(",", ".")))
-                    else:
-                        linea["bultos"] = int(linea["bultos"])
+                    bultos = self._parse_invoice_number(linea.get("bultos"))
+                    linea["bultos"] = int(bultos) if bultos is not None else None
                 except Exception:
                     linea["bultos"] = None
 
@@ -685,7 +964,21 @@ class InvoiceOCRService(models.AbstractModel):
             lineas_validas.append(linea)
 
         data["lineas"] = lineas_validas
-        _logger.info("Datos estructurados validados: %d líneas extraídas", len(lineas_validas))
+
+        # 1) Corregir importes ×100 si Vision eliminó el decimal
+        scale = self._detect_amount_scale_factor(data)
+        if scale != 1.0:
+            data = self._apply_amount_scale(data, scale)
+            data["_escala_importes_corregida"] = scale
+
+        # 2) Preferir importes del patrón Cant./Importe del texto OCR (más fiable en tablas)
+        data = self._repair_line_amounts_from_texto(data)
+
+        # 3) Reconciliar precio_unitario = total/cantidad
+        for linea in data.get("lineas") or []:
+            self._reconcile_line_amounts(linea)
+
+        _logger.info("Datos estructurados validados: %d líneas extraídas", len(data.get("lineas") or []))
         return data
 
     def _extract_with_google_vision(self, api_key_or_path, pdf_data):
@@ -1931,21 +2224,25 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             
             LineModel = self.env["aduana.expediente.line"]
             for idx, linea_data in enumerate(invoice_data["lineas"], start=1):
+                # Reconciliar importes: total de línea manda sobre precio unitario de la IA
+                linea_data = self._reconcile_line_amounts(dict(linea_data or {}))
+
                 # Calcular unidades
-                unidades = linea_data.get("unidades") or linea_data.get("cantidad") or 1.0
+                unidades = self._parse_invoice_number(
+                    linea_data.get("unidades") or linea_data.get("cantidad")
+                ) or 1.0
                 
                 # Determinar valor_linea (debe ser el TOTAL de la línea, no el precio unitario)
-                total_ia = linea_data.get("total")
-                subtotal_ia = linea_data.get("subtotal")
-                precio_unitario_ia = linea_data.get("precio_unitario")
+                total_ia = self._parse_invoice_number(linea_data.get("total"))
+                subtotal_ia = self._parse_invoice_number(linea_data.get("subtotal"))
+                precio_unitario_ia = self._parse_invoice_number(linea_data.get("precio_unitario"))
                 
                 # Prioridad: total > subtotal > (precio_unitario * unidades)
-                if total_ia:
+                if total_ia is not None:
                     valor_linea = total_ia
-                elif subtotal_ia:
+                elif subtotal_ia is not None:
                     valor_linea = subtotal_ia
-                elif precio_unitario_ia and unidades and unidades > 0:
-                    # Si solo hay precio_unitario, calcular total
+                elif precio_unitario_ia is not None and unidades and unidades > 0:
                     valor_linea = precio_unitario_ia * unidades
                 else:
                     valor_linea = 0.0
@@ -1960,30 +2257,20 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     "pais_origen": expediente.pais_origen or "ES",
                 }
                 
-                # Capturar precio_unitario de la IA si está disponible
-                if precio_unitario_ia:
-                    try:
-                        if isinstance(precio_unitario_ia, str):
-                            precio_unitario_ia = float(precio_unitario_ia.replace('.', '').replace(',', '.'))
-                        else:
-                            precio_unitario_ia = float(precio_unitario_ia)
-                        line_vals["precio_unitario"] = precio_unitario_ia
-                    except:
-                        pass
-                elif valor_linea and unidades and unidades > 0:
-                    # Si no hay precio_unitario de la IA, calcularlo desde el total
+                # Precio unitario siempre coherente con valor_linea / unidades
+                # (no confiar en precio de catálogo/tarifa si el total indica otro)
+                if valor_linea and unidades and unidades > 0:
                     line_vals["precio_unitario"] = valor_linea / unidades
+                elif precio_unitario_ia is not None:
+                    line_vals["precio_unitario"] = precio_unitario_ia
                 
                 # Agregar descuento si está disponible
-                if linea_data.get("descuento"):
+                if linea_data.get("descuento") not in (None, ""):
                     try:
-                        descuento = linea_data.get("descuento")
-                        if isinstance(descuento, str):
-                            descuento = float(descuento.replace('%', '').replace(',', '.'))
-                        else:
-                            descuento = float(descuento)
-                        line_vals["descuento"] = descuento
-                    except:
+                        descuento = self._parse_invoice_number(linea_data.get("descuento"))
+                        if descuento is not None:
+                            line_vals["descuento"] = descuento
+                    except Exception:
                         pass
                 
                 # Agregar partida arancelaria si está disponible (OBLIGATORIO)
