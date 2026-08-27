@@ -117,7 +117,10 @@ class AduanaValidator(models.AbstractModel):
         if expediente.direction == "export":
             pais_destino = (expediente.pais_destino or "").strip().upper()
             if not re.match(r"^[A-Z]{2}$", pais_destino):
-                errors.append(_("El país destino debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
+                errors.append(_(
+                    "El país destino debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA). "
+                    "Indique el país en la ficha del consignatario (contacto) o en «País destino» del expediente."
+                ))
             elif pais_destino == "ES":
                 errors.append(_("En exportación España → País tercero, el país destino no puede ser ES. Revise el destinatario."))
         

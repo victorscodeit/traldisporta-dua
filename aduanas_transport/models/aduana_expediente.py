@@ -160,7 +160,14 @@ class AduanaExpediente(models.Model):
     # Países
     pais_origen = fields.Char(default="ES")
     pais_destino = fields.Char(
-        help="Código ISO del país destino. En exportación se toma del destinatario si tiene país informado.",
+        string="País destino",
+        help="Código ISO del país del destinatario (consignatario). En exportación se rellena desde el país del consignatario o de la factura.",
+    )
+    consignatario_country_id = fields.Many2one(
+        "res.country",
+        related="consignatario.country_id",
+        string="País del consignatario",
+        readonly=True,
     )
     region_of_dispatch = fields.Char(string="Región de expedición", default="46", help="Código región española (ej. 46 Cataluña). Obligatorio cuando countryOfExport es ES (error 1877).")
 
@@ -809,17 +816,107 @@ class AduanaExpediente(models.Model):
             return partner.country_id.code.upper()
         return False
 
+    @api.model
+    def _normalize_iso_country_code(self, value):
+        """Convierte nombre o código a ISO-3166 alpha-2 (ej. Andorra→AD)."""
+        raw = (value or "").strip()
+        if not raw:
+            return False
+        upper = raw.upper()
+        aliases = {
+            "ANDORRA": "AD",
+            "ESPANA": "ES",
+            "ESPAÑA": "ES",
+            "SPAIN": "ES",
+            "FRANCE": "FR",
+            "FRANCIA": "FR",
+            "SWITZERLAND": "CH",
+            "SUIZA": "CH",
+            "SUISSE": "CH",
+            "UK": "GB",
+            "UNITED KINGDOM": "GB",
+            "REINO UNIDO": "GB",
+            "GREAT BRITAIN": "GB",
+            "MOROCCO": "MA",
+            "MARRUECOS": "MA",
+            "MAROC": "MA",
+            "PORTUGAL": "PT",
+            "ITALY": "IT",
+            "ITALIA": "IT",
+            "GERMANY": "DE",
+            "ALEMANIA": "DE",
+        }
+        if upper in aliases:
+            return aliases[upper]
+        if re.match(r"^[A-Z]{2}$", upper):
+            return upper
+        Country = self.env["res.country"]
+        country = Country.search([("code", "=ilike", upper)], limit=1)
+        if not country and len(upper) > 2:
+            country = Country.search([("name", "=ilike", raw)], limit=1)
+        if not country and len(upper) > 2:
+            country = Country.search([("name", "ilike", raw)], limit=1)
+        if country and country.code:
+            return country.code.upper()
+        return False
+
+    def _normalize_expediente_country_codes(self):
+        """Normaliza pais_origen/pais_destino a ISO de 2 letras si es posible."""
+        for rec in self:
+            vals = {}
+            for field in ("pais_origen", "pais_destino"):
+                current = (rec[field] or "").strip()
+                if not current:
+                    continue
+                normalized = rec._normalize_iso_country_code(current)
+                if normalized and normalized != current.upper():
+                    vals[field] = normalized
+                elif normalized and current != normalized:
+                    vals[field] = normalized
+            if vals:
+                rec.with_context(skip_country_partner_sync=True).write(vals)
+
+    def _ensure_country_codes_for_dua(self):
+        """Sincroniza y normaliza países antes de validar/generar DUA."""
+        self._sync_country_fields_from_partners()
+        self._normalize_expediente_country_codes()
+        for rec in self:
+            if rec.direction == "export":
+                code = rec._normalize_iso_country_code(rec.pais_destino)
+                if not code or code == "ES":
+                    # Último recurso: país del consignatario / lugar de entrega
+                    for partner in (rec.consignatario, rec.export_delivery_partner_id):
+                        partner_code = rec._partner_country_code(partner)
+                        if partner_code and partner_code != "ES":
+                            code = partner_code
+                            break
+                if code and code != "ES" and (rec.pais_destino or "").upper() != code:
+                    rec.with_context(skip_country_partner_sync=True).write({"pais_destino": code})
+            elif rec.direction == "import":
+                code = rec._normalize_iso_country_code(rec.pais_origen)
+                if not code or code == "ES":
+                    code = rec._partner_country_code(rec.remitente)
+                if code and code != "ES" and (rec.pais_origen or "").upper() != code:
+                    rec.with_context(skip_country_partner_sync=True).write({"pais_origen": code})
+                if (rec.pais_destino or "").upper() != "ES":
+                    rec.with_context(skip_country_partner_sync=True).write({"pais_destino": "ES"})
+
     def _get_country_values_from_partners(self):
+        """Solo actualiza países cuando el partner tiene código ISO válido.
+        No borra un pais_destino/origen ya informado (p. ej. por OCR) si el partner no tiene país.
+        """
         self.ensure_one()
         sender_country = self._partner_country_code(self.remitente)
         consignee_country = self._partner_country_code(self.consignatario)
         vals = {}
         if self.direction == "export":
             vals["pais_origen"] = "ES"
-            vals["pais_destino"] = consignee_country if consignee_country and consignee_country != "ES" else False
+            if consignee_country and consignee_country != "ES":
+                vals["pais_destino"] = consignee_country
         elif self.direction == "import":
             vals["pais_destino"] = "ES"
-            vals["pais_origen"] = sender_country if sender_country and sender_country != "ES" else False
+            if sender_country and sender_country != "ES":
+                vals["pais_origen"] = sender_country
         return vals
 
     def _sync_country_fields_from_partners(self):
@@ -1724,6 +1821,7 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "export":
                 raise UserError(_("DUA solo aplica a exportación"))
+            rec._ensure_country_codes_for_dua()
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_export(rec)
@@ -3192,6 +3290,7 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction != "import":
                 raise UserError(_("Operación España → Andorra / país tercero: debe presentarse por AES CC515C, no por CC415A/H1."))
+            rec._ensure_country_codes_for_dua()
             # Validar datos antes de generar
             validator = self.env["aduanas.validator"]
             validator.validate_expediente_import(rec)
@@ -4664,6 +4763,8 @@ class AduanaExpediente(models.Model):
             
             if not rec.line_ids:
                 raise UserError(_("Debe agregar al menos una línea de producto antes de generar el DUA."))
+
+            rec._ensure_country_codes_for_dua()
             
             # Generar DUA en formato CUSDEC EX1 (formato oficial)
             rec.action_generate_cc515c()

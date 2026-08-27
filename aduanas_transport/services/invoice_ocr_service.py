@@ -2089,11 +2089,18 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 invoice_data["_incoterm_invalido"] = incoterm_original
                 # NO agregar a vals en caso de error, el proceso continúa
         
-        # Actualizar países
+        # Actualizar países (normalizados a ISO-2)
+        Expediente = self.env["aduana.expediente"]
         if invoice_data.get("pais_origen"):
-            vals["pais_origen"] = invoice_data["pais_origen"]
+            pais_origen = Expediente._normalize_iso_country_code(invoice_data["pais_origen"])
+            if pais_origen:
+                vals["pais_origen"] = pais_origen
+                invoice_data["pais_origen"] = pais_origen
         if invoice_data.get("pais_destino"):
-            vals["pais_destino"] = invoice_data["pais_destino"]
+            pais_destino = Expediente._normalize_iso_country_code(invoice_data["pais_destino"])
+            if pais_destino:
+                vals["pais_destino"] = pais_destino
+                invoice_data["pais_destino"] = pais_destino
         
         # Actualizar campos de transporte
         if invoice_data.get("transportista"):
@@ -2133,12 +2140,18 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             if not expediente.lrn and not vals.get("lrn") and expediente.name:
                 vals["lrn"] = expediente.name
         
+        # País del partner según sentido (export: destino en consignatario; import: origen en remitente)
+        direction_final = vals.get("direction") or expediente.direction
+        country_remitente = invoice_data.get("pais_origen") if direction_final == "import" else invoice_data.get("pais_origen") or "ES"
+        country_consignatario = invoice_data.get("pais_destino") if direction_final == "export" else invoice_data.get("pais_destino") or "ES"
+
         # Buscar o crear remitente
         if invoice_data.get("remitente_nif") or invoice_data.get("remitente_nombre"):
             remitente = self._find_or_create_partner(
                 name=invoice_data.get("remitente_nombre"),
                 vat=invoice_data.get("remitente_nif"),
-                street=invoice_data.get("remitente_direccion")
+                street=invoice_data.get("remitente_direccion"),
+                country_code=country_remitente,
             )
             if remitente:
                 vals["remitente"] = remitente.id
@@ -2148,7 +2161,8 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             consignatario = self._find_or_create_partner(
                 name=invoice_data.get("consignatario_nombre"),
                 vat=invoice_data.get("consignatario_nif"),
-                street=invoice_data.get("consignatario_direccion")
+                street=invoice_data.get("consignatario_direccion"),
+                country_code=country_consignatario,
             )
             if consignatario:
                 vals["consignatario"] = consignatario.id
@@ -2181,6 +2195,12 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         # Actualizar todos los campos de una vez sin tracking
         # Si hay error con algún campo (ej: incoterm), intentar sin ese campo
+        # Países OCR: escribir con skip_country_partner_sync y reaplicar tras sync de partners
+        country_vals = {}
+        for key in ("pais_origen", "pais_destino"):
+            if key in vals:
+                country_vals[key] = vals[key]
+
         if vals:
             try:
                 expediente.with_context(mail_notrack=True, tracking_disable=True).write(vals)
@@ -2199,8 +2219,21 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     # Si es otro error, re-lanzar
                     raise
 
+        # Reaplicar países OCR si el sync por consignatario sin país los hubiera dejado vacíos (legacy)
+        if country_vals:
+            reapply = {
+                k: v for k, v in country_vals.items()
+                if v and (expediente[k] or "").upper() != str(v).upper()
+            }
+            if reapply:
+                expediente.with_context(
+                    mail_notrack=True,
+                    tracking_disable=True,
+                    skip_country_partner_sync=True,
+                ).write(reapply)
+
         expediente._sync_delivery_partners()
-        
+        expediente._normalize_expediente_country_codes()
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):
             # Si hay factura (expediente hijo), borrar solo las líneas de esa factura en el expediente principal
@@ -2371,24 +2404,35 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         return True
 
-    def _find_or_create_partner(self, name=None, vat=None, street=None):
+    def _find_or_create_partner(self, name=None, vat=None, street=None, country_code=None):
         """
         Busca un partner existente o crea uno nuevo basado en NIF o nombre.
+        Si se informa country_code (ISO-2), lo asigna al crear o si el partner no tiene país.
         """
         Partner = self.env['res.partner']
+        Country = self.env['res.country']
+        country = False
+        iso = self.env["aduana.expediente"]._normalize_iso_country_code(country_code)
+        if iso:
+            country = Country.search([("code", "=", iso)], limit=1)
+
+        def _ensure_country(partner):
+            if partner and country and not partner.country_id:
+                partner.write({"country_id": country.id})
+            return partner
         
         # Buscar por NIF primero
         if vat:
             vat_clean = vat.replace(' ', '').replace('-', '').upper()
             partner = Partner.search([('vat', '=', vat_clean)], limit=1)
             if partner:
-                return partner
+                return _ensure_country(partner)
         
         # Buscar por nombre
         if name:
             partner = Partner.search([('name', 'ilike', name)], limit=1)
             if partner:
-                return partner
+                return _ensure_country(partner)
         
         # Crear nuevo partner si no existe
         if name or vat:
@@ -2400,6 +2444,8 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 partner_vals['vat'] = vat.replace(' ', '').replace('-', '').upper()
             if street:
                 partner_vals['street'] = street
+            if country:
+                partner_vals['country_id'] = country.id
             
             return Partner.create(partner_vals)
         
