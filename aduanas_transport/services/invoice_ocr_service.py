@@ -390,7 +390,8 @@ class InvoiceOCRService(models.AbstractModel):
             "- VALIDACIÓN OBLIGATORIA: precio_unitario × cantidad × (1 − descuento/100) ≈ total\n"
             "  (1.57×12×0.95 = 17.90). Si no cuadra, relee las columnas de ESA línea.\n"
             "- 'precio_unitario' = precio NETO impreso (1.57), NO Importe/Cantidad ni precio lista.\n"
-            "- 'total' = Importe (17.90). Decimales con punto. Nunca 9,97→997 ni 12→6.\n\n"
+            "- 'total' = Importe (17.90). Decimales con punto. Lee 3,40 como 3.40 y 25,84 como 25.84.\n"
+            "- NUNCA multipliques ni dividas importes por 100 u otro factor; copia el valor de la factura.\n\n"
             "IGNORA secciones 'Pedido pendiente' / 'Pedidos pendientes' / Pending order.\n"
             "Si es página de continuación (solo tabla), cabecera en null y líneas sí.\n"
             "valor_total solo si el TOTAL de factura aparece en ESTA página.\n"
@@ -542,9 +543,9 @@ class InvoiceOCRService(models.AbstractModel):
             "Corrige el JSON de extracción de factura según los problemas detectados.\n"
             "Debes devolver el MISMO esquema (o superior en completitud): no elimines campos ni líneas correctas.\n"
             "Si faltan líneas, recupéralas del texto. Si el total no cuadra, revisa líneas y valor_total.\n"
-            "Si precio_unitario * cantidad * (1-descuento/100) != total, relee las columnas.\n"
+            "Si precio_unitario * cantidad * (1-descuento/100) != total, relee las columnas del texto.\n"
             "Ejemplo: 1.57 * 12 * 0.95 = 17.90 → cantidad=12, precio_unitario=1.57, descuento=5, total=17.90.\n"
-            "Si los importes parecen ×100 (ej. 997 en vez de 9.97), corrige la escala.\n"
+            "Lee los decimales tal cual (3,40 → 3.40; 25,84 → 25.84). No multipliques ni dividas importes.\n"
             "En tablas Precio|Cant|Neto|%Dto|Importe: precio_unitario=Neto, total=Importe.\n"
             "IGNORA 'Pedido pendiente'. Responde ÚNICAMENTE JSON válido.\n\n"
             f"PROBLEMAS DETECTADOS:\n- " + "\n- ".join(issues) + "\n\n"
@@ -720,154 +721,6 @@ class InvoiceOCRService(models.AbstractModel):
                 return True
         return abs((precio * cantidad) - total) <= max(0.05, abs(total) * 0.015)
 
-    def _line_amount_coherence_score(self, lineas, scale=1.0):
-        """Cuántas líneas cumplen precio×cant×(1-dto%)≈total (o precio×cant≈total)."""
-        ok = 0
-        checked = 0
-        for lin in lineas or []:
-            cantidad = self._parse_invoice_number(lin.get("cantidad") or lin.get("unidades"))
-            total = self._parse_invoice_number(lin.get("total"))
-            if total is None:
-                total = self._parse_invoice_number(lin.get("subtotal"))
-            precio = self._parse_invoice_number(lin.get("precio_unitario"))
-            if precio is None:
-                precio = self._parse_invoice_number(lin.get("precio_neto"))
-            descuento = self._parse_invoice_number(lin.get("descuento"))
-            if not cantidad or cantidad <= 0 or total is None or precio is None:
-                continue
-            checked += 1
-            total_s = total / scale
-            precio_s = precio / scale
-            if descuento is not None and 0 <= descuento < 100:
-                esperado = precio_s * cantidad * (1.0 - descuento / 100.0)
-            else:
-                esperado = precio_s * cantidad
-            # Tolerancia relativa (evita que escala 100 "gane" por el umbral absoluto 0.05)
-            if abs(esperado - total_s) <= max(0.02, abs(total_s) * 0.025):
-                ok += 1
-        return ok, checked
-
-    def _detect_amount_scale_factor(self, data):
-        """
-        Detecta si Vision devolvió importes ×100 (25,84 → 2584 / 3,40 → 340).
-        Solo corrige cuando los precios unitarios están claramente hinchados
-        (mediana >= 50). Nunca dividir importes ya en euros normales (~1-20).
-        """
-        if data.get("_escala_importes_corregida"):
-            return 1.0
-
-        lineas = data.get("lineas") or []
-        if len(lineas) < 3:
-            return 1.0
-
-        precios = []
-        totales = []
-        for l in lineas:
-            p = self._parse_invoice_number(l.get("precio_unitario"))
-            if p is None:
-                p = self._parse_invoice_number(l.get("precio_neto"))
-            if p is not None:
-                precios.append(p)
-            t = self._parse_invoice_number(l.get("total"))
-            if t is None:
-                t = self._parse_invoice_number(l.get("subtotal"))
-            if t is not None:
-                totales.append(t)
-        if not precios:
-            return 1.0
-
-        median_precio = sorted(precios)[len(precios) // 2]
-        # Ya están en rango retail EUR: no tocar
-        if median_precio < 50:
-            return 1.0
-
-        def _band_ratio(scale):
-            return sum(1 for p in precios if 0.15 <= (p / scale) <= 80.0) / float(len(precios))
-
-        r1 = _band_ratio(1.0)
-        r100 = _band_ratio(100.0)
-        # Escala 100 deja precios en banda retail y la 1 no
-        if r100 >= 0.5 and r100 > (r1 + 0.2) and median_precio >= 50:
-            return 100.0
-        if r1 < 0.3 and r100 >= 0.55 and median_precio >= 50:
-            return 100.0
-
-        ok1, n = self._line_amount_coherence_score(lineas, 1.0)
-        ok100, _ = self._line_amount_coherence_score(lineas, 100.0)
-        high_ratio = sum(1 for p in precios if p >= 40) / float(len(precios))
-        valor = self._parse_invoice_number(data.get("valor_total"))
-
-        # Solo si además mejora la coherencia Y la mediana es hinchada
-        if (
-            median_precio >= 50
-            and n >= 3
-            and ok100 > ok1
-            and ok100 >= max(2, int(n * 0.5))
-        ):
-            return 100.0
-        if high_ratio >= 0.45 and median_precio >= 80 and len(lineas) >= 5:
-            if valor and valor >= 20000:
-                return 100.0
-            if totales and (sum(totales) / len(totales)) >= 200:
-                return 100.0
-        if median_precio >= 100 and len(lineas) >= 5:
-            if valor and valor >= 10000:
-                return 100.0
-            if totales and (sum(totales) / len(totales)) >= 150:
-                return 100.0
-
-        texto = data.get("texto_extraido") or ""
-        if texto and totales and median_precio >= 50:
-            sample = [t for t in totales if 100 <= t <= 9999]
-            hits = 0
-            for t in sample[:15]:
-                euro = t / 100.0
-                token_comma = ("%.2f" % euro).replace(".", ",")
-                token_dot = "%.2f" % euro
-                if token_comma in texto or token_dot in texto:
-                    hits += 1
-            if sample and hits >= max(2, int(len(sample[:15]) * 0.4)):
-                return 100.0
-        return 1.0
-
-    def _ensure_invoice_amount_scale(self, data):
-        """Garantiza corrección ×100 justo antes de escribir líneas en Odoo (solo una vez)."""
-        if not data or not isinstance(data, dict):
-            return data
-        if data.get("_escala_importes_corregida"):
-            return data
-        scale = self._detect_amount_scale_factor(data)
-        if scale != 1.0:
-            data = self._apply_amount_scale(data, scale)
-            data["_escala_importes_corregida"] = scale
-            for lin in data.get("lineas") or []:
-                if isinstance(lin, dict):
-                    self._reconcile_line_amounts(lin)
-        return data
-
-    def _apply_amount_scale(self, data, scale):
-        """Divide importes monetarios por scale (p. ej. 100)."""
-        if not data or not scale or scale == 1.0:
-            return data
-        _logger.warning(
-            "Corrigiendo escala de importes OCR: dividiendo importes por %s", scale
-        )
-        if data.get("valor_total") not in (None, ""):
-            vt = self._parse_invoice_number(data.get("valor_total"))
-            if vt is not None:
-                data["valor_total"] = round(vt / scale, 2)
-        for lin in data.get("lineas") or []:
-            if not isinstance(lin, dict):
-                continue
-            for campo in ("precio_unitario", "precio_neto", "precio_lista", "total", "subtotal"):
-                val = self._parse_invoice_number(lin.get(campo))
-                if val is not None:
-                    if campo in ("precio_unitario", "precio_neto", "precio_lista"):
-                        lin[campo] = round(val / scale, 6)
-                    else:
-                        lin[campo] = round(val / scale, 2)
-        return data
-
     def _parse_solnatural_style_lines_from_texto(self, texto):
         """
         Parsea líneas tipo:
@@ -932,7 +785,7 @@ class InvoiceOCRService(models.AbstractModel):
     def _repair_line_amounts_from_texto(self, data):
         """
         Si el texto OCR trae el patrón Cant./Importe, corrige cantidad/total/precio
-        de las líneas Vision que hayan salido mal (escala o columna incorrecta).
+        de las líneas Vision que no cuadren con el texto (columna o dígito mal leído).
         """
         texto = data.get("texto_extraido") or ""
         parsed = self._parse_solnatural_style_lines_from_texto(texto)
@@ -960,11 +813,9 @@ class InvoiceOCRService(models.AbstractModel):
             old_cant = self._parse_invoice_number(lin.get("cantidad") or lin.get("unidades"))
             new_total = src["total"]
             new_precio = src["precio_unitario"]
-            # Reparar si escala ×100, cantidad distinta, o no cuadra la matemática
+            # Reparar si cantidad/importe/precio no coinciden con el texto o no cuadra la matemática
             needs_fix = False
-            if old_total is not None and new_total and abs(old_total - new_total * 100) < 1.0:
-                needs_fix = True
-            elif old_cant is not None and abs(old_cant - src["cantidad"]) > 0.01:
+            if old_cant is not None and abs(old_cant - src["cantidad"]) > 0.01:
                 needs_fix = True
             elif old_total is not None and new_total and abs(old_total - new_total) > 0.05:
                 needs_fix = True
@@ -993,13 +844,11 @@ class InvoiceOCRService(models.AbstractModel):
                 "Reparadas %d líneas de importes desde patrón Cant./Importe del texto OCR",
                 repaired,
             )
-            # Solo ajustar valor_total si sigue ×100 respecto a la suma del texto
+            # Si el valor_total no cuadra con la suma de importes del texto, usar esa suma
             if len(parsed) >= 5:
                 suma = sum(p["total"] for p in parsed if p.get("total") is not None)
                 vt = self._parse_invoice_number(data.get("valor_total"))
-                if suma > 0 and vt is not None and abs(vt - (suma * 100)) < max(1.0, suma):
-                    data["valor_total"] = round(suma, 2)
-                elif suma > 0 and vt is None:
+                if suma > 0 and (vt is None or abs(vt - suma) > max(1.0, suma * 0.05)):
                     data["valor_total"] = round(suma, 2)
         return data
 
@@ -1109,16 +958,10 @@ class InvoiceOCRService(models.AbstractModel):
 
         data["lineas"] = lineas_validas
 
-        # 1) Corregir importes ×100 si Vision eliminó el decimal
-        scale = self._detect_amount_scale_factor(data)
-        if scale != 1.0:
-            data = self._apply_amount_scale(data, scale)
-            data["_escala_importes_corregida"] = scale
-
-        # 2) Preferir importes del patrón Cant./Importe del texto OCR (más fiable en tablas)
+        # Preferir importes del patrón Cant./Importe del texto OCR cuando la matemática cuadra
         data = self._repair_line_amounts_from_texto(data)
 
-        # 3) Reconciliar precio_unitario = total/cantidad
+        # Reconciliar neto/descuento/importe
         for linea in data.get("lineas") or []:
             self._reconcile_line_amounts(linea)
 
@@ -2360,9 +2203,6 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         # Crear líneas de productos si se extrajeron
         if invoice_data.get("lineas"):
-            # Seguridad: corregir importes ×100 antes de persistir (25.84 → 2584)
-            invoice_data = self._ensure_invoice_amount_scale(invoice_data)
-
             # Si hay factura (expediente hijo), borrar solo las líneas de esa factura en el expediente principal
             if factura:
                 expediente.line_ids.filtered(lambda l: l.factura_id == factura).unlink()
