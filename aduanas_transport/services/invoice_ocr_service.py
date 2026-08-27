@@ -3,6 +3,7 @@ import base64
 import json
 import re
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from odoo import models, fields, _
 from odoo.exceptions import UserError
 
@@ -90,8 +91,8 @@ class InvoiceOCRService(models.AbstractModel):
             try:
                 _logger.info("Enviando PDF a OpenAI GPT-4o Vision con splitting por páginas...")
                 resultado = self._extract_with_openai_vision(api_key, pdf_bytes)
-                metodo_usado = "OpenAI GPT-4o Vision"
-                _logger.info("OpenAI GPT-4o Vision procesó el PDF exitosamente")
+                metodo_usado = resultado.get("metodo_usado") or "OpenAI GPT-4o Vision (estructurado)"
+                _logger.info("OpenAI GPT-4o Vision procesó el PDF exitosamente (%s)", metodo_usado)
             except Exception as e:
                 error_gpt = str(e)
                 _logger.warning("Error con OpenAI GPT-4o Vision: %s. Intentando OCR alternativo...", error_gpt)
@@ -174,155 +175,150 @@ class InvoiceOCRService(models.AbstractModel):
 
     def _extract_with_openai_vision(self, api_key, pdf_bytes):
         """
-        Extrae datos usando OpenAI GPT-4o Vision convirtiendo PDF a imágenes.
+        Extrae datos con GPT-4o Vision en una sola pasada por página (imagen → JSON).
+        Páginas en paralelo; reintento dirigido si falla la coherencia.
         Requiere: pip install openai PyMuPDF
-        
-        OpenAI solo acepta imágenes (no PDFs directamente), por lo que necesitamos
-        convertir cada página del PDF a imagen antes de enviarla.
-        
-        :param api_key: API key de OpenAI
-        :param pdf_bytes: Datos binarios del PDF (bytes)
-        :return: Diccionario con datos extraídos
         """
         try:
             from openai import OpenAI
             import fitz  # PyMuPDF
-            
+
             if not api_key:
                 raise ValueError("API key de OpenAI no proporcionada")
-            
-            # Inicializar cliente de OpenAI (sin timeout explícito para permitir trabajos largos en cola)
+
             client = OpenAI(api_key=api_key)
-            
-            # Abrir PDF y convertir a imágenes
+
             _logger.info("Convirtiendo PDF a imágenes por páginas...")
             try:
                 pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
                 num_pages = len(pdf_document)
                 _logger.info("PDF abierto: %d página(s)", num_pages)
-                
                 if num_pages == 0:
                     raise Exception(_("El PDF no tiene páginas"))
-                
             except Exception as pdf_error:
                 _logger.error("Error al abrir PDF: %s", pdf_error)
                 raise Exception(_("Error al abrir el PDF. Verifica que el archivo sea un PDF válido."))
-            
-            # Procesar cada página con GPT-4o Vision
-            all_texts = []
-            errores_paginas = []
+
+            page_images = []
+            mat = fitz.Matrix(200 / 72, 200 / 72)
             for page_num in range(num_pages):
-                _logger.info("Procesando página %d/%d con GPT-4o Vision...", page_num + 1, num_pages)
-                
-                try:
-                    # Obtener página y convertir a imagen PNG
-                    page = pdf_document[page_num]
-                    mat = fitz.Matrix(200/72, 200/72)  # 200 DPI para buena calidad
-                    pix = page.get_pixmap(matrix=mat)
-                    
-                    # Convertir a base64
-                    img_bytes = pix.tobytes("png")
-                    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-                    
-                    # Llamar a OpenAI Vision API con prompt específico para contexto legal/administrativo
-                    _logger.debug("Enviando página %d a OpenAI (tamaño imagen: %d bytes base64)", page_num + 1, len(img_base64))
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o",
-                            messages=[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": "Eres un asistente de procesamiento documental para una empresa de logística y aduanas.\n\n"
-                                                    "El documento proporcionado es una PÁGINA de una factura comercial utilizada exclusivamente para generar un documento aduanero (DUA).\n\n"
-                                                    "La extracción que vas a hacer es para un proceso legal obligatorio.\n\n"
-                                                    "IMPORTANTE: Esta es una de varias páginas de la factura. Debes transcribir TODO el texto visible de esta página, incluyendo:\n"
-                                                    "- Números de factura, fechas, direcciones\n"
-                                                    "- TODAS las líneas de productos/artículos (descripción, cantidad, precio, total)\n"
-                                                    "- Totales, subtotales, descuentos\n"
-                                                    "- Información de transporte, matrículas, referencias\n"
-                                                    "- Cualquier otro texto visible en la página\n\n"
-                                                    "No omitas ninguna línea de producto ni información relevante.\n"
-                                                    "No devuelvas la imagen completa ni reproduzcas el documento.\n"
-                                                    "Simplemente transcribe TODO el texto visible de esta página.\n\n"
-                                                    "La extracción es estrictamente con fines administrativos y está permitida.\n"
-                                                    "Devuelve únicamente el texto transcrito, sin notas adicionales ni explicaciones."
-                                        },
-                                        {
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": f"data:image/png;base64,{img_base64}"
-                                            }
-                                        }
-                                    ]
-                                }
-                            ],
-                            max_tokens=8000,  # Aumentado para páginas con muchas líneas
-                            timeout=60.0  # Timeout de 60 segundos por página
-                        )
-                        _logger.debug("Respuesta recibida de OpenAI para página %d", page_num + 1)
-                    except Exception as api_call_error:
-                        _logger.error("Error en la llamada a OpenAI API para página %d: %s (tipo: %s)", 
-                                    page_num + 1, api_call_error, type(api_call_error).__name__)
-                        raise  # Re-lanzar para que se capture en el except exterior
-                    
-                    # Verificar que la respuesta tenga contenido
-                    if not response or not response.choices or len(response.choices) == 0:
-                        _logger.error("Página %d: OpenAI no devolvió ninguna respuesta", page_num + 1)
-                        errores_paginas.append(f"Página {page_num + 1}: OpenAI no devolvió respuesta")
-                        continue
-                    
-                    page_text = response.choices[0].message.content
-                    if page_text and page_text.strip():
-                        all_texts.append(page_text)
-                        _logger.info("Texto extraído de página %d: %d caracteres", page_num + 1, len(page_text))
-                    else:
-                        _logger.warning("Página %d: GPT Vision respondió pero el contenido está vacío o es None. Respuesta: %s", page_num + 1, response.choices[0].message if response.choices else "Sin respuesta")
-                        errores_paginas.append(f"Página {page_num + 1}: Respuesta vacía de GPT Vision")
-                    
-                    # Limpiar memoria
-                    pix = None
-                    
-                except Exception as api_error:
-                    error_msg = str(api_error)
-                    _logger.error("Error al procesar página %d con OpenAI: %s", page_num + 1, api_error)
-                    errores_paginas.append(f"Página {page_num + 1}: {error_msg}")
-                    # Continuar con las siguientes páginas
-                    continue
-            
-            # Cerrar documento
+                page = pdf_document[page_num]
+                pix = page.get_pixmap(matrix=mat)
+                img_base64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+                page_images.append(img_base64)
+                pix = None
             pdf_document.close()
-            
-            if not all_texts:
-                # Construir mensaje de error más informativo
+
+            max_workers = min(4, max(1, num_pages))
+            _logger.info(
+                "Extracción estructurada Vision→JSON en paralelo (%d página(s), max_workers=%d)...",
+                num_pages,
+                max_workers,
+            )
+
+            page_results = [None] * num_pages
+            errores_paginas = []
+
+            def _process_page(page_idx):
+                return page_idx, self._extract_page_structured_json(
+                    client, page_images[page_idx], page_idx + 1, num_pages
+                )
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(_process_page, i): i for i in range(num_pages)}
+                for future in as_completed(futures):
+                    page_idx = futures[future]
+                    try:
+                        idx, page_data = future.result()
+                        if page_data:
+                            page_results[idx] = page_data
+                            n_lines = len(page_data.get("lineas") or [])
+                            _logger.info(
+                                "Página %d/%d estructurada: %d línea(s), texto=%d chars",
+                                idx + 1,
+                                num_pages,
+                                n_lines,
+                                len(page_data.get("texto_pagina") or ""),
+                            )
+                        else:
+                            errores_paginas.append(f"Página {page_idx + 1}: respuesta vacía")
+                    except Exception as page_err:
+                        _logger.error("Error página %d: %s", page_idx + 1, page_err)
+                        errores_paginas.append(f"Página {page_idx + 1}: {page_err}")
+
+            successful_pages = [p for p in page_results if p]
+            if not successful_pages:
                 if errores_paginas:
-                    error_detalle = "\n".join(errores_paginas[:3])  # Mostrar solo los primeros 3 errores
+                    error_detalle = "\n".join(errores_paginas[:3])
                     if len(errores_paginas) > 3:
                         error_detalle += f"\n... y {len(errores_paginas) - 3} error(es) más"
-                    raise Exception(_("No se pudo extraer texto de ninguna página del PDF.\n\nErrores encontrados:\n%s\n\nPosibles causas:\n- Problemas de conexión con OpenAI API\n- La API key no es válida o ha expirado\n- El PDF está corrupto o protegido\n- Límites de rate limit de OpenAI alcanzados") % error_detalle)
-                else:
-                    raise Exception(_("No se pudo extraer texto de ninguna página del PDF. El PDF puede estar vacío, ser solo imágenes sin texto, o estar corrupto."))
-            
-            # Combinar texto de todas las páginas
-            full_text = "\n\n".join(all_texts)
-            _logger.info("Texto total extraído: %d caracteres de %d página(s)", len(full_text), num_pages)
-            
-            # Intentar interpretar el texto con GPT-4o para estructurarlo
-            try:
-                structured_data = self._interpret_text_with_gpt(api_key, full_text)
-                if structured_data:
-                    # Agregar el texto extraído al resultado
-                    structured_data["texto_extraido"] = full_text
-                    _logger.info("Datos estructurados extraídos con GPT-4o")
-                    return structured_data
-            except Exception as gpt_error:
-                _logger.warning("Error al interpretar texto con GPT-4o: %s. Usando parsing con regex...", gpt_error)
-            
-            # Fallback: Parsear datos de la factura con regex
-            return self._parse_invoice_text(full_text)
-            
+                    raise Exception(_(
+                        "No se pudo extraer texto de ninguna página del PDF.\n\n"
+                        "Errores encontrados:\n%s\n\n"
+                        "Posibles causas:\n"
+                        "- Problemas de conexión con OpenAI API\n"
+                        "- La API key no es válida o ha expirado\n"
+                        "- El PDF está corrupto o protegido\n"
+                        "- Límites de rate limit de OpenAI alcanzados"
+                    ) % error_detalle)
+                raise Exception(_(
+                    "No se pudo extraer texto de ninguna página del PDF. "
+                    "El PDF puede estar vacío, ser solo imágenes sin texto, o estar corrupto."
+                ))
+
+            structured_data = self._merge_page_extractions(page_results)
+            structured_data = self._normalize_structured_invoice_data(structured_data)
+
+            full_text = structured_data.get("texto_extraido") or ""
+            _logger.info(
+                "Merge Vision→JSON: %d chars, %d líneas de %d/%d página(s)",
+                len(full_text),
+                len(structured_data.get("lineas") or []),
+                len(successful_pages),
+                num_pages,
+            )
+
+            issues = self._detect_extraction_issues(structured_data)
+            if issues:
+                _logger.warning("Inconsistencias tras extracción: %s. Reintento dirigido...", issues)
+                try:
+                    fixed = self._retry_fix_structured_data(
+                        api_key, full_text, structured_data, issues
+                    )
+                    if fixed:
+                        fixed["texto_extraido"] = full_text
+                        structured_data = self._normalize_structured_invoice_data(fixed)
+                        issues_after = self._detect_extraction_issues(structured_data)
+                        if issues_after:
+                            _logger.warning("Tras reintento siguen issues: %s", issues_after)
+                        else:
+                            _logger.info("Reintento dirigido corrigió las inconsistencias")
+                except Exception as retry_err:
+                    _logger.warning("Reintento dirigido falló: %s", retry_err)
+
+            # Si faltan datos críticos, fallback al interpretador texto→JSON (mismo esquema)
+            if not structured_data.get("lineas") and full_text.strip():
+                _logger.warning("Sin líneas tras Vision→JSON; fallback interpret_text_with_gpt...")
+                try:
+                    fallback = self._interpret_text_with_gpt(api_key, full_text)
+                    if fallback and fallback.get("lineas"):
+                        fallback["texto_extraido"] = full_text
+                        structured_data = fallback
+                except Exception as fb_err:
+                    _logger.warning("Fallback interpret_text falló: %s", fb_err)
+
+            if not structured_data.get("lineas") and not structured_data.get("numero_factura"):
+                _logger.warning("Usando parsing regex como último recurso")
+                parsed = self._parse_invoice_text(full_text)
+                if parsed.get("lineas") or parsed.get("numero_factura"):
+                    parsed["metodo_usado"] = "OpenAI GPT-4o Vision (regex fallback)"
+                    return parsed
+
+            structured_data["metodo_usado"] = "OpenAI GPT-4o Vision (estructurado)"
+            if errores_paginas:
+                structured_data["_avisos_paginas"] = errores_paginas
+            return structured_data
+
         except ImportError as import_err:
             _logger.error("Error de importación: %s", import_err)
             raise Exception(_(
@@ -333,6 +329,364 @@ class InvoiceOCRService(models.AbstractModel):
         except Exception as e:
             _logger.exception("Error con OpenAI GPT-4o Vision: %s", e)
             raise
+
+    def _invoice_structured_json_schema_text(self):
+        """Esquema JSON canónico (mismo contrato que el interpretador texto→JSON)."""
+        return """{
+  "numero_factura": "número o null",
+  "fecha_factura": "DD.MM.YYYY o DD/MM/YYYY o null",
+  "remitente_nombre": "nombre completo de la empresa emisora o null",
+  "remitente_nif": "NIF/CIF español (formato A12345678) o NIF andorrano (L123456H) o null",
+  "remitente_direccion": "dirección completa o null",
+  "consignatario_nombre": "nombre completo del destinatario o null",
+  "consignatario_nif": "NIF/CIF o null",
+  "consignatario_direccion": "dirección completa o null",
+  "valor_total": "número decimal o null (TOTAL FACTURA; suele estar en la última página)",
+  "moneda": "EUR o USD o null",
+  "incoterm": "EXW, FCA, CPT, CIP, DAP, DPU, DDP o null (CIF→CIP, FOB→FCA, CFR→CPT)",
+  "pais_origen": "código ISO de 2 letras o null",
+  "pais_destino": "código ISO de 2 letras o null",
+  "direction": "export o import o null",
+  "transportista": "nombre del transportista o null",
+  "matricula": "matrícula del vehículo o null",
+  "referencia_transporte": "referencia o número de transporte o null",
+  "remolque": "matrícula del remolque o null",
+  "codigo_transporte": "código del transporte o null",
+  "lineas": [
+    {
+      "articulo": "código del artículo o null",
+      "descripcion": "descripción completa del producto",
+      "cantidad": "número decimal",
+      "unidades": "número decimal (igual que cantidad)",
+      "precio_unitario": "número decimal o null",
+      "total": "número decimal o null",
+      "subtotal": "número decimal o null",
+      "descuento": "porcentaje de descuento o null",
+      "partida": "código H.S. 8-10 dígitos o null",
+      "bultos": "número entero o null",
+      "peso_bruto": "número decimal en KG o null",
+      "peso_neto": "número decimal en KG o null"
+    }
+  ],
+  "texto_pagina": "transcripción COMPLETA de TODO el texto visible de ESTA página"
+}"""
+
+    def _extract_page_structured_json(self, client, img_base64, page_num, num_pages):
+        """Una página: Vision → JSON estructurado (+ texto_pagina para texto_extraido)."""
+        schema = self._invoice_structured_json_schema_text()
+        prompt = (
+            "Eres un experto en facturas comerciales para documentos aduaneros (DUA).\n\n"
+            f"Esta es la página {page_num} de {num_pages} de UNA factura comercial.\n"
+            "Extrae en UNA sola respuesta JSON estricto:\n"
+            "1) Todos los campos de cabecera visibles en ESTA página (null si no aparecen aquí).\n"
+            "2) TODAS las líneas de producto de ESTA página (ninguna omitida).\n"
+            "3) texto_pagina: transcripción literal COMPLETA de todo el texto visible.\n\n"
+            "IGNORA secciones 'Pedido pendiente' / 'Pedidos pendientes' / Pending order.\n"
+            "Si es página de continuación (solo tabla), cabecera en null y líneas sí.\n"
+            "valor_total solo si el TOTAL de factura aparece en ESTA página.\n"
+            "Responde ÚNICAMENTE con JSON válido (sin markdown).\n\n"
+            f"FORMATO:\n{schema}"
+        )
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un experto en extracción de datos de facturas. "
+                        "Responde ÚNICAMENTE con JSON válido, sin markdown."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_base64}"},
+                        },
+                    ],
+                },
+            ],
+            temperature=0.1,
+            max_tokens=16000,
+            response_format={"type": "json_object"},
+            timeout=90.0,
+        )
+        if not response or not response.choices:
+            return None
+        content = (response.choices[0].message.content or "").strip()
+        if not content:
+            return None
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        data = json.loads(content.strip())
+        if not isinstance(data, dict):
+            return None
+        if "lineas" in data and not isinstance(data["lineas"], list):
+            data["lineas"] = []
+        return data
+
+    def _merge_page_extractions(self, page_results):
+        """Combina extracciones por página preservando el mismo contrato de campos."""
+        header_keys = [
+            "numero_factura", "fecha_factura",
+            "remitente_nombre", "remitente_nif", "remitente_direccion",
+            "consignatario_nombre", "consignatario_nif", "consignatario_direccion",
+            "moneda", "incoterm", "pais_origen", "pais_destino", "direction",
+            "transportista", "matricula", "referencia_transporte", "remolque", "codigo_transporte",
+        ]
+        merged = {k: None for k in header_keys}
+        merged["valor_total"] = None
+        merged["lineas"] = []
+        textos = []
+
+        for page_data in page_results:
+            if not page_data:
+                continue
+            for key in header_keys:
+                if merged.get(key) in (None, "", []) and page_data.get(key) not in (None, "", []):
+                    merged[key] = page_data.get(key)
+            # Preferir el último valor_total no nulo (suele ir al final)
+            if page_data.get("valor_total") not in (None, "", []):
+                merged["valor_total"] = page_data.get("valor_total")
+            for linea in page_data.get("lineas") or []:
+                if isinstance(linea, dict):
+                    merged["lineas"].append(linea)
+            texto = page_data.get("texto_pagina") or ""
+            if texto.strip():
+                textos.append(texto.strip())
+
+        merged["texto_extraido"] = "\n\n".join(textos)
+        return merged
+
+    def _detect_extraction_issues(self, data):
+        """Detecta inconsistencias que justifican un reintento dirigido."""
+        issues = []
+        if not data:
+            return ["sin_datos"]
+        lineas = data.get("lineas") or []
+        if not lineas:
+            issues.append("sin_lineas")
+        valor_total = data.get("valor_total")
+        if valor_total not in (None, "") and lineas:
+            try:
+                total = float(valor_total)
+                suma = 0.0
+                for lin in lineas:
+                    val = lin.get("total")
+                    if val in (None, ""):
+                        val = lin.get("subtotal")
+                    if val not in (None, ""):
+                        suma += float(val)
+                if suma > 0 and abs(suma - total) > max(0.5, total * 0.02):
+                    issues.append(
+                        f"totales_incoherentes: suma_lineas={suma:.2f} vs valor_total={total:.2f}"
+                    )
+            except (TypeError, ValueError):
+                issues.append("valor_total_no_numerico")
+        if not data.get("numero_factura") and not data.get("remitente_nombre") and not data.get("remitente_nif"):
+            issues.append("cabecera_incompleta")
+        if not (data.get("texto_extraido") or "").strip():
+            issues.append("sin_texto_extraido")
+        return issues
+
+    def _retry_fix_structured_data(self, api_key, full_text, current_data, issues):
+        """
+        Segunda pasada SOLO con el error concreto (texto ya extraído + JSON previo).
+        No re-envía imágenes: corrige el JSON manteniendo o mejorando la información.
+        """
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+        schema = self._invoice_structured_json_schema_text()
+        # No reenviar texto_pagina en el resultado final esperado
+        current_clean = {k: v for k, v in (current_data or {}).items() if k != "texto_pagina"}
+        prompt = (
+            "Eres un experto en facturas comerciales para DUA.\n"
+            "Corrige el JSON de extracción de factura según los problemas detectados.\n"
+            "Debes devolver el MISMO esquema (o superior en completitud): no elimines campos ni líneas correctas.\n"
+            "Si faltan líneas, recupéralas del texto. Si el total no cuadra, revisa líneas y valor_total.\n"
+            "IGNORA 'Pedido pendiente'. Responde ÚNICAMENTE JSON válido.\n\n"
+            f"PROBLEMAS DETECTADOS:\n- " + "\n- ".join(issues) + "\n\n"
+            f"ESQUEMA OBJETIVO:\n{schema}\n\n"
+            f"JSON ACTUAL (a corregir):\n{json.dumps(current_clean, ensure_ascii=False)[:80000]}\n\n"
+            f"TEXTO COMPLETO DE LA FACTURA:\n{(full_text or '')[:120000]}"
+        )
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Responde ÚNICAMENTE con JSON válido de factura, sin markdown.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=16000,
+            response_format={"type": "json_object"},
+        )
+        content = (response.choices[0].message.content or "").strip()
+        if not content:
+            return None
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            return None
+        if "lineas" in data and not isinstance(data["lineas"], list):
+            data["lineas"] = []
+        return data
+
+    def _normalize_structured_invoice_data(self, data):
+        """Normaliza el JSON de factura al contrato consumido por apply_invoice_data."""
+        if not data or not isinstance(data, dict):
+            return data
+
+        if "lineas" in data and not isinstance(data["lineas"], list):
+            data["lineas"] = []
+
+        if data.get("direction"):
+            direction = str(data["direction"]).lower() if data["direction"] else None
+            if direction and direction not in ["export", "import"]:
+                pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
+                pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
+                if pais_origen == "ES" and pais_destino and pais_destino != "ES":
+                    data["direction"] = "export"
+                elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
+                    data["direction"] = "import"
+                else:
+                    data["direction"] = None
+            elif direction:
+                data["direction"] = direction
+            else:
+                data["direction"] = None
+        else:
+            pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
+            pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
+            if pais_origen == "ES" and pais_destino and pais_destino != "ES":
+                data["direction"] = "export"
+            elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
+                data["direction"] = "import"
+
+        if data.get("incoterm"):
+            try:
+                incoterm = str(data["incoterm"]).upper().strip() if data["incoterm"] else None
+                if incoterm:
+                    incoterm_map = {"FOB": "FCA", "CIF": "CIP", "CFR": "CPT"}
+                    valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
+                    if incoterm in incoterm_map:
+                        data["incoterm"] = incoterm_map[incoterm]
+                    elif incoterm not in valid_incoterms:
+                        _logger.warning(
+                            "Incoterm '%s' no es válido y no se puede mapear. No se asignará.",
+                            incoterm,
+                        )
+                        data["incoterm"] = None
+                    else:
+                        data["incoterm"] = incoterm
+                else:
+                    data["incoterm"] = None
+            except (AttributeError, TypeError) as e:
+                _logger.warning("Error procesando incoterm '%s': %s", data.get("incoterm"), e)
+                data["incoterm"] = None
+
+        if data.get("valor_total"):
+            try:
+                if isinstance(data["valor_total"], str):
+                    data["valor_total"] = float(
+                        data["valor_total"].replace(".", "").replace(",", ".")
+                    )
+                else:
+                    data["valor_total"] = float(data["valor_total"])
+            except Exception:
+                data["valor_total"] = None
+
+        lineas_validas = []
+        for linea in data.get("lineas", []):
+            if not isinstance(linea, dict):
+                continue
+            descripcion = (linea.get("descripcion") or "").lower()
+            if any(p in descripcion for p in ["pedido pendiente", "pendiente", "pending order"]):
+                _logger.info(
+                    "Ignorando línea con descripción de pedido pendiente: %s",
+                    linea.get("descripcion"),
+                )
+                continue
+
+            if linea.get("cantidad"):
+                try:
+                    if isinstance(linea["cantidad"], str):
+                        linea["cantidad"] = float(linea["cantidad"].replace(",", "."))
+                    else:
+                        linea["cantidad"] = float(linea["cantidad"])
+                    if not linea.get("unidades"):
+                        linea["unidades"] = linea["cantidad"]
+                except Exception:
+                    pass
+
+            for campo_precio in ["precio_unitario", "total", "subtotal"]:
+                if linea.get(campo_precio):
+                    try:
+                        if isinstance(linea[campo_precio], str):
+                            linea[campo_precio] = float(
+                                linea[campo_precio].replace(".", "").replace(",", ".")
+                            )
+                        else:
+                            linea[campo_precio] = float(linea[campo_precio])
+                    except Exception:
+                        linea[campo_precio] = None
+
+            if linea.get("descuento"):
+                try:
+                    if isinstance(linea["descuento"], str):
+                        descuento_str = linea["descuento"].replace("%", "").replace(",", ".")
+                        linea["descuento"] = float(descuento_str)
+                    else:
+                        linea["descuento"] = float(linea["descuento"])
+                except Exception:
+                    linea["descuento"] = None
+
+            for campo_peso in ["peso_bruto", "peso_neto"]:
+                if linea.get(campo_peso):
+                    try:
+                        if isinstance(linea[campo_peso], str):
+                            linea[campo_peso] = float(linea[campo_peso].replace(",", "."))
+                        else:
+                            linea[campo_peso] = float(linea[campo_peso])
+                    except Exception:
+                        linea[campo_peso] = None
+
+            if linea.get("bultos"):
+                try:
+                    if isinstance(linea["bultos"], str):
+                        linea["bultos"] = int(float(linea["bultos"].replace(",", ".")))
+                    else:
+                        linea["bultos"] = int(linea["bultos"])
+                except Exception:
+                    linea["bultos"] = None
+
+            if linea.get("partida"):
+                partida = str(linea["partida"]).strip()
+                partida = "".join(filter(str.isdigit, partida))
+                if partida:
+                    if len(partida) < 8:
+                        partida = partida.zfill(8)
+                    if len(partida) > 10:
+                        partida = partida[:10]
+                    linea["partida"] = partida
+                else:
+                    linea["partida"] = None
+            else:
+                _logger.warning("Línea sin partida arancelaria: %s", linea.get("descripcion"))
+
+            lineas_validas.append(linea)
+
+        data["lineas"] = lineas_validas
+        _logger.info("Datos estructurados validados: %d líneas extraídas", len(lineas_validas))
+        return data
 
     def _extract_with_google_vision(self, api_key_or_path, pdf_data):
         """
@@ -920,170 +1274,9 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
             # Parsear JSON
             try:
                 data = json.loads(response_text)
-                
-                # Validar y normalizar datos
                 if not isinstance(data, dict):
                     raise ValueError("La respuesta no es un diccionario")
-                
-                # Asegurar que lineas es una lista
-                if "lineas" in data and not isinstance(data["lineas"], list):
-                    data["lineas"] = []
-                
-                # Validar y normalizar direction (sentido)
-                if data.get("direction"):
-                    direction = str(data["direction"]).lower() if data["direction"] else None
-                    if direction and direction not in ["export", "import"]:
-                        # Intentar determinar basándose en países
-                        pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
-                        pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
-                        if pais_origen == "ES" and pais_destino and pais_destino != "ES":
-                            data["direction"] = "export"
-                        elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
-                            data["direction"] = "import"
-                        else:
-                            data["direction"] = None
-                    elif direction:
-                        data["direction"] = direction
-                    else:
-                        data["direction"] = None
-                else:
-                    # Si no hay direction pero hay países, intentar determinarlo
-                    pais_origen = (data.get("pais_origen") or "").upper() if data.get("pais_origen") else ""
-                    pais_destino = (data.get("pais_destino") or "").upper() if data.get("pais_destino") else ""
-                    if pais_origen == "ES" and pais_destino and pais_destino != "ES":
-                        data["direction"] = "export"
-                    elif pais_origen and pais_origen != "ES" and pais_destino == "ES":
-                        data["direction"] = "import"
-                
-                # Validar incoterm - SIEMPRE mapear CIF, FOB, CFR antes de guardar
-                if data.get("incoterm"):
-                    try:
-                        incoterm = str(data["incoterm"]).upper().strip() if data["incoterm"] else None
-                        if incoterm:
-                            incoterm_map = {
-                                "FOB": "FCA",
-                                "CIF": "CIP",
-                                "CFR": "CPT",
-                            }
-                            valid_incoterms = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP"]
-                            
-                            # PRIMERO aplicar mapeo si es necesario
-                            if incoterm in incoterm_map:
-                                data["incoterm"] = incoterm_map[incoterm]
-                            # LUEGO validar
-                            elif incoterm not in valid_incoterms:
-                                # Si no es válido y no se puede mapear, poner None para que no se escriba
-                                _logger.warning("Incoterm '%s' no es válido y no se puede mapear. No se asignará.", incoterm)
-                                data["incoterm"] = None
-                            else:
-                                data["incoterm"] = incoterm
-                        else:
-                            data["incoterm"] = None
-                    except (AttributeError, TypeError) as e:
-                        _logger.warning("Error procesando incoterm '%s': %s", data.get("incoterm"), e)
-                        data["incoterm"] = None
-                
-                # Normalizar valores numéricos
-                if data.get("valor_total"):
-                    try:
-                        if isinstance(data["valor_total"], str):
-                            # Convertir formato español a decimal
-                            data["valor_total"] = float(data["valor_total"].replace('.', '').replace(',', '.'))
-                        else:
-                            data["valor_total"] = float(data["valor_total"])
-                    except:
-                        data["valor_total"] = None
-                
-                # Normalizar líneas y filtrar productos de pedidos pendientes
-                lineas_validas = []
-                for linea in data.get("lineas", []):
-                    # Filtrar productos que puedan ser de pedidos pendientes
-                    descripcion = linea.get("descripcion", "").lower()
-                    # Si la descripción contiene indicadores de pedido pendiente, saltar
-                    if any(palabra in descripcion for palabra in ["pedido pendiente", "pendiente", "pending order"]):
-                        _logger.info("Ignorando línea con descripción de pedido pendiente: %s", linea.get("descripcion"))
-                        continue
-                    # Normalizar cantidad y unidades
-                    if linea.get("cantidad"):
-                        try:
-                            if isinstance(linea["cantidad"], str):
-                                linea["cantidad"] = float(linea["cantidad"].replace(',', '.'))
-                            else:
-                                linea["cantidad"] = float(linea["cantidad"])
-                            if not linea.get("unidades"):
-                                linea["unidades"] = linea["cantidad"]
-                        except:
-                            pass
-                    
-                    # Normalizar precios
-                    for campo_precio in ["precio_unitario", "total", "subtotal"]:
-                        if linea.get(campo_precio):
-                            try:
-                                if isinstance(linea[campo_precio], str):
-                                    linea[campo_precio] = float(linea[campo_precio].replace('.', '').replace(',', '.'))
-                                else:
-                                    linea[campo_precio] = float(linea[campo_precio])
-                            except:
-                                linea[campo_precio] = None
-                    
-                    # Normalizar descuento
-                    if linea.get("descuento"):
-                        try:
-                            if isinstance(linea["descuento"], str):
-                                # Puede venir como "64,00%" o "64.00" o "64"
-                                descuento_str = linea["descuento"].replace('%', '').replace(',', '.')
-                                linea["descuento"] = float(descuento_str)
-                            else:
-                                linea["descuento"] = float(linea["descuento"])
-                        except:
-                            linea["descuento"] = None
-                    
-                    # Normalizar pesos
-                    for campo_peso in ["peso_bruto", "peso_neto"]:
-                        if linea.get(campo_peso):
-                            try:
-                                if isinstance(linea[campo_peso], str):
-                                    linea[campo_peso] = float(linea[campo_peso].replace(',', '.'))
-                                else:
-                                    linea[campo_peso] = float(linea[campo_peso])
-                            except:
-                                linea[campo_peso] = None
-                    
-                    # Normalizar bultos
-                    if linea.get("bultos"):
-                        try:
-                            if isinstance(linea["bultos"], str):
-                                linea["bultos"] = int(float(linea["bultos"].replace(',', '.')))
-                            else:
-                                linea["bultos"] = int(linea["bultos"])
-                        except:
-                            linea["bultos"] = None
-                    
-                    # Normalizar partida arancelaria (asegurar formato correcto)
-                    if linea.get("partida"):
-                        partida = str(linea["partida"]).strip()
-                        # Limpiar espacios y caracteres no numéricos
-                        partida = ''.join(filter(str.isdigit, partida))
-                        if partida:
-                            # Asegurar que tenga al menos 8 dígitos
-                            if len(partida) < 8:
-                                partida = partida.zfill(8)
-                            # Truncar si tiene más de 10
-                            if len(partida) > 10:
-                                partida = partida[:10]
-                            linea["partida"] = partida
-                        else:
-                            linea["partida"] = None
-                    else:
-                        _logger.warning("Línea sin partida arancelaria: %s", linea.get("descripcion"))
-                    
-                    lineas_validas.append(linea)
-                
-                # Reemplazar lineas con las válidas
-                data["lineas"] = lineas_validas
-                
-                _logger.info("Datos estructurados validados: %d líneas extraídas", len(data.get("lineas", [])))
-                return data
+                return self._normalize_structured_invoice_data(data)
                 
             except json.JSONDecodeError as json_err:
                 _logger.error("Error parseando JSON de GPT-4o: %s. Respuesta: %s", json_err, response_text[:500])

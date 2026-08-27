@@ -6,7 +6,8 @@
     <field name="name">aduana.expediente.tree</field>
     <field name="model">aduana.expediente</field>
     <field name="arch" type="xml">
-      <tree string="Expedientes Aduaneros" default_order="create_date desc" create="1" js_class="expediente_list_button">
+      <tree string="Expedientes Aduaneros" default_order="create_date desc" create="1">
+        <!-- js_class="expediente_list_button" desactivado: oculta «Subir Facturas» en tree -->
         <field name="name" string="Código/Referencia"/>
         <field name="factura_estado_procesamiento" widget="badge" 
                decoration-success="factura_estado_procesamiento == 'completado'" 
@@ -433,11 +434,12 @@
             <page string="Líneas">
               <field name="line_ids" limit="40">
                 <tree editable="bottom" default_order="item_number">
-                  <field name="expediente_id" column_invisible="1"/>
+                  <field name="expediente_id" invisible="1" column_invisible="1"/>
                   <field name="item_number"/>
                   <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
                   <field name="partida"/>
-                  <field name="taric_completo"/>
+                  <field name="taric_completo"
+                         attrs="{'column_invisible': [('parent.direction', '!=', 'import')]}"/>
                   <field name="import_ddt_goods_item" optional="show"
                          attrs="{'column_invisible': [('parent.direction', '!=', 'import')]}"/>
                   <field name="type_of_packages" optional="hide"
@@ -733,7 +735,7 @@ if records:
         No hay expedientes de exportación
       </p>
       <p>
-        Crea un expediente de exportación (España → país tercero) o usa «Subir Facturas».
+        Crea un expediente de exportación (España → país tercero).
       </p>
     </field>
   </record>
@@ -758,7 +760,7 @@ if records:
         No hay expedientes de importación
       </p>
       <p>
-        Crea un expediente de importación (país tercero → España) o usa «Subir Facturas».
+        Crea un expediente de importación (país tercero → España).
       </p>
     </field>
   </record>
@@ -840,6 +842,8 @@ if records:
     <field name="model">aduana.expediente.line</field>
     <field name="arch" type="xml">
       <tree string="Líneas de mercancía" default_order="item_number" editable="bottom">
+        <field name="expediente_id" invisible="1" column_invisible="1"/>
+        <field name="factura_id" optional="hide"/>
         <field name="item_number"/>
         <field name="partida"/>
         <field name="descripcion"/>

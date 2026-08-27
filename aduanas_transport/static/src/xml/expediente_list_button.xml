@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Botón «Subir Facturas» en tree: oculto temporalmente.
+  Para reactivar:
+    1) En aduana_expediente_views.xml: js_class="expediente_list_button" en la <tree>
+    2) Restaurar el template de abajo (xpath + botón)
+-->
 <templates>
+   <!--
    <t t-name="aduanas_transport.ListView.Buttons" t-inherit="web.ListView.Buttons">
        <xpath expr="//*[@class='btn btn-primary o_list_button_add']" position="after">
            <button type="button" class="btn btn-primary" style="margin-left: 10px;" t-on-click="onClickSubirFacturas">
@@ -7,5 +14,5 @@
            </button>
        </xpath>
    </t>
+   -->
 </templates>
-

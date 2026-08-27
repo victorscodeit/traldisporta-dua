@@ -2,7 +2,9 @@
 
 ## Guía principal (Traldis Porta)
 
-**→ [GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md)** — documento recomendado para operadores y administradores de Traldis Porta (alineado con módulo **16.0.1.0.21**).
+**→ [GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md)** — documento recomendado para operadores y administradores de Traldis Porta.
+
+**→ [MANUAL_IMPORTACION_EXPORTACION.html](MANUAL_IMPORTACION_EXPORTACION.html)** — manual HTML (imprimible) con procesos, campos, estados y llamadas AEAT (v16.0.1.0.37).
 
 **Entrega al cliente:** [COMO_ENTREGAR_AL_CLIENTE.md](COMO_ENTREGAR_AL_CLIENTE.md) — editar `GUIA_TRALDIS_PORTA_CLIENTE.md` y ejecutar `python tools/export_guia_cliente.py`.
 
@@ -20,6 +22,7 @@
 
 | Archivo | Descripción | Estado |
 |---------|-------------|--------|
+| [MANUAL_IMPORTACION_EXPORTACION.html](MANUAL_IMPORTACION_EXPORTACION.html) | Manual HTML: flujos, campos, estados, AEAT | **Actual** |
 | [GUIA_TRALDIS_PORTA.md](GUIA_TRALDIS_PORTA.md) | Guía operativa completa Traldis | **Actual** |
 | [FLUJO_EXPORTACION_ES_AD.md](FLUJO_EXPORTACION_ES_AD.md) | Export AES (CC515C, bandeja, CC507C) | Actual |
 | [FLUJO_IMPORTACION_AD_ES.md](FLUJO_IMPORTACION_AD_ES.md) | Import H1 (CC415A), G4/DDT opcional | Actual |
