@@ -721,7 +721,7 @@ class InvoiceOCRService(models.AbstractModel):
         return abs((precio * cantidad) - total) <= max(0.05, abs(total) * 0.015)
 
     def _line_amount_coherence_score(self, lineas, scale=1.0):
-        """Cuántas líneas cumplen precio*cantidad ≈ total tras aplicar scale a importes."""
+        """Cuántas líneas cumplen precio×cant×(1-dto%)≈total (o precio×cant≈total)."""
         ok = 0
         checked = 0
         for lin in lineas or []:
@@ -730,21 +730,32 @@ class InvoiceOCRService(models.AbstractModel):
             if total is None:
                 total = self._parse_invoice_number(lin.get("subtotal"))
             precio = self._parse_invoice_number(lin.get("precio_unitario"))
+            if precio is None:
+                precio = self._parse_invoice_number(lin.get("precio_neto"))
+            descuento = self._parse_invoice_number(lin.get("descuento"))
             if not cantidad or cantidad <= 0 or total is None or precio is None:
                 continue
             checked += 1
             total_s = total / scale
             precio_s = precio / scale
-            if abs((precio_s * cantidad) - total_s) <= max(0.05, abs(total_s) * 0.02):
+            if descuento is not None and 0 <= descuento < 100:
+                esperado = precio_s * cantidad * (1.0 - descuento / 100.0)
+            else:
+                esperado = precio_s * cantidad
+            # Tolerancia relativa (evita que escala 100 "gane" por el umbral absoluto 0.05)
+            if abs(esperado - total_s) <= max(0.02, abs(total_s) * 0.025):
                 ok += 1
         return ok, checked
 
     def _detect_amount_scale_factor(self, data):
         """
         Detecta si Vision devolvió importes ×100 (25,84 → 2584 / 3,40 → 340).
-        Ojo: precio×cant×(1-dto) también 'cuadra' a escala ×100; hay que
-        mirar si los precios unitarios parecen céntimos hinchados.
+        Solo corrige cuando los precios unitarios están claramente hinchados
+        (mediana >= 50). Nunca dividir importes ya en euros normales (~1-20).
         """
+        if data.get("_escala_importes_corregida"):
+            return 1.0
+
         lineas = data.get("lineas") or []
         if len(lineas) < 3:
             return 1.0
@@ -765,31 +776,40 @@ class InvoiceOCRService(models.AbstractModel):
         if not precios:
             return 1.0
 
+        median_precio = sorted(precios)[len(precios) // 2]
+        # Ya están en rango retail EUR: no tocar
+        if median_precio < 50:
+            return 1.0
+
         def _band_ratio(scale):
             return sum(1 for p in precios if 0.15 <= (p / scale) <= 80.0) / float(len(precios))
 
         r1 = _band_ratio(1.0)
         r100 = _band_ratio(100.0)
-        # Escala 100 deja precios en banda retail EUR y la 1 no
-        if r100 >= 0.5 and r100 > (r1 + 0.2):
+        # Escala 100 deja precios en banda retail y la 1 no
+        if r100 >= 0.5 and r100 > (r1 + 0.2) and median_precio >= 50:
             return 100.0
-        if r1 < 0.3 and r100 >= 0.55:
+        if r1 < 0.3 and r100 >= 0.55 and median_precio >= 50:
             return 100.0
 
         ok1, n = self._line_amount_coherence_score(lineas, 1.0)
         ok100, _ = self._line_amount_coherence_score(lineas, 100.0)
-        median_precio = sorted(precios)[len(precios) // 2]
         high_ratio = sum(1 for p in precios if p >= 40) / float(len(precios))
         valor = self._parse_invoice_number(data.get("valor_total"))
 
-        if n >= 3 and ok100 > ok1 and ok100 >= max(2, int(n * 0.5)):
+        # Solo si además mejora la coherencia Y la mediana es hinchada
+        if (
+            median_precio >= 50
+            and n >= 3
+            and ok100 > ok1
+            and ok100 >= max(2, int(n * 0.5))
+        ):
             return 100.0
         if high_ratio >= 0.45 and median_precio >= 80 and len(lineas) >= 5:
             if valor and valor >= 20000:
                 return 100.0
             if totales and (sum(totales) / len(totales)) >= 200:
                 return 100.0
-        # Mediana hinchada aunque la aritmética cuadre igual en ambas escalas
         if median_precio >= 100 and len(lineas) >= 5:
             if valor and valor >= 10000:
                 return 100.0
@@ -797,7 +817,7 @@ class InvoiceOCRService(models.AbstractModel):
                 return 100.0
 
         texto = data.get("texto_extraido") or ""
-        if texto and totales:
+        if texto and totales and median_precio >= 50:
             sample = [t for t in totales if 100 <= t <= 9999]
             hits = 0
             for t in sample[:15]:
@@ -811,8 +831,10 @@ class InvoiceOCRService(models.AbstractModel):
         return 1.0
 
     def _ensure_invoice_amount_scale(self, data):
-        """Garantiza corrección ×100 justo antes de escribir líneas en Odoo."""
+        """Garantiza corrección ×100 justo antes de escribir líneas en Odoo (solo una vez)."""
         if not data or not isinstance(data, dict):
+            return data
+        if data.get("_escala_importes_corregida"):
             return data
         scale = self._detect_amount_scale_factor(data)
         if scale != 1.0:

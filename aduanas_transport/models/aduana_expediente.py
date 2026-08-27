@@ -3708,12 +3708,35 @@ class AduanaExpediente(models.Model):
     def action_process_invoice_pdf(self):
         """
         Encola el procesamiento de la factura en background y devuelve notificación inmediata.
+        Si el expediente usa facturas hijas (factura_ids), delega en ellas (no usa factura_pdf legacy).
         Si se pasa context force_sync=True o process_async=False, ejecuta en línea.
         """
         force_sync = self.env.context.get("force_sync") or (self.env.context.get("process_async") is False)
         if force_sync:
-            return self._process_invoice_pdf_sync()
-        
+            # Si hay facturas hijas pendientes, procesarlas; si no, legacy factura_pdf
+            for rec in self:
+                pending = rec.factura_ids.filtered(
+                    lambda f: f.factura_pdf
+                    and f.factura_estado_procesamiento in ("pendiente", "sin_factura", "error")
+                    and not f.factura_procesada
+                )
+                if pending:
+                    for factura in pending:
+                        factura.with_context(force_sync=True)._process_invoice_pdf_sync()
+                else:
+                    rec._process_invoice_pdf_sync()
+            return True
+
+        # Preferir facturas hijas si existen (flujo actual)
+        for rec in self:
+            pending = rec.factura_ids.filtered(
+                lambda f: f.factura_pdf
+                and f.factura_estado_procesamiento in ("pendiente", "sin_factura", "error")
+                and not f.factura_procesada
+            )
+            if pending:
+                return rec.action_procesar_todas_facturas()
+
         for rec in self:
             if not rec.factura_pdf:
                 raise UserError(_("No hay factura PDF adjunta para procesar"))
@@ -4000,8 +4023,16 @@ class AduanaExpediente(models.Model):
 
     def cron_process_invoice_pdf_queue(self, limit=2):
         """Procesa en background las facturas encoladas (expedientes con PDF directo y facturas del modelo factura)."""
-        # Expedientes con factura PDF directa (una sola factura en el expediente)
-        pending_exp = self.search([("factura_estado_procesamiento", "=", "en_cola")], limit=limit, order="factura_en_cola_at asc, id asc")
+        # Solo legacy: PDF en el expediente. Si el estado en_cola viene de factura_ids hijas,
+        # NO encolar job del expediente (fallaría con "No hay factura PDF adjunta").
+        pending_exp = self.search(
+            [
+                ("factura_estado_procesamiento", "=", "en_cola"),
+                ("factura_pdf", "!=", False),
+            ],
+            limit=limit,
+            order="factura_en_cola_at asc, id asc",
+        )
         for rec in pending_exp:
             try:
                 rec.with_delay(
@@ -4037,6 +4068,17 @@ class AduanaExpediente(models.Model):
         self = self.with_context(prefetch_fields=False)
         for rec in self:
             try:
+                # Job legacy del expediente: requiere factura_pdf.
+                # Si solo hay facturas hijas, este job no aplica (ya se procesan por aduana.expediente.factura).
+                if not rec.factura_pdf:
+                    if rec.factura_ids:
+                        _logger.info(
+                            "Omitiendo job PDF legacy del expediente %s: sin factura_pdf "
+                            "(procesamiento vía aduana.expediente.factura)",
+                            rec.name,
+                        )
+                        continue
+                    raise UserError(_("No hay factura PDF adjunta para procesar"))
                 rec.with_context(process_async=True)._process_invoice_pdf_sync()
             except Exception as e:
                 # Marcar estado de error con un único write final
