@@ -7,6 +7,43 @@ class AduanaValidator(models.AbstractModel):
     _name = "aduanas.validator"
     _description = "Validador de datos aduaneros"
 
+    _PLACEHOLDER_SPANISH_VATS = frozenset({
+        "B12345678", "A12345678", "X12345678", "A58307836",
+        "12345678Z", "00000000T", "99999999R",
+    })
+
+    def _vat_core_es(self, vat):
+        vat = (vat or "").replace(" ", "").replace("-", "").upper()
+        if len(vat) > 2 and vat[:2].isalpha():
+            return vat[2:]
+        return vat
+
+    def validate_spanish_importer_partner(self, partner, role=None):
+        """Valida NIF/EORI español del importador (consignatario en importación H1)."""
+        role = role or _("Consignatario/importador")
+        errors = []
+        if not partner:
+            errors.append(_("%s: contacto obligatorio.") % role)
+            return errors
+        vat = (partner.vat or "").strip()
+        if not vat:
+            errors.append(_("%s: falta NIF/CIF/EORI español (campo VAT en la ficha del contacto).") % role)
+            return errors
+        if not self.validate_nif_cif(vat):
+            errors.append(_("%s: el NIF/CIF «%s» no tiene formato español válido.") % (role, vat))
+        core = self._vat_core_es(vat)
+        if core in self._PLACEHOLDER_SPANISH_VATS or core.startswith("123456"):
+            errors.append(_(
+                "%s: el NIF «%s» parece un valor de prueba o ficticio. "
+                "En CC415A el Importer debe ser un EORI/NIF español real, dado de alta en el censo AEAT."
+            ) % (role, vat))
+        if partner.country_id and partner.country_id.code != "ES":
+            errors.append(_(
+                "%s (%s): en importación H1 el importador debe ser español (país ES). "
+                "País actual del contacto: %s."
+            ) % (role, partner.name or "?", partner.country_id.code))
+        return errors
+
     def validate_nif_cif(self, vat):
         """Valida formato de NIF/CIF español (admite prefijo de país, ej. ESA58307836)."""
         if not vat:
@@ -162,10 +199,8 @@ class AduanaValidator(models.AbstractModel):
         
         if not expediente.consignatario:
             errors.append(_("El consignatario es obligatorio"))
-        elif not expediente.consignatario.vat:
-            errors.append(_("El consignatario debe tener NIF/CIF"))
-        elif not self.validate_nif_cif(expediente.consignatario.vat):
-            errors.append(_("El NIF/CIF del consignatario no es válido"))
+        else:
+            errors.extend(self.validate_spanish_importer_partner(expediente.consignatario))
         
         if not expediente.oficina:
             errors.append(_("La oficina aduanera es obligatoria"))

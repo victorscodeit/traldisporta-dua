@@ -3022,6 +3022,9 @@ class AduanaExpediente(models.Model):
         self.ensure_one()
         company_id = self._imp_eori(self.env.company.partner_id, "ES")
         importer_id = self._imp_eori(self.consignatario, "ES")
+        importer_errors = self.env["aduanas.validator"].validate_spanish_importer_partner(self.consignatario)
+        if importer_errors:
+            raise UserError("\n".join(importer_errors))
         if not importer_id or not importer_id.startswith("ES"):
             raise UserError(_("Importer obligatorio y debe ser español/UE válido. Revise el consignatario/importador español."))
         if not company_id:
@@ -3371,7 +3374,10 @@ class AduanaExpediente(models.Model):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
             else:
                 rec.state = "error"
-                error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")
+                raw_errors = parsed.get("errors") or []
+                if raw_errors:
+                    raw_errors = rec._enrich_aeat_errors_list(raw_errors, parsed.get("incidencias"))
+                error_msg = "\n".join(raw_errors) or parsed.get("error") or _("Error desconocido")
                 if error_msg == _("Error desconocido") and resp_xml:
                     error_msg = _(
                         "AEAT devolvió una respuesta sin MRN ni detalle reconocible. "
@@ -3709,6 +3715,26 @@ class AduanaExpediente(models.Model):
             "(preproducción/producción)."
         ) % (declarant, dict(self._fields["tipo_representacion"].selection).get(self.tipo_representacion, self.tipo_representacion or "?"))
 
+    def _aeat_importer_hint(self, error_text=""):
+        self.ensure_one()
+        partner = self.consignatario
+        eori = self._imp_eori(partner, "ES") if partner else ""
+        original = ""
+        if error_text and "originalAttributeValue" in error_text:
+            m = re.search(r"originalAttributeValue[>:\s]+([A-Z0-9]+)", error_text, re.I)
+            if m:
+                original = m.group(1)
+        return _(
+            "→ Importador CC415A (consignatario): %s\n"
+            "  EORI enviado: %s%s\n"
+            "  Debe ser un NIF/CIF/EORI español existente en el censo AEAT (regla ESR0002). "
+            "Corrija el VAT del consignatario en Contactos."
+        ) % (
+            (partner.name if partner else "?"),
+            eori or "?",
+            (" (AEAT rechazó: %s)" % original) if original and original != eori else "",
+        )
+
     def _enrich_aeat_error_text(self, error_text, goods_item_number=None, codigo=None):
         """Añade línea/partida del expediente al mensaje de error AEAT."""
         self.ensure_one()
@@ -3718,6 +3744,12 @@ class AduanaExpediente(models.Model):
         subcode = self._aeat_error_subcode(text, codigo)
 
         pointer_lower = text.lower()
+        if "/importer/" in pointer_lower or subcode in ("50915",):
+            hint = self._aeat_importer_hint(text)
+            if hint not in text:
+                return text + "\n" + hint
+            return text
+
         if "/declarant/" in pointer_lower or subcode in ("1020", "9005"):
             hint = self._aeat_declarant_hint(text)
             if hint not in text:
@@ -4368,9 +4400,8 @@ class AduanaExpediente(models.Model):
             except Exception as msg_error:
                 _logger.warning("No se pudo crear mensaje en chatter: %s", msg_error)
             
-            # Forzar recarga del registro
-            rec.invalidate_recordset()
-            rec.refresh()
+            # Forzar recarga del registro en caché ORM
+            rec.invalidate_recordset(["line_ids", "verificacion_ia_estado"])
             
             # Retornar acción para recargar la vista del expediente
             # Esto automáticamente recargará la vista con los datos actualizados
@@ -5047,6 +5078,38 @@ class AduanaExpediente(models.Model):
                 "target": "current",
             }
     
+    def _taric_country_code(self):
+        """País tercero para la consulta TARIC según sentido del expediente."""
+        self.ensure_one()
+        if self.direction == "export":
+            country = (self.pais_destino or "").strip().upper()
+            if not country:
+                raise UserError(_(
+                    "Indique el país destino (consignatario o pestaña Totales) antes de consultar TARIC."
+                ))
+        else:
+            country = (self.pais_origen or "").strip().upper()
+            if not country:
+                raise UserError(_(
+                    "Indique el país origen (remitente o pestaña Totales) antes de consultar TARIC."
+                ))
+        return country
+
+    def _taric_partidas_from_lines(self):
+        """Partidas únicas normalizadas (taric_completo o partida) de las líneas."""
+        self.ensure_one()
+        partidas_unicas = []
+        partidas_normalizadas = set()
+        for line in self.line_ids:
+            raw = (line.taric_completo or line.partida or "").strip()
+            if not raw:
+                continue
+            partida_limpia = self._normalize_partida_arancelaria(raw)
+            if partida_limpia and len(partida_limpia) >= 8 and partida_limpia not in partidas_normalizadas:
+                partidas_unicas.append(partida_limpia)
+                partidas_normalizadas.add(partida_limpia)
+        return partidas_unicas, partidas_normalizadas
+
     def action_consultar_taric_manual(self):
         """Consulta TARIC para todas las partidas del expediente"""
         self.ensure_one()
@@ -5158,27 +5221,20 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         
         if not expediente.line_ids:
             raise UserError(_("No hay líneas de productos en el expediente para consultar documentos."))
-        
+
+        country_code = expediente._taric_country_code()
         taric_service = self.env["aduanas.taric.service"]
         documentos_creados = 0
         documentos_actualizados = 0
         documentos_eliminados = 0
         errores_taric = []
-        
-        # Obtener todas las partidas únicas del expediente (normalizadas)
-        partidas_en_lineas = expediente.line_ids.filtered(lambda l: l.partida and len(str(l.partida).strip()) >= 8).mapped('partida')
-        partidas_unicas = []
-        partidas_normalizadas = set()
-        
-        for partida in partidas_en_lineas:
-            # Normalizar partida usando el método del expediente
-            partida_limpia = expediente._normalize_partida_arancelaria(partida)
-            if partida_limpia and len(partida_limpia) >= 8 and partida_limpia not in partidas_normalizadas:
-                partidas_unicas.append(partida_limpia)
-                partidas_normalizadas.add(partida_limpia)
-        
+
+        partidas_unicas, partidas_normalizadas = expediente._taric_partidas_from_lines()
         if not partidas_unicas:
-            raise UserError(_("No hay partidas arancelarias válidas (mínimo 8 dígitos) en las líneas del expediente."))
+            raise UserError(_(
+                "No hay partidas arancelarias válidas en las líneas. "
+                "Informe partida o TARIC completo (mínimo 8 dígitos)."
+            ))
         
         # PASO 1: Eliminar documentos TARIC que ya no corresponden a ninguna partida actual
         documentos_existentes = self.search([('expediente_id', '=', expediente.id)])
@@ -5196,9 +5252,12 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
             try:
                 documentos_taric = taric_service.get_required_documents(
                     goods_code=partida_limpia,
-                    country_code=expediente.pais_destino if expediente.direction == "export" else expediente.pais_origen,
+                    country_code=country_code,
                     direction=expediente.direction
                 )
+            except UserError as e:
+                errores_taric.append("Partida %s: %s" % (partida_limpia, str(e)))
+                documentos_taric = []
             except Exception as e:
                 _logger.warning("Error consultando TARIC para partida %s: %s", partida_limpia, e)
                 errores_taric.append(f"Partida {partida_limpia}: {str(e)}")
@@ -5281,6 +5340,7 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         
         # Agregar información de partidas consultadas
         if partidas_unicas:
+            mensaje_chatter += _("<br/><b>País consultado:</b> %s<br/>") % country_code
             mensaje_chatter += _("<br/><b>📋 Partidas consultadas:</b><br/>")
             for partida in partidas_unicas[:10]:  # Mostrar hasta 10 partidas
                 mensaje_chatter += f"• {partida}<br/>"
@@ -5305,16 +5365,24 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         except Exception as msg_error:
             _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
         
-        # Forzar recarga del registro para actualizar la vista
-        expediente.invalidate_recordset()
-        expediente.refresh()
-        
-        # Retornar acción para recargar la vista del expediente
-        # Esto automáticamente recargará la vista con los datos actualizados
+        # Forzar recarga de la lista de documentos en la vista
+        expediente.invalidate_recordset(["documento_requerido_ids"])
+
+        reload_action = {
+            "type": "ir.actions.act_window",
+            "res_model": "aduana.expediente",
+            "res_id": expediente.id,
+            "view_mode": "form",
+            "target": "current",
+        }
         return {
-            'type': 'ir.actions.act_window',
-            'res_model': 'aduana.expediente',
-            'res_id': expediente.id,
-            'view_mode': 'form',
-            'target': 'current',
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Consulta TARIC"),
+                "message": mensaje,
+                "type": tipo_notificacion,
+                "sticky": bool(errores_taric),
+                "next": reload_action,
+            },
         }

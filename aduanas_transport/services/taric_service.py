@@ -32,8 +32,9 @@ class TaricService(models.AbstractModel):
                 from zeep import Client
                 from zeep.exceptions import Fault
             except ImportError:
-                _logger.warning("zeep no está instalado. Instala con: pip install zeep")
-                return []
+                raise UserError(_(
+                    "Falta la librería zeep en el servidor Odoo. Instale: pip install zeep"
+                ))
             
             if not goods_code or len(str(goods_code).strip()) < 8:
                 _logger.warning("Código de partida arancelaria inválido: %s", goods_code)
@@ -81,14 +82,19 @@ class TaricService(models.AbstractModel):
                         return self._call_taric_with_zeep(goods_code, country_code, reference_date, trade_movement)
                     except Exception as e2:
                         _logger.error("Ambos métodos fallaron. TARIC no está disponible.")
-                        return []
+                        raise UserError(_("TARIC no disponible: %s") % str(e2)) from e2
                 else:
                     _logger.error("Servidor TARIC no disponible (502). Los usuarios pueden añadir documentos manualmente.")
-                    return []
-        
+                    raise UserError(_(
+                        "El servicio TARIC de la UE no está disponible temporalmente (error 502). "
+                        "Intente más tarde o añada los documentos manualmente."
+                    ))
+
+        except UserError:
+            raise
         except Exception as e:
             _logger.exception("Error general consultando TARIC: %s", e)
-            return []
+            raise UserError(_("Error consultando TARIC: %s") % str(e)) from e
     
     def _call_taric_with_requests(self, goods_code, country_code, reference_date, trade_movement):
         """Llama a TARIC usando requests exactamente igual que Postman."""
@@ -139,10 +145,20 @@ class TaricService(models.AbstractModel):
                 _logger.info("TARIC respuesta (intento %s): Status %s", attempt + 1, response.status_code)
 
                 if response.status_code == 200:
+                    if "Access Denied" in response.text or "Web Filter" in response.text:
+                        raise Exception(_(
+                            "El servidor Odoo no puede acceder a la API TARIC de la UE "
+                            "(bloqueado por firewall o filtro web). Contacte con el administrador."
+                        ))
                     _logger.info("TARIC consulta exitosa para código %s", goods_code)
                     return self._parse_xml_response(response.text, goods_code)
 
                 if response.status_code in (429, 502, 503):
+                    if "Access Denied" in response.text:
+                        raise Exception(_(
+                            "El servidor Odoo no puede acceder a la API TARIC de la UE "
+                            "(bloqueado por firewall o filtro web). Contacte con el administrador."
+                        ))
                     _logger.warning("TARIC temporalmente no disponible (%s). Reintentando…", response.status_code)
                     time.sleep(2 ** attempt)
                     continue

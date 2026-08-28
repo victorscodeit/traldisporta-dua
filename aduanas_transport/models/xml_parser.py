@@ -285,6 +285,9 @@ class AduanaXmlParser(models.AbstractModel):
                 "error_description": self._find_first_text(
                     fe, "errorDescription", "ErrorDescription", "remarks", "errorText"
                 ),
+                "original_attribute_value": self._find_first_text(
+                    fe, "originalAttributeValue", "OriginalAttributeValue"
+                ),
             })
         return errors
 
@@ -322,6 +325,8 @@ class AduanaXmlParser(models.AbstractModel):
             parts.append(fe["error_reason"])
         if fe.get("error_description"):
             parts.append(fe["error_description"])
+        if fe.get("original_attribute_value"):
+            parts.append(_("valor enviado: %s") % fe["original_attribute_value"])
         return " - ".join(parts) or _("Error funcional AEAT importación")
 
     def _functional_error_to_incidencia(self, fe):
