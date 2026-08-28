@@ -76,12 +76,16 @@
                     <div class="col-12 col-lg-6 o_setting_box">
                         <div class="o_setting_left_pane">
                             <field name="openai_api_key" password="True"/>
+                            <field name="ocr_vision_model"/>
+                            <field name="ocr_text_model"/>
+                            <field name="ocr_max_workers"/>
+                            <field name="ocr_dpi"/>
                         </div>
                         <div class="o_setting_right_pane">
                             <label for="openai_api_key"/>
                             <div class="text-muted">
-                                <strong>OpenAI API Key</strong> para usar GPT-4o Vision con splitting por páginas.
-                                Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
+                                <strong>OpenAI API Key</strong> para extracción Vision con splitting por páginas.
+                                Modelo Vision por defecto: gpt-4.1. Modelo texto/reintento: gpt-4.1-mini.
                                 <br/>
                                 <a href="https://platform.openai.com/api-keys" target="_blank">Obtener API Key de OpenAI</a>
                             </div>

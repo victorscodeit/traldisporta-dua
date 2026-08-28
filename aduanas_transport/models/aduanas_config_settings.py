@@ -26,6 +26,26 @@ class AduanasConfigSettings(models.TransientModel):
     msoft_user = fields.Char(string="MSoft User")
     msoft_pass = fields.Char(string="MSoft Pass")
     openai_api_key = fields.Char(string="OpenAI API Key")
+    ocr_vision_model = fields.Char(
+        string="Modelo Vision",
+        default="gpt-4.1",
+        help="Modelo OpenAI para extracción por página (imagen → JSON).",
+    )
+    ocr_text_model = fields.Char(
+        string="Modelo texto/reintento",
+        default="gpt-4.1-mini",
+        help="Modelo para reintentos, fallback texto→JSON y validación IA.",
+    )
+    ocr_max_workers = fields.Integer(
+        string="Workers paralelos",
+        default=8,
+        help="Páginas procesadas en paralelo (1–16).",
+    )
+    ocr_dpi = fields.Integer(
+        string="DPI conversión PDF",
+        default=250,
+        help="Resolución al convertir PDF a imagen (72–400).",
+    )
 
     default_tipo_representacion = fields.Selection(
         [("indirecta", "Indirecta (agente)"), ("directa", "Directa")],
@@ -70,6 +90,10 @@ class AduanasConfigSettings(models.TransientModel):
         "msoft_user": ("aduanas_transport.msoft.user", ""),
         "msoft_pass": ("aduanas_transport.msoft.pass", ""),
         "openai_api_key": ("aduanas_transport.openai_api_key", ""),
+        "ocr_vision_model": ("aduanas_transport.ocr_vision_model", "gpt-4.1"),
+        "ocr_text_model": ("aduanas_transport.ocr_text_model", "gpt-4.1-mini"),
+        "ocr_max_workers": ("aduanas_transport.ocr_max_workers", "8"),
+        "ocr_dpi": ("aduanas_transport.ocr_dpi", "250"),
         "default_tipo_representacion": ("aduanas_transport.default_tipo_representacion", "indirecta"),
         "default_transportista": ("aduanas_transport.default_transportista", ""),
         "default_oficina_export": ("aduanas_transport.default_oficina_export", "ES000101"),
@@ -86,6 +110,11 @@ class AduanasConfigSettings(models.TransientModel):
                 value = icp.get_param(param) or default
                 if field_name == "aeat_endpoint_imp_decl" and "ADIM-JDIT/ws/imp/DeclaracionSOAP" in value:
                     value = self._PARAMS[field_name][1]
+                if field_name in ("ocr_max_workers", "ocr_dpi"):
+                    try:
+                        value = int(value)
+                    except (TypeError, ValueError):
+                        value = int(default)
                 values[field_name] = value
         if "cert_attachment_id" in fields_list:
             values["cert_attachment_id"] = int(icp.get_param("aduanas_transport.cert_attachment_id") or 0) or False
@@ -103,9 +132,23 @@ class AduanasConfigSettings(models.TransientModel):
         self.ensure_one()
         icp = self.env["ir.config_parameter"].sudo()
         for field_name, (param, default) in self._PARAMS.items():
-            value = self[field_name] or default
+            value = self[field_name] if self[field_name] not in (False, None, "") else default
             if field_name == "aeat_endpoint_imp_decl" and "ADIM-JDIT/ws/imp/DeclaracionSOAP" in value:
                 value = default
+            if field_name == "ocr_max_workers":
+                try:
+                    value = max(1, min(16, int(value)))
+                except (TypeError, ValueError):
+                    value = 8
+            if field_name == "ocr_dpi":
+                try:
+                    value = max(72, min(400, int(value)))
+                except (TypeError, ValueError):
+                    value = 250
+            if field_name in ("ocr_vision_model", "ocr_text_model"):
+                value = (str(value or default).strip() or default)
+            if field_name in ("ocr_max_workers", "ocr_dpi"):
+                value = str(value)
             icp.set_param(param, value)
         form_vals = {}
         if self.cert_upload:

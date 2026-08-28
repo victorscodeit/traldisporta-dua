@@ -82,8 +82,8 @@ class AduanaExpedienteLine(models.Model):
         """Recalcular precio_unitario si cambian valor_linea o unidades."""
         result = super().write(vals)
         if any(field in vals for field in ['valor_linea', 'unidades']) and 'precio_unitario' not in vals:
-            for line in self:
-                if line.valor_linea and line.unidades and line.unidades > 0:
+                for line in self:
+                    if line.valor_linea and line.unidades and line.unidades > 0:
                     line.precio_unitario = line.valor_linea / line.unidades
         return result
 
@@ -725,7 +725,7 @@ class AduanaExpediente(models.Model):
                 and rec.consignatario
                 and not rec.tiene_facturas_por_procesar
             )
-
+    
     @api.depends('factura_estado_procesamiento', 'factura_mensaje_error')
     def _compute_factura_mensaje_html(self):
         """Genera el mensaje HTML con colores según el estado"""
@@ -1524,7 +1524,7 @@ class AduanaExpediente(models.Model):
             subtype_xmlid="mail.mt_note",
         )
         return attachment
-
+    
     def _attach_pdf(self, filename, pdf_data):
         """Adjunta un PDF como documento al expediente"""
         for rec in self:
@@ -2360,7 +2360,7 @@ class AduanaExpediente(models.Model):
             if parsed.get("success") and parsed.get("mrn"):
                 rec.error_message = False
                 rec._apply_aeat_parsed_response(parsed, source="CC515C")
-                rec.with_context(mail_notrack=True).message_post(
+                    rec.with_context(mail_notrack=True).message_post(
                     body=_("DUA presentado (CC515C). MRN: %s") % rec.mrn,
                     subtype_xmlid="mail.mt_note",
                 )
@@ -3474,7 +3474,7 @@ class AduanaExpediente(models.Model):
                         "AEAT respondió 403 Forbidden. Revise certificado P12 y permisos del servicio importación."
                     )
                 else:
-                    rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
                 rec.with_context(mail_notrack=True).message_post(
                     body=rec.error_message,
                     subtype_xmlid="mail.mt_note",
@@ -3781,7 +3781,7 @@ class AduanaExpediente(models.Model):
                     parsed_msg["exited"] = True
                 rec._apply_aeat_parsed_response(parsed_msg, source="Bandeja %s" % (tipo or "AEAT"))
                 if tipo:
-                    rec.with_context(mail_notrack=True).message_post(
+                rec.with_context(mail_notrack=True).message_post(
                         body=_("Bandeja AEAT: mensaje %s (MRN %s).") % (tipo, mrn or rec.mrn or "-"),
                         subtype_xmlid="mail.mt_note",
                     )
@@ -3991,7 +3991,7 @@ class AduanaExpediente(models.Model):
                     )
                 )
         return enriched
-
+    
     def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
         """Procesa y crea incidencias desde datos parseados de AEAT"""
         self.ensure_one()
@@ -4172,7 +4172,7 @@ class AduanaExpediente(models.Model):
         self.ensure_one()
         att = self._get_xml_attachment("_CC415A.xml")
         if not att:
-            att = self._get_xml_attachment("IMP_DECL.xml")
+        att = self._get_xml_attachment("IMP_DECL.xml")
         return att
 
     def _ensure_cc415a_xml(self):
@@ -4293,7 +4293,7 @@ class AduanaExpediente(models.Model):
             )
             if pending:
                 return rec.action_procesar_todas_facturas()
-
+        
         for rec in self:
             if not rec.factura_pdf:
                 raise UserError(_("No hay factura PDF adjunta para procesar"))
@@ -5271,7 +5271,7 @@ class AduanaExpediente(models.Model):
                 partidas_unicas.append(partida_limpia)
                 partidas_normalizadas.add(partida_limpia)
         return partidas_unicas, partidas_normalizadas
-
+    
     def action_consultar_taric_manual(self):
         """Consulta TARIC para todas las partidas del expediente"""
         self.ensure_one()
@@ -5383,14 +5383,14 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         
         if not expediente.line_ids:
             raise UserError(_("No hay líneas de productos en el expediente para consultar documentos."))
-
+        
         country_code = expediente._taric_country_code()
         taric_service = self.env["aduanas.taric.service"]
         documentos_creados = 0
         documentos_actualizados = 0
         documentos_eliminados = 0
         errores_taric = []
-
+        
         partidas_unicas, partidas_normalizadas = expediente._taric_partidas_from_lines()
         if not partidas_unicas:
             raise UserError(_(

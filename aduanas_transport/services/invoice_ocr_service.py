@@ -13,9 +13,13 @@ class InvoiceOCRService(models.AbstractModel):
     _name = "aduanas.invoice.ocr.service"
     _description = "Servicio OCR/IA para procesar facturas PDF"
 
+    def _get_ocr_config(self):
+        """Lee modelos, workers y DPI desde Aduanas → Configuración."""
+        return self.env["res.config.settings"].get_ocr_settings()
+
     def extract_invoice_data(self, pdf_data, api_key=None):
         """
-        Extrae datos de una factura PDF usando OpenAI GPT-4o Vision o OCR alternativo.
+        Extrae datos de una factura PDF usando OpenAI Vision o OCR alternativo.
         
         :param pdf_data: Datos binarios del PDF (base64 o bytes)
         :param api_key: API key de OpenAI (opcional, se obtiene de configuración si no se proporciona)
@@ -85,17 +89,29 @@ class InvoiceOCRService(models.AbstractModel):
         resultado = None
         metodo_usado = None
         
-        # PRIORIDAD: Intentar OpenAI GPT-4o Vision primero (si hay API key)
+        # PRIORIDAD: Intentar OpenAI Vision primero (si hay API key)
+        ocr_config = self._get_ocr_config()
+        vision_model = ocr_config["vision_model"]
         if api_key:
-            _logger.info("API key disponible. Iniciando procesamiento con GPT-4o Vision...")
+            _logger.info(
+                "API key disponible. Iniciando procesamiento con %s Vision...",
+                vision_model,
+            )
             try:
-                _logger.info("Enviando PDF a OpenAI GPT-4o Vision con splitting por páginas...")
-                resultado = self._extract_with_openai_vision(api_key, pdf_bytes)
-                metodo_usado = resultado.get("metodo_usado") or "OpenAI GPT-4o Vision (estructurado)"
-                _logger.info("OpenAI GPT-4o Vision procesó el PDF exitosamente (%s)", metodo_usado)
+                _logger.info(
+                    "Enviando PDF a OpenAI %s Vision con splitting por páginas...",
+                    vision_model,
+                )
+                resultado = self._extract_with_openai_vision(api_key, pdf_bytes, ocr_config)
+                metodo_usado = resultado.get("metodo_usado") or f"OpenAI {vision_model} Vision (estructurado)"
+                _logger.info("OpenAI %s Vision procesó el PDF exitosamente (%s)", vision_model, metodo_usado)
             except Exception as e:
                 error_gpt = str(e)
-                _logger.warning("Error con OpenAI GPT-4o Vision: %s. Intentando OCR alternativo...", error_gpt)
+                _logger.warning(
+                    "Error con OpenAI %s Vision: %s. Intentando OCR alternativo...",
+                    vision_model,
+                    error_gpt,
+                )
                 
                 # Si el error es que no se pudo extraer texto, puede ser una imagen escaneada
                 # En ese caso, el OCR alternativo tampoco funcionará, así que mejor informar claramente
@@ -173,9 +189,9 @@ class InvoiceOCRService(models.AbstractModel):
         
         return resultado
 
-    def _extract_with_openai_vision(self, api_key, pdf_bytes):
+    def _extract_with_openai_vision(self, api_key, pdf_bytes, ocr_config=None):
         """
-        Extrae datos con GPT-4o Vision en una sola pasada por página (imagen → JSON).
+        Extrae datos con OpenAI Vision en una sola pasada por página (imagen → JSON).
         Páginas en paralelo; reintento dirigido si falla la coherencia.
         Requiere: pip install openai PyMuPDF
         """
@@ -183,12 +199,19 @@ class InvoiceOCRService(models.AbstractModel):
             from openai import OpenAI
             import fitz  # PyMuPDF
 
+            if ocr_config is None:
+                ocr_config = self._get_ocr_config()
+            vision_model = ocr_config["vision_model"]
+            text_model = ocr_config["text_model"]
+            max_workers_cfg = ocr_config["max_workers"]
+            dpi = ocr_config["dpi"]
+            
             if not api_key:
                 raise ValueError("API key de OpenAI no proporcionada")
-
+            
             client = OpenAI(api_key=api_key)
-
-            _logger.info("Convirtiendo PDF a imágenes por páginas...")
+            
+            _logger.info("Convirtiendo PDF a imágenes por páginas (DPI=%d)...", dpi)
             try:
                 pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
                 num_pages = len(pdf_document)
@@ -198,9 +221,9 @@ class InvoiceOCRService(models.AbstractModel):
             except Exception as pdf_error:
                 _logger.error("Error al abrir PDF: %s", pdf_error)
                 raise Exception(_("Error al abrir el PDF. Verifica que el archivo sea un PDF válido."))
-
+            
             page_images = []
-            mat = fitz.Matrix(250 / 72, 250 / 72)  # 250 DPI: mejor lectura de dígitos en tablas
+            mat = fitz.Matrix(dpi / 72, dpi / 72)
             for page_num in range(num_pages):
                 page = pdf_document[page_num]
                 pix = page.get_pixmap(matrix=mat)
@@ -209,11 +232,12 @@ class InvoiceOCRService(models.AbstractModel):
                 pix = None
             pdf_document.close()
 
-            max_workers = min(4, max(1, num_pages))
+            max_workers = min(max_workers_cfg, max(1, num_pages))
             _logger.info(
-                "Extracción estructurada Vision→JSON en paralelo (%d página(s), max_workers=%d)...",
+                "Extracción estructurada Vision→JSON en paralelo (%d página(s), max_workers=%d, modelo=%s)...",
                 num_pages,
                 max_workers,
+                vision_model,
             )
 
             page_results = [None] * num_pages
@@ -221,7 +245,7 @@ class InvoiceOCRService(models.AbstractModel):
 
             def _process_page(page_idx):
                 return page_idx, self._extract_page_structured_json(
-                    client, page_images[page_idx], page_idx + 1, num_pages
+                    client, page_images[page_idx], page_idx + 1, num_pages, vision_model
                 )
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -283,7 +307,7 @@ class InvoiceOCRService(models.AbstractModel):
                 _logger.warning("Inconsistencias tras extracción: %s. Reintento dirigido...", issues)
                 try:
                     fixed = self._retry_fix_structured_data(
-                        api_key, full_text, structured_data, issues
+                        api_key, full_text, structured_data, issues, text_model=text_model
                     )
                     if fixed:
                         fixed["texto_extraido"] = full_text
@@ -300,7 +324,7 @@ class InvoiceOCRService(models.AbstractModel):
             if not structured_data.get("lineas") and full_text.strip():
                 _logger.warning("Sin líneas tras Vision→JSON; fallback interpret_text_with_gpt...")
                 try:
-                    fallback = self._interpret_text_with_gpt(api_key, full_text)
+                    fallback = self._interpret_text_with_gpt(api_key, full_text, text_model=text_model)
                     if fallback and fallback.get("lineas"):
                         fallback["texto_extraido"] = full_text
                         structured_data = fallback
@@ -311,10 +335,10 @@ class InvoiceOCRService(models.AbstractModel):
                 _logger.warning("Usando parsing regex como último recurso")
                 parsed = self._parse_invoice_text(full_text)
                 if parsed.get("lineas") or parsed.get("numero_factura"):
-                    parsed["metodo_usado"] = "OpenAI GPT-4o Vision (regex fallback)"
+                    parsed["metodo_usado"] = f"OpenAI {vision_model} Vision (regex fallback)"
                     return parsed
 
-            structured_data["metodo_usado"] = "OpenAI GPT-4o Vision (estructurado)"
+            structured_data["metodo_usado"] = f"OpenAI {vision_model} Vision (estructurado)"
             if errores_paginas:
                 structured_data["_avisos_paginas"] = errores_paginas
             return structured_data
@@ -327,7 +351,7 @@ class InvoiceOCRService(models.AbstractModel):
                 "PyMuPDF no requiere dependencias externas del sistema."
             ))
         except Exception as e:
-            _logger.exception("Error con OpenAI GPT-4o Vision: %s", e)
+            _logger.exception("Error con OpenAI Vision: %s", e)
             raise
 
     def _invoice_structured_json_schema_text(self):
@@ -372,7 +396,7 @@ class InvoiceOCRService(models.AbstractModel):
   "texto_pagina": "transcripción COMPLETA de TODO el texto visible de ESTA página"
 }"""
 
-    def _extract_page_structured_json(self, client, img_base64, page_num, num_pages):
+    def _extract_page_structured_json(self, client, img_base64, page_num, num_pages, vision_model):
         """Una página: Vision → JSON estructurado (+ texto_pagina para texto_extraido)."""
         schema = self._invoice_structured_json_schema_text()
         prompt = (
@@ -399,7 +423,7 @@ class InvoiceOCRService(models.AbstractModel):
             f"FORMATO:\n{schema}"
         )
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=vision_model,
             messages=[
                 {
                     "role": "system",
@@ -461,7 +485,7 @@ class InvoiceOCRService(models.AbstractModel):
 
         for page_data in page_results:
             if not page_data:
-                continue
+                        continue
             for key in header_keys:
                 if merged.get(key) in (None, "", []) and page_data.get(key) not in (None, "", []):
                     merged[key] = page_data.get(key)
@@ -527,12 +551,15 @@ class InvoiceOCRService(models.AbstractModel):
             issues.append("sin_texto_extraido")
         return issues
 
-    def _retry_fix_structured_data(self, api_key, full_text, current_data, issues):
+    def _retry_fix_structured_data(self, api_key, full_text, current_data, issues, text_model=None):
         """
         Segunda pasada SOLO con el error concreto (texto ya extraído + JSON previo).
         No re-envía imágenes: corrige el JSON manteniendo o mejorando la información.
         """
         from openai import OpenAI
+
+        if text_model is None:
+            text_model = self._get_ocr_config()["text_model"]
 
         client = OpenAI(api_key=api_key)
         schema = self._invoice_structured_json_schema_text()
@@ -554,7 +581,7 @@ class InvoiceOCRService(models.AbstractModel):
             f"TEXTO COMPLETO DE LA FACTURA:\n{(full_text or '')[:120000]}"
         )
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=text_model,
             messages=[
                 {
                     "role": "system",
@@ -751,7 +778,7 @@ class InvoiceOCRService(models.AbstractModel):
             dto = self._parse_invoice_number(match.group("dto"))
             importe = self._parse_invoice_number(match.group("importe"))
             if not cant or cant <= 0 or importe is None or p_neto is None:
-                continue
+                    continue
             # La cantidad de columna debe coincidir con Cant. (tolerancia OCR)
             if cant2 is not None and abs(cant2 - cant) > 0.01:
                 cant = cant2 if abs(cant2) >= 1 else cant
@@ -1381,9 +1408,10 @@ Recuerda: Si estado = "sugerido" o "corregido", partida_validada DEBE ser un có
         }
         
         client = OpenAI(api_key=api_key)
+        text_model = self._get_ocr_config()["text_model"]
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=text_model,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": "Responde ÚNICAMENTE con JSON válido, sin código, sin markdown."},
@@ -1398,16 +1426,20 @@ Recuerda: Si estado = "sugerido" o "corregido", partida_validada DEBE ser un có
             _logger.warning("Validación IA de factura falló: %s", e)
             return {"error": str(e)}
 
-    def _interpret_text_with_gpt(self, api_key, text):
+    def _interpret_text_with_gpt(self, api_key, text, text_model=None):
         """
-        Usa GPT-4o para interpretar el texto extraído y estructurarlo en formato JSON.
+        Interpreta el texto extraído y lo estructura en formato JSON.
         
         :param api_key: API key de OpenAI
         :param text: Texto extraído de la factura
+        :param text_model: Modelo OpenAI (por defecto desde configuración)
         :return: Diccionario con datos estructurados o None si falla
         """
         try:
             from openai import OpenAI
+
+            if text_model is None:
+                text_model = self._get_ocr_config()["text_model"]
             
             client = OpenAI(api_key=api_key)
             
@@ -1499,12 +1531,12 @@ INSTRUCCIONES CRÍTICAS PARA FACTURAS MULTI-PÁGINA:
 TEXTO COMPLETO DE LA FACTURA (todas las páginas):
 """ + text[:200000]  # Aumentado a 200000 caracteres para facturas muy grandes (50+ páginas)
             
-            _logger.info("Enviando texto a GPT-4o para interpretación estructurada...")
+            _logger.info("Enviando texto a %s para interpretación estructurada...", text_model)
             
-            # Intentar usar response_format si está disponible (GPT-4o y modelos recientes)
+            # Intentar usar response_format si está disponible (modelos recientes)
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model=text_model,
                     messages=[
                         {
                             "role": "system",
@@ -1517,13 +1549,13 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                     ],
                     temperature=0.1,  # Baja temperatura para respuestas más consistentes
                     max_tokens=16000,  # Aumentado significativamente para facturas con muchas líneas (50+ páginas)
-                    response_format={"type": "json_object"},  # Forzar formato JSON (GPT-4o)
+                    response_format={"type": "json_object"},
                 )
             except TypeError:
                 # Si response_format no está disponible, usar sin él
                 _logger.warning("response_format no disponible, usando prompt sin formato forzado")
                 response = client.chat.completions.create(
-                    model="gpt-4o",
+                    model=text_model,
                     messages=[
                         {
                             "role": "system",
@@ -1539,7 +1571,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 )
             
             response_text = response.choices[0].message.content
-            _logger.info("Respuesta de GPT-4o recibida: %d caracteres", len(response_text))
+            _logger.info("Respuesta de %s recibida: %d caracteres", text_model, len(response_text))
             
             # Limpiar la respuesta (quitar markdown si existe)
             response_text = response_text.strip()
@@ -1559,17 +1591,17 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 return self._normalize_structured_invoice_data(data)
                 
             except json.JSONDecodeError as json_err:
-                _logger.error("Error parseando JSON de GPT-4o: %s. Respuesta: %s", json_err, response_text[:500])
+                _logger.error("Error parseando JSON de %s: %s. Respuesta: %s", text_model, json_err, response_text[:500])
                 return None
             except Exception as parse_err:
-                _logger.error("Error procesando respuesta de GPT-4o: %s", parse_err)
+                _logger.error("Error procesando respuesta de %s: %s", text_model, parse_err)
                 return None
                 
         except ImportError:
             _logger.warning("OpenAI no disponible para interpretación de texto")
             return None
         except Exception as e:
-            _logger.exception("Error al interpretar texto con GPT-4o: %s", e)
+            _logger.exception("Error al interpretar texto con %s: %s", text_model, e)
             return None
 
     def _parse_invoice_text(self, text):
@@ -2117,7 +2149,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
         
         if invoice_data.get("codigo_transporte"):
             vals["codigo_transporte"] = invoice_data["codigo_transporte"]
-
+        
         # Fecha prevista desde la fecha de la factura
         if invoice_data.get("fecha_factura") and not expediente.fecha_prevista:
             parsed_date = self._parse_invoice_date(invoice_data["fecha_factura"])
@@ -2218,7 +2250,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 else:
                     # Si es otro error, re-lanzar
                     raise
-
+        
         # Reaplicar países OCR si el sync por consignatario sin país los hubiera dejado vacíos (legacy)
         if country_vals:
             reapply = {
@@ -2280,7 +2312,7 @@ TEXTO COMPLETO DE LA FACTURA (todas las páginas):
                 # Precio unitario: preferir neto impreso si cuadra con dto
                 # (1.57×12×0.95=17.90). Si no, valor_linea/unidades.
                 if precio_unitario_ia is not None and self._line_discount_math_ok(linea_data):
-                    line_vals["precio_unitario"] = precio_unitario_ia
+                        line_vals["precio_unitario"] = precio_unitario_ia
                 elif valor_linea and unidades and unidades > 0:
                     line_vals["precio_unitario"] = valor_linea / unidades
                 elif precio_unitario_ia is not None:

@@ -70,9 +70,21 @@
           <group string="Procesamiento de Facturas PDF (IA/OCR)">
             <group>
               <field name="openai_api_key" password="True" placeholder="sk-..."/>
+              <field name="ocr_vision_model" placeholder="gpt-4.1"/>
+              <field name="ocr_text_model" placeholder="gpt-4.1-mini"/>
+            </group>
+            <group>
+              <field name="ocr_max_workers"/>
+              <field name="ocr_dpi"/>
               <div class="text-muted" style="margin-top: 8px;">
-                <strong>OpenAI API Key</strong> para usar GPT-4o Vision con splitting por páginas.
+                <strong>OpenAI API Key</strong> para extracción Vision con splitting por páginas.
                 Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).
+                <br/>
+                <strong>Modelo Vision</strong>: extracción por página (imagen → JSON). Por defecto <code>gpt-4.1</code>.
+                <br/>
+                <strong>Modelo texto/reintento</strong>: corrección de inconsistencias y fallback texto→JSON. Por defecto <code>gpt-4.1-mini</code>.
+                <br/>
+                <strong>Workers</strong>: páginas en paralelo (1–16). <strong>DPI</strong>: resolución PDF→imagen (72–400).
                 <br/>
                 <a href="https://platform.openai.com/api-keys" target="_blank">Obtener API Key de OpenAI</a>
               </div>

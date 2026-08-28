@@ -88,12 +88,37 @@ class ResConfigSettings(models.TransientModel):
     msoft_user = fields.Char(string="MSoft User", config_parameter="aduanas_transport.msoft.user")
     msoft_pass = fields.Char(string="MSoft Pass", config_parameter="aduanas_transport.msoft.pass")
     
-    # OpenAI API para OCR de facturas con GPT-4o Vision
+    # OpenAI API para OCR de facturas con Vision
     openai_api_key = fields.Char(
-        string="OpenAI API Key", 
+        string="OpenAI API Key",
         config_parameter="aduanas_transport.openai_api_key",
-        help="API Key de OpenAI para usar GPT-4o Vision. Obtener en: https://platform.openai.com/api-keys. "
-             "Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).")
+        help="API Key de OpenAI para extracción Vision de facturas PDF. Obtener en: "
+             "https://platform.openai.com/api-keys. Dejar vacío para usar OCR alternativo (pdfplumber/PyPDF2).",
+    )
+    ocr_vision_model = fields.Char(
+        string="Modelo Vision OCR",
+        config_parameter="aduanas_transport.ocr_vision_model",
+        default="gpt-4.1",
+        help="Modelo OpenAI para extracción por página (imagen → JSON). Por defecto gpt-4.1.",
+    )
+    ocr_text_model = fields.Char(
+        string="Modelo texto/reintento OCR",
+        config_parameter="aduanas_transport.ocr_text_model",
+        default="gpt-4.1-mini",
+        help="Modelo OpenAI para reintentos, fallback texto→JSON y validación. Por defecto gpt-4.1-mini.",
+    )
+    ocr_max_workers = fields.Integer(
+        string="Workers OCR paralelos",
+        config_parameter="aduanas_transport.ocr_max_workers",
+        default=8,
+        help="Páginas procesadas en paralelo (1–16). Subir con más RAM en el servidor.",
+    )
+    ocr_dpi = fields.Integer(
+        string="DPI conversión PDF",
+        config_parameter="aduanas_transport.ocr_dpi",
+        default=250,
+        help="Resolución al rasterizar PDF a imagen (72–400). Más DPI = más precisión y más RAM.",
+    )
     
     # Campo opcional para compatibilidad con otros módulos (ej: unsplash)
     # Este campo se define aquí para evitar errores cuando otros módulos lo referencian
@@ -147,8 +172,27 @@ class ResConfigSettings(models.TransientModel):
     
     @api.model
     def get_openai_api_key(self):
-        """
-        Método helper para obtener la API key de OpenAI desde la configuración del módulo.
-        """
+        """API key de OpenAI desde ir.config_parameter."""
         icp = self.env["ir.config_parameter"].sudo()
         return icp.get_param("aduanas_transport.openai_api_key") or False
+
+    @api.model
+    def get_ocr_settings(self):
+        """Modelos, workers y DPI configurables para el servicio OCR de facturas."""
+        icp = self.env["ir.config_parameter"].sudo()
+
+        def _int_param(key, default, lo, hi):
+            try:
+                val = int(icp.get_param(key, str(default)) or default)
+            except (TypeError, ValueError):
+                val = default
+            return max(lo, min(hi, val))
+
+        vision = (icp.get_param("aduanas_transport.ocr_vision_model") or "gpt-4.1").strip() or "gpt-4.1"
+        text = (icp.get_param("aduanas_transport.ocr_text_model") or "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+        return {
+            "vision_model": vision,
+            "text_model": text,
+            "max_workers": _int_param("aduanas_transport.ocr_max_workers", 8, 1, 16),
+            "dpi": _int_param("aduanas_transport.ocr_dpi", 250, 72, 400),
+        }
