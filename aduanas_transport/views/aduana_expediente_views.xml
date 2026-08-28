@@ -36,7 +36,11 @@
                decoration-success="levante_estado_color in ('salida', 'cerrado')"
                decoration-danger="levante_estado_color == 'error'"
                invisible="context.get('hide_export_tracking', False)"/>
-        <field name="iva_exportacion_exento" widget="boolean_toggle"
+        <field name="aes_circuito" string="Circuito AES" widget="badge"
+               decoration-success="aes_circuito == 'V'"
+               decoration-warning="aes_circuito == 'N'"
+               decoration-danger="aes_circuito == 'R'"
+               decoration-muted="not aes_circuito"
                invisible="context.get('hide_export_tracking', False)"/>
         <field name="state" string="Estado" widget="badge" decoration-success="state == 'closed'" decoration-info="state == 'accepted'" decoration-warning="state in ('draft', 'predeclared', 'presented', 'released')" decoration-danger="state == 'error'"/>
         <field name="create_date" string="Fecha creación"/>
@@ -62,15 +66,18 @@
                   help="Verifica partidas y coherencia. Solo en preparación si aún no está OK."/>
 
           <!-- Exportación AES -->
-          <button name="action_generate_dua" string="Generar DUA" type="object"
+          <button name="action_validar_exportacion" string="1. Validar exportación" type="object"
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
+                  help="Comprueba datos obligatorios antes de generar el DUA."/>
+          <button name="action_generate_dua" string="2. Generar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', True), ('state', 'not in', ('draft', 'error'))]}"
-                  help="Genera el DUA de exportación (CUSDEC EX1)."/>
+                  attrs="{'invisible': ['|', '|', '|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', True), ('export_listo_para_dua', '=', False), ('state', 'not in', ('draft', 'error'))]}"
+                  help="Genera el DUA de exportación (CUSDEC EX1). Requiere líneas y facturas procesadas."/>
           <button name="action_generate_dua" string="Regenerar DUA" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'not in', ('draft', 'predeclared', 'presented', 'error'))]}"
                   help="Regenera el DUA antes de presentar o tras un error."/>
-          <button name="action_send_cc515c" string="Presentar DUA a AEAT" type="object"
+          <button name="action_send_cc515c" string="3. Presentar DUA a AEAT" type="object"
                   class="oe_highlight"
                   attrs="{'invisible': ['|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', False), ('state', 'not in', ('draft', 'predeclared', 'presented', 'error'))]}"
                   help="Envía el DUA (CC515C) a AEAT. No disponible tras aceptación."/>
@@ -144,6 +151,7 @@
           
           <!-- Campos necesarios para attrs del header (invisibles) -->
           <field name="dua_generado" invisible="1"/>
+          <field name="export_listo_para_dua" invisible="1"/>
           <field name="factura_procesada" invisible="1"/>
           <field name="factura_pdf" invisible="1"/>
           <field name="tiene_facturas_por_procesar" invisible="1"/>
@@ -273,8 +281,10 @@
                    decoration-warning="levante_estado_color == 'levante'"
                    decoration-success="levante_estado_color in ('salida', 'cerrado')"
                    decoration-danger="levante_estado_color == 'error'"/>
-            <field name="aes_estado" readonly="1"/>
-            <field name="aes_circuito" readonly="1"/>
+            <field name="aes_estado" invisible="1"/>
+            <field name="aes_estado_display" readonly="1" string="Estado AES"/>
+            <field name="aes_circuito" invisible="1"/>
+            <field name="aes_circuito_display" readonly="1" string="Circuito AES"/>
             <field name="iva_exportacion_exento" readonly="1"/>
           </group>
 
@@ -584,9 +594,12 @@
             <page string="Bandeja / Técnico">
               <group string="Seguimiento AES Exportación" col="2" attrs="{'invisible': [('direction', '!=', 'export')]}">
                 <group>
-                  <field name="aes_estado" readonly="1"/>
-                  <field name="aes_circuito" readonly="1"/>
-                  <field name="aes_circuito_llegada" readonly="1"/>
+                  <field name="aes_estado" invisible="1"/>
+                  <field name="aes_estado_display" readonly="1" string="Estado AES"/>
+                  <field name="aes_circuito" invisible="1"/>
+                  <field name="aes_circuito_display" readonly="1" string="Circuito AES"/>
+                  <field name="aes_circuito_llegada" invisible="1"/>
+                  <field name="aes_circuito_llegada_display" readonly="1" string="Circuito llegada salida"/>
                   <field name="iva_exportacion_exento" readonly="1"/>
                 </group>
                 <group>

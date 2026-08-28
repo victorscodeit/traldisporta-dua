@@ -165,7 +165,7 @@
       <p>Procesos, campos, estados y llamadas a la AEAT para el módulo de expedientes aduaneros de Traldis Porta.</p>
     </div>
     <div class="meta">
-      <div>Versión del módulo documentada: <strong>16.0.1.0.37</strong></div>
+      <div>Versión del módulo documentada: <strong>16.0.1.0.60</strong> · Actualizado agosto 2026</div>
       <div>Menús: Aduanas → Expediciones → <strong>Exportación</strong> / <strong>Importación</strong></div>
       <div>Entorno habitual de pruebas: preproducción AEAT (<code style="background:rgba(255,255,255,.15);color:#fff;">prewww1.aeat.es</code>)</div>
     </div>
@@ -183,6 +183,9 @@
       <li><a href="#campos-export">Campos solo de exportación</a></li>
       <li><a href="#campos-import">Campos solo de importación</a></li>
       <li><a href="#lineas">Líneas de mercancía</a></li>
+      <li><a href="#documentos-taric">Documentos requeridos y TARIC</a></li>
+      <li><a href="#bandeja">Bandeja AEAT (ListaDec + DetalleV5)</a></li>
+      <li><a href="#errores-preprod">Errores frecuentes y preproducción</a></li>
       <li><a href="#resumen-llamadas">Resumen botón → llamada AEAT</a></li>
     </ol>
   </section>
@@ -255,10 +258,10 @@
           <td><code>…/ADIP-JDIT/ws/cci/ConsultaImportacionV3SOAP</code></td>
         </tr>
         <tr>
-          <td><code>DetalleV5</code> (Bandeja)</td>
-          <td>Mensajes de bandeja EXPORAES / IMPORAES</td>
+          <td><code>ListaDecV4</code> + <code>DetalleV5</code></td>
+          <td>Bandeja de entrada (mensajes pendientes)</td>
           <td><span class="pill pill-both">Ambos</span></td>
-          <td><code>…/ADHT-BAND/ws/det/DetalleV5SOAP</code></td>
+          <td><code>…/ADHT-BAND/ws/li/ListaDecV4SOAP</code> y <code>…/ws/det/DetalleV5SOAP</code></td>
         </tr>
         <tr>
           <td><code>G4Dec</code></td>
@@ -377,6 +380,24 @@
     <h2>4. Proceso de exportación <span class="pill pill-export">AES / CC515C</span></h2>
 
     <h3>4.1 Pasos del operador</h3>
+
+    <p><strong>Secuencia de estados en exportación</strong> (barra superior del expediente):</p>
+    <div class="flow">
+      <span class="step">Borrador</span><span class="arrow">→</span>
+      <span class="step">Predeclarado</span><span class="arrow">→</span>
+      <span class="step">Aceptado (MRN)</span><span class="arrow">→</span>
+      <span class="step"><strong>Levante</strong></span><span class="arrow">→</span>
+      <span class="step">Salida confirmada</span><span class="arrow">→</span>
+      <span class="step">Cerrado</span>
+    </div>
+
+    <div class="note" style="margin: 14px 0; padding: 12px 16px; background: var(--export-soft); border-left: 4px solid var(--export); border-radius: 6px;">
+      <strong>¿Qué es el Levante?</strong> Tras el MRN, AEAT aún no ha autorizado la salida física de la mercancía.
+      El <strong>Levante</strong> (<code>released</code>) es la autorización aduanera para que la mercancía pueda circular/salir
+      (mensaje bandeja <code>CLEVEX</code> o estados AES <code>DE</code>, <code>DS</code>, <code>PL</code>, <code>PS</code>).
+      Después, la <strong>Salida confirmada</strong> acredita que la mercancía ya salió de la UE (<code>CSALID</code> / estado <code>SA</code>) — hito del IVA exportación exento.
+    </div>
+
     <table>
       <thead>
         <tr>
@@ -391,56 +412,63 @@
         <tr>
           <td>1</td>
           <td>Crear expediente en menú <strong>Exportación</strong> + Subir / Procesar facturas</td>
-          <td>Borrador</td>
+          <td><strong>Borrador</strong></td>
           <td><span class="pill pill-local">Sin llamada</span></td>
           <td>OCR/IA rellena partners, líneas, N380, etc.</td>
         </tr>
         <tr>
           <td>2</td>
-          <td>Opcional: Verificación IA</td>
-          <td>Borrador</td>
+          <td>Opcional: Verificación IA · <strong>1. Validar exportación</strong></td>
+          <td><strong>Borrador</strong></td>
           <td><span class="pill pill-local">Sin llamada</span></td>
-          <td>Valida partidas arancelarias.</td>
+          <td>Valida datos obligatorios antes de generar el DUA.</td>
         </tr>
         <tr>
           <td>3</td>
-          <td><strong>Generar DUA</strong> / Regenerar DUA</td>
-          <td>Predeclarado</td>
+          <td><strong>2. Generar DUA</strong> / Regenerar DUA</td>
+          <td><strong>Predeclarado</strong></td>
           <td><span class="pill pill-local">Sin llamada</span></td>
-          <td>Genera documentación/XML locales y valida datos.</td>
+          <td>Genera documentación/XML locales y valida datos. Requiere líneas y facturas procesadas.</td>
         </tr>
         <tr>
           <td>4</td>
-          <td><strong>Presentar DUA a AEAT</strong></td>
-          <td>Aceptado (si OK) o Error</td>
+          <td><strong>3. Presentar DUA a AEAT</strong></td>
+          <td><strong>Aceptado (MRN)</strong> si OK, o Error</td>
           <td><span class="pill pill-aeat">CC515C</span></td>
-          <td>Obtiene MRN, estado AES, CSV si vienen en la respuesta.</td>
+          <td>Obtiene MRN. La mercancía está declarada pero <em>aún no</em> tiene levante.</td>
         </tr>
         <tr>
           <td>5</td>
           <td><strong>Consultar Estado DUA</strong></td>
-          <td>Actualiza AES / puede pasar a Levante o Salida</td>
+          <td><strong>Aceptado</strong> (refresco) o avance si AEAT informa levante/salida</td>
           <td><span class="pill pill-aeat">CCAESC</span></td>
-          <td>Consulta por MRN: circuito, fechas, errores.</td>
+          <td>Consulta por MRN: circuito, fechas, errores. No sustituye a la bandeja para el levante; no retrocede estados (p. ej. Levante → Aceptado).</td>
         </tr>
         <tr>
           <td>6</td>
           <td><strong>Notificar Llegada Salida</strong> (si aplica)</td>
-          <td>Sigue Aceptado / avanza según respuesta</td>
+          <td><strong>Aceptado</strong> (salida indirecta)</td>
           <td><span class="pill pill-aeat">CC507C</span></td>
-          <td>Solo con MRN y sin llegada ya registrada (salida indirecta).</td>
+          <td>Solo con MRN, salida indirecta (otra aduana de salida) y sin llegada ya registrada.</td>
         </tr>
         <tr>
           <td>7</td>
           <td><strong>Consultar Bandeja AEAT</strong></td>
-          <td>Levante → Salida confirmada</td>
-          <td><span class="pill pill-aeat">Bandeja DetalleV5</span> (EXPORAES)</td>
-          <td>Mensajes CLEVEX (levante), CSALID / salida efectiva, etc.</td>
+          <td><strong>Levante</strong></td>
+          <td><span class="pill pill-aeat">ListaDecV4 + DetalleV5</span> (EXPORAES)</td>
+          <td>Mensaje <code>CLEVEX</code>: AEAT autoriza el levante. Rellena <em>Fecha levante</em>. Es el paso habitual para pasar de MRN a Levante.</td>
         </tr>
         <tr>
           <td>8</td>
+          <td><strong>Consultar Bandeja AEAT</strong> (seguimiento)</td>
+          <td><strong>Salida confirmada</strong></td>
+          <td><span class="pill pill-aeat">ListaDecV4 + DetalleV5</span></td>
+          <td>Mensaje <code>CSALID</code> (salida efectiva UE). Marca IVA exportación exento.</td>
+        </tr>
+        <tr>
+          <td>9</td>
           <td><strong>Cerrar expediente</strong></td>
-          <td>Cerrado</td>
+          <td><strong>Cerrado</strong></td>
           <td><span class="pill pill-local">Sin llamada</span></td>
           <td>Habitual tras salida efectiva. Opcional auto-cierre configurado.</td>
         </tr>
@@ -471,7 +499,7 @@
         <tr>
           <td>Bandeja <code>EXPORAES</code></td>
           <td>Consultar bandeja / cron</td>
-          <td>Recoge comunicaciones pendientes: levante exportación, resultado de salida, etc. Puede marcar IVA exento.</td>
+          <td>Dos pasos: <code>ListaDecV4</code> (NIF declarante) → <code>DetalleV5</code> (clave). Filtra por expediente. Detecta SOAP Fault.</td>
         </tr>
         <tr>
           <td><code>IE615</code> (EXS)</td>
@@ -512,10 +540,10 @@
         </tr>
         <tr>
           <td>2</td>
-          <td>Completar remitente AD, consignatario/importador ES, tributos, transporte</td>
+          <td>Completar remitente (AD), consignatario/importador ES con NIF/EORI real, tributos, transporte</td>
           <td>Borrador</td>
           <td><span class="pill pill-local">Sin llamada</span></td>
-          <td>«Requiere DDT/G4» suele quedar desmarcado.</td>
+          <td>En autodespacho: <strong>Importer</strong> = consignatario español (p. ej. Traldis). Remitente = vendedor andorrano. «Requiere DDT/G4» suele quedar desmarcado.</td>
         </tr>
         <tr>
           <td>3</td>
@@ -541,15 +569,15 @@
         <tr>
           <td>6</td>
           <td><strong>4. Consultar estado</strong> (opcional)</td>
-          <td>Sigue Aceptado; refresca datos</td>
+          <td>Sigue Aceptado; refresca datos si AEAT responde</td>
           <td><span class="pill pill-aeat">ConsultaImportacionV3</span></td>
-          <td>Consulta completa por MRN.</td>
+          <td>Consulta por MRN. En <strong>preprod</strong> puede devolver 99999 aunque CC415R ya admitió la declaración (ver sección 11).</td>
         </tr>
         <tr>
           <td>7</td>
           <td><strong>5. Bandeja importación</strong> (opcional)</td>
           <td>Aceptado (+ comunicaciones)</td>
-          <td><span class="pill pill-aeat">Bandeja DetalleV5</span> (IMPORAES)</td>
+          <td><span class="pill pill-aeat">ListaDecV4 + DetalleV5</span> (IMPORAES)</td>
           <td>Documentos PCA, controles, mensajes AEAT.</td>
         </tr>
         <tr>
@@ -601,12 +629,12 @@
         <tr>
           <td><code>ConsultaImportacionV3</code></td>
           <td>Consultar estado</td>
-          <td>Estado completo de la importación por MRN; refresca fechas y datos admitidos.</td>
+          <td>Estado completo de la importación por MRN. En producción refresca fechas y datos admitidos. En preprod puede no encontrar MRN de prueba (<code>testIndicator S</code>).</td>
         </tr>
         <tr>
           <td>Bandeja <code>IMPORAES</code></td>
           <td>Bandeja importación</td>
-          <td>Comunicaciones AEAT de importación (requerimientos, documentos, etc.).</td>
+          <td>ListaDecV4 + DetalleV5: comunicaciones AEAT de importación (requerimientos, documentos, etc.).</td>
         </tr>
       </tbody>
     </table>
@@ -631,7 +659,7 @@
         <tr><td><strong>LRN</strong></td><td>Local Reference Number enviado a AEAT. En importación suele ser la referencia del expediente.</td></tr>
         <tr><td><strong>MRN</strong></td><td>Movement Reference Number asignado por AEAT tras aceptación. Identificador oficial de la declaración.</td></tr>
         <tr><td><strong>Remitente</strong></td><td>Exportador / vendedor. En export: exportador ES. En import: vendedor del país tercero (p. ej. Andorra).</td></tr>
-        <tr><td><strong>Consignatario</strong></td><td>Destinatario / importador. En export: cliente en país tercero. En import: importador en España (puede ser Traldis en autodespacho).</td></tr>
+        <tr><td><strong>Consignatario</strong></td><td>Destinatario / importador. En export: cliente en país tercero. En import: <strong>importador español</strong> (Importer en CC415A) con NIF/EORI válido en censo AEAT; en autodespacho suele ser Traldis (<code>ESB65496556</code>).</td></tr>
         <tr><td><strong>Oficina Aduanas</strong></td><td>Código de oficina (8 caracteres AES/H1, p. ej. <code>ES000101</code> en preprod). Export: oficina de exportación. Import: oficina de importación/presentación.</td></tr>
         <tr><td><strong>Incoterm</strong></td><td>Condición de entrega comercial (EXW, FCA, DAP…). Se refleja en DeliveryTerms del XML.</td></tr>
       </tbody>
@@ -686,8 +714,8 @@
       <tbody>
         <tr><td><strong>Último error</strong></td><td>Texto del último rechazo o fallo técnico AEAT.</td></tr>
         <tr><td><strong>Última respuesta</strong></td><td>Fecha/hora de la última comunicación con AEAT.</td></tr>
-        <tr><td><strong>Último mensaje bandeja</strong></td><td>Cursor de mensajes ya leídos en DetalleV5.</td></tr>
-        <tr><td><strong>Documentos / Documentos requeridos</strong></td><td>Adjuntos del expediente y documentos TARIC asociados a partidas.</td></tr>
+        <tr><td><strong>Último mensaje bandeja</strong></td><td>Contador de consultas de bandeja realizadas (no es cursor AEAT de claves).</td></tr>
+        <tr><td><strong>Documentos / Documentos requeridos</strong></td><td>Adjuntos del expediente (PDF facturas, etc.) y documentos TARIC por partida (pestaña «Documentos Requeridos»).</td></tr>
         <tr><td><strong>Incidencias</strong></td><td>Errores/requerimientos estructurados derivados de respuestas AEAT.</td></tr>
         <tr><td><strong>Campos MSoft</strong></td><td>Trazabilidad si el expediente proviene de sincronización MSoft.</td></tr>
       </tbody>
@@ -742,23 +770,131 @@
     <table>
       <thead><tr><th>Campo</th><th>Explicación</th></tr></thead>
       <tbody>
-        <tr><td><strong>Nº ítem</strong></td><td>Número de partida en la declaración.</td></tr>
+        <tr><td><strong>Nº ítem</strong></td><td>Número de partida en la declaración (<code>declarationGoodsItemNumber</code>).</td></tr>
         <tr><td><strong>Factura</strong></td><td>Factura del bloque a la que pertenece la línea (define el N380 preferente).</td></tr>
-        <tr><td><strong>Partida / TARIC</strong></td><td>Código arancelario (normalizado a 10 dígitos).</td></tr>
+        <tr><td><strong>Partida</strong></td><td>Código arancelario NC (8–10 dígitos). En exportación se usa HS6+CN2 en el XML AES.</td></tr>
+        <tr><td><strong>TARIC completo</strong> <span class="pill pill-import">Import</span></td><td>10 dígitos obligatorios en CC415A (<code>HS6 + CN2 + TARIC2</code>). Si está vacío se usa la partida normalizada.</td></tr>
         <tr><td><strong>Descripción</strong></td><td>Descripción comercial de la mercancía.</td></tr>
-        <tr><td><strong>Unidades / bultos</strong></td><td>Cantidad y número de bultos.</td></tr>
-        <tr><td><strong>Peso bruto / neto</strong></td><td>Masas informadas a AEAT.</td></tr>
-        <tr><td><strong>Precio unitario / descuento / valor línea</strong></td><td>Valoración de la partida.</td></tr>
-        <tr><td><strong>País origen</strong></td><td>Origen de la mercancía en la línea.</td></tr>
+        <tr><td><strong>Unidades / bultos</strong></td><td>Cantidad y número de bultos (<code>typeOfPackages</code>, habitual CT).</td></tr>
+        <tr><td><strong>Peso bruto / neto</strong></td><td>Masas informadas a AEAT. Deben ser coherentes (neto ≤ bruto).</td></tr>
+        <tr><td><strong>Precio unitario / descuento / valor línea</strong></td><td>Valoración de la partida. Al borrar líneas se recalcula el valor total del expediente.</td></tr>
+        <tr><td><strong>País origen</strong></td><td>Origen de la mercancía en la línea (en import AD→ES suele ser <code>AD</code>).</td></tr>
         <tr><td><strong>Verificación IA</strong></td><td>Estado de la revisión automática de partida.</td></tr>
         <tr><td><strong>Partida DDT / tipo de bultos</strong> <span class="pill pill-import">Import</span></td><td>Solo importación con DDT: identificador de mercancía en el documento previo y tipo de embalaje.</td></tr>
       </tbody>
     </table>
+    <div class="ok-box">
+      <strong>Eliminar líneas:</strong> en la pestaña <em>Líneas</em>, seleccione la fila y pulse el icono de papelera (o Supr).
+      Solo permitido si el expediente está en <strong>Borrador</strong>, <strong>Predeclarado</strong> o <strong>Error</strong>.
+      No se puede eliminar con MRN aceptado o expediente cerrado.
+    </div>
+  </section>
+
+  <!-- ========== DOCUMENTOS TARIC ========== -->
+  <section class="card" id="documentos-taric">
+    <h2>10. Documentos requeridos y consulta TARIC</h2>
+    <p>En la pestaña <strong>Documentos Requeridos</strong> del expediente (notebook inferior):</p>
+    <table>
+      <thead><tr><th>Acción</th><th>Descripción</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Consultar TARIC</strong></td>
+          <td>Consulta la API TARIC de la UE por cada partida única del expediente. Usa país destino (export) u origen (import). Crea/actualiza filas de documentos requeridos. Muestra aviso si la API no está accesible desde el servidor.</td>
+        </tr>
+        <tr>
+          <td><strong>Subir documento</strong></td>
+          <td>Adjunte el certificado o justificante en cada fila (estado Pendiente → Subido).</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">
+      La consulta TARIC es <strong>informativa</strong>: no se envía automáticamente a AEAT en la presentación CC515C/CC415A.
+      El servidor Odoo debe poder acceder a <code>ec.europa.eu</code> (HTTPS saliente).
+    </div>
+  </section>
+
+  <!-- ========== BANDEJA ========== -->
+  <section class="card" id="bandeja">
+    <h2>11. Bandeja AEAT (ListaDecV4 + DetalleV5)</h2>
+    <p>El botón <strong>Consultar Bandeja AEAT</strong> no envía un XML antiguo con <code>CodigoBandeja</code> (formato obsoleto).
+    El flujo correcto es:</p>
+    <div class="flow">
+      <span class="step">1. ListaDecV4</span><span class="arrow">→</span>
+      <span class="step">Claves pendientes</span><span class="arrow">→</span>
+      <span class="step">2. DetalleV5 por clave</span><span class="arrow">→</span>
+      <span class="step">Procesar mensajes</span>
+    </div>
+    <table>
+      <thead><tr><th>Paso</th><th>Servicio</th><th>Contenido</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Lista</td>
+          <td><code>ListaDecV4SOAP</code></td>
+          <td><code>NifDeclarante</code> y <code>NombreDeclarante</code> de la compañía Odoo. Devuelve claves con referencia y tipo de respuesta.</td>
+        </tr>
+        <tr>
+          <td>Detalle</td>
+          <td><code>DetalleV5SOAP</code></td>
+          <td>Un XML por cada <code>clave</code>. Extrae MRN, levante (CLEVEX), salida (CSALID), etc.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Filtra mensajes del expediente por referencia (<code>EXP-xxxxx</code>) o MRN. Si AEAT devuelve SOAP Fault (p. ej. código 102 namespace incorrecto), Odoo muestra error en lugar de «éxito vacío».</p>
+    <p><span class="pill pill-export">EXPORAES</span> exportación · <span class="pill pill-import">IMPORAES</span> importación (mismo mecanismo, distinto destino lógico en AEAT).</p>
+  </section>
+
+  <!-- ========== ERRORES PREPROD ========== -->
+  <section class="card" id="errores-preprod">
+    <h2>12. Errores frecuentes y preproducción</h2>
+    <table>
+      <thead><tr><th>Síntoma</th><th>Causa habitual</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Bandeja: «Namespace en elemento raíz no soportado» (102)</td>
+          <td>XML de bandeja en formato antiguo</td>
+          <td>Actualizar módulo ≥ 16.0.1.0.54 (flujo ListaDec + DetalleV5).</td>
+        </tr>
+        <tr>
+          <td>CC415A: Importer <code>ESB12345678</code> rechazado (50915)</td>
+          <td>NIF de prueba en consignatario/importador</td>
+          <td>Poner NIF/EORI español real del importador en la ficha del consignatario. Importer ≠ remitente andorrano.</td>
+        </tr>
+        <tr>
+          <td>CC415A: partida «220290» no existe (50106)</td>
+          <td>Código NC/TARIC incorrecto en línea (OCR)</td>
+          <td>Corregir partida/TARIC completo a 10 dígitos válidos. Eliminar líneas erróneas si hace falta.</td>
+        </tr>
+        <tr>
+          <td>CC415A: falta TaricAdditionalCode (50212)</td>
+          <td>Partida exige código TARIC adicional</td>
+          <td>Revisar clasificación arancelaria; el módulo aún no envía todos los campos TARIC opcionales.</td>
+        </tr>
+        <tr>
+          <td>Consulta importación: 99999 «No existe declaración con MRN …»</td>
+          <td>Preprod: MRN de <code>testIndicator S</code> no indexado en ConsultaImportacionV3</td>
+          <td>Si CC415R ya admitió con MRN, confiar en estado <strong>Aceptado</strong> y adjunto <code>_CC415A_response.xml</code>. No es fallo de presentación.</td>
+        </tr>
+        <tr>
+          <td>CC515C: oficina no existe</td>
+          <td>Oficina real en preprod</td>
+          <td>Usar <code>ES000101</code> en pruebas (automático si endpoint contiene <code>prewww</code>).</td>
+        </tr>
+        <tr>
+          <td>TARIC: sin resultados / firewall</td>
+          <td>Servidor sin salida a UE o API caída</td>
+          <td>Abrir HTTPS a <code>ec.europa.eu</code> o añadir documentos manualmente.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">
+      En preproducción (<code>prewww1.aeat.es</code>) las respuestas llevan <code>&lt;testIndicator&gt;S&lt;/testIndicator&gt;</code>.
+      Los MRN y estados son válidos para pruebas operativas en Odoo, pero algunos servicios de consulta pueden no devolver los mismos datos que en producción.
+    </div>
   </section>
 
   <!-- ========== RESUMEN ========== -->
   <section class="card" id="resumen-llamadas">
-    <h2>10. Resumen rápido: botón → llamada AEAT</h2>
+    <h2>13. Resumen rápido: botón → llamada AEAT</h2>
     <table>
       <thead>
         <tr>
@@ -775,14 +911,15 @@
         <tr><td>Presentar DUA a AEAT</td><td>Export</td><td><strong>Sí</strong></td><td>CC515C</td></tr>
         <tr><td>Consultar Estado DUA</td><td>Export</td><td><strong>Sí</strong></td><td>CCAESC</td></tr>
         <tr><td>Notificar Llegada Salida</td><td>Export</td><td><strong>Sí</strong></td><td>CC507C</td></tr>
-        <tr><td>Consultar Bandeja AEAT</td><td>Export</td><td><strong>Sí</strong></td><td>Bandeja EXPORAES</td></tr>
+        <tr><td>Consultar Bandeja AEAT</td><td>Export</td><td><strong>Sí</strong></td><td>ListaDecV4 + DetalleV5 (EXPORAES)</td></tr>
         <tr><td>Presentar EXS</td><td>Export (avanzado)</td><td><strong>Sí</strong></td><td>IE615</td></tr>
         <tr><td>G4 / DDT</td><td>Import (opcional)</td><td><strong>Sí</strong> al presentar G4</td><td>G4Dec</td></tr>
         <tr><td>Validar importación</td><td>Import</td><td>No</td><td>—</td></tr>
         <tr><td>Generar declaración</td><td>Import</td><td>No</td><td>—</td></tr>
         <tr><td>Presentar importación</td><td>Import</td><td><strong>Sí</strong></td><td>CC415A</td></tr>
+        <tr><td>Consultar TARIC</td><td>Ambos</td><td>Sí (API UE)</td><td>TARIC goodsMeasForWs</td></tr>
         <tr><td>Consultar estado</td><td>Import</td><td><strong>Sí</strong></td><td>ConsultaImportacionV3</td></tr>
-        <tr><td>Bandeja importación</td><td>Import</td><td><strong>Sí</strong></td><td>Bandeja IMPORAES</td></tr>
+        <tr><td>Bandeja importación</td><td>Import</td><td><strong>Sí</strong></td><td>ListaDecV4 + DetalleV5 (IMPORAES)</td></tr>
         <tr><td>Cerrar expediente</td><td>Ambos</td><td>No</td><td>—</td></tr>
       </tbody>
     </table>
@@ -803,12 +940,12 @@
       <tbody>
         <tr><td>Exporter / Seller</td><td>Remitente (cliente ES)</td><td>Remitente (vendedor AD / tercero)</td></tr>
         <tr><td>Declarant</td><td>Empresa Odoo (Traldis)</td><td>Empresa Odoo (Traldis) en autodespacho / representación</td></tr>
-        <tr><td>Importer / Consignee</td><td>Consignatario (país tercero)</td><td>Consignatario / importador ES</td></tr>
+        <tr><td>Importer / Consignee</td><td>Consignatario (país tercero)</td><td><strong>Consignatario = importador ES</strong> con EORI/NIF en censo AEAT (no NIF ficticio del destinatario extranjero)</td></tr>
         <tr><td>Representative</td><td>Solo si representación directa</td><td>Según caso; flujo habitual Traldis evita 1005 con autodespacho</td></tr>
       </tbody>
     </table>
     <p class="muted" style="margin-top:24px;">
-      Documento generado para uso interno Traldis Porta · Módulo <code>aduanas_transport</code> ·
+      Documento para uso interno Traldis Porta · Módulo <code>aduanas_transport</code> v16.0.1.0.58 ·
       Puede imprimirse desde el navegador (Ctrl+P).
     </p>
   </section>

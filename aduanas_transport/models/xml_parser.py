@@ -84,6 +84,84 @@ class AduanaXmlParser(models.AbstractModel):
     _name = "aduanas.xml.parser"
     _description = "Parser de respuestas XML de AEAT"
 
+    # Códigos estado AES (Guía WEB Exp / seguimiento exportación)
+    AES_ESTADO_LABELS = {
+        "AC": "Aceptada",
+        "AD": "Admitida",
+        "RE": "Registrada / admitida",
+        "RQ": "Requerimiento / en trámite",
+        "PL": "Control documental / presentada a levante",
+        "DE": "Despachada / levante exportación",
+        "DS": "Despachada / levante",
+        "PS": "Presentada en aduana de salida",
+        "SA": "Salida efectiva",
+        "SE": "Salida efectiva confirmada",
+        "ST": "En trámite en aduana de salida",
+        "AN": "Anulada",
+    }
+
+    AES_CIRCUITO_LABELS = {
+        "V": "Verde (despacho automático)",
+        "N": "Naranja (control documental)",
+        "R": "Rojo (control físico)",
+    }
+
+    _AES_CIRCUITO_TAG_NAMES = frozenset({
+        "circuitollegada", "circuitoaeat", "circuito", "cuschanhea", "circuitoaduana",
+    })
+
+    def normalize_aes_circuito(self, value):
+        """Normaliza circuito AEAT a V/N/R cuando AEAT envía códigos numéricos."""
+        if value is None:
+            return False
+        raw = str(value).strip().upper()
+        if not raw:
+            return False
+        if raw in ("V", "VERDE", "1", "00001"):
+            return "V"
+        if raw in ("N", "NARANJA", "2", "00002"):
+            return "N"
+        if raw in ("R", "ROJO", "3", "00003"):
+            return "R"
+        return raw[:10]
+
+    def format_aes_estado_display(self, code):
+        """Código + significado legible para la UI."""
+        code = (code or "").strip().upper()
+        if not code:
+            return ""
+        label = self.AES_ESTADO_LABELS.get(code)
+        if label:
+            return "%s — %s" % (code, _(label))
+        return code
+
+    def format_aes_circuito_display(self, code):
+        """Código circuito + significado legible para la UI."""
+        code = self.normalize_aes_circuito(code) or (code or "").strip().upper()
+        if not code:
+            return ""
+        label = self.AES_CIRCUITO_LABELS.get(code)
+        if label:
+            return "%s — %s" % (code, _(label))
+        return code
+
+    def _extract_aes_circuito_from_block(self, block):
+        """Extrae circuito y circuito llegada de un bloque XML de bandeja/CCAESC."""
+        circuito = False
+        circuito_llegada = False
+        if block is None:
+            return circuito, circuito_llegada
+        for sub in block.iter() if hasattr(block, "iter") else []:
+            loc = self._local_name(sub.tag).lower()
+            if loc not in self._AES_CIRCUITO_TAG_NAMES or not (sub.text or "").strip():
+                continue
+            val = self.normalize_aes_circuito(sub.text.strip())
+            if loc == "circuitollegada":
+                circuito_llegada = val
+            elif not circuito:
+                circuito = val
+        return circuito, circuito_llegada
+
     def _local_name(self, tag):
         return tag.split("}")[-1] if "}" in tag else tag
 
@@ -395,10 +473,12 @@ class AduanaXmlParser(models.AbstractModel):
                     legacy["estado_aes"] = msg["estado_aes"]
                     if msg["estado_aes"].upper() == "SA":
                         legacy["exited"] = True
-                    if msg["estado_aes"].upper() in ("DE", "PL", "PS"):
+                    if msg["estado_aes"].upper() in ("DE", "DS", "PL", "PS"):
                         legacy["released"] = True
                 if msg.get("circuito"):
-                    legacy["circuito"] = msg["circuito"]
+                    legacy["circuito"] = self.normalize_aes_circuito(msg["circuito"])
+                if msg.get("circuito_llegada"):
+                    legacy["circuito_llegada"] = self.normalize_aes_circuito(msg["circuito_llegada"])
                 if msg.get("fecha_salida_efectiva"):
                     legacy["fecha_salida_efectiva"] = msg["fecha_salida_efectiva"]
                     legacy["exited"] = True
@@ -469,8 +549,13 @@ class AduanaXmlParser(models.AbstractModel):
 
             result["estado_aes"] = self._find_first_text(root, "estadoAES", "EstadoAES")
             result["response_code"] = self._find_first_text(root, "codigoRespuesta", "CódigoRespuesta")
-            result["circuito"] = self._find_first_text(root, "circuitoAEAT", "circuito", "Circuito")
-            result["circuito_llegada"] = self._find_first_text(root, "circuitoLlegada")
+            block_circuito, block_circuito_llegada = self._extract_aes_circuito_from_block(root)
+            result["circuito"] = block_circuito or self.normalize_aes_circuito(
+                self._find_first_text(root, "circuitoLlegada", "circuitoAEAT", "circuito", "Circuito", "CusChanHEA")
+            )
+            result["circuito_llegada"] = block_circuito_llegada or self.normalize_aes_circuito(
+                self._find_first_text(root, "circuitoLlegada")
+            )
             result["csv_declaracion"] = self._find_first_text(root, "CSVDeclaracionElectronica", "CSVDeclaracion")
             result["csv_levante"] = self._find_first_text(root, "CSVLevanteExportacion", "CSVLevante")
             result["csv_levante_salida"] = self._find_first_text(root, "CSVLevanteSalida")
@@ -853,8 +938,8 @@ class AduanaXmlParser(models.AbstractModel):
             "success": aes.get("success"),
             "mrn": aes.get("mrn"),
             "estado_aes": aes.get("estado_aes"),
-            "circuito": aes.get("circuito"),
-            "circuito_llegada": aes.get("circuito"),
+            "circuito": self.normalize_aes_circuito(aes.get("circuito")) if aes.get("circuito") else False,
+            "circuito_llegada": self.normalize_aes_circuito(aes.get("circuito_llegada")) if aes.get("circuito_llegada") else False,
             "csv_declaracion": aes.get("csv_declaracion"),
             "csv_levante": aes.get("csv_levante_export"),
             "csv_levante_salida": aes.get("csv_levante_salida"),
@@ -867,7 +952,12 @@ class AduanaXmlParser(models.AbstractModel):
             "fecha_salida_efectiva": aes.get("fecha_salida_efectiva"),
             "released": aes.get("released"),
             "exited": aes.get("exited"),
-            "accepted": aes.get("success") and bool(aes.get("mrn")),
+            "accepted": (
+                aes.get("success")
+                and bool(aes.get("mrn"))
+                and not aes.get("released")
+                and not aes.get("exited")
+            ),
             "errors": list(aes.get("errors") or []),
             "messages": [],
             "incidencias": [],
@@ -943,9 +1033,15 @@ class AduanaXmlParser(models.AbstractModel):
             result["codigo_respuesta"] = self._xml_text(root, "codigoRespuesta")
             result["mrn"] = self._xml_text(root, "MRN") or _extract_mrn_from_raw_text(xml_text)
             result["estado_aes"] = self._xml_text(root, "estadoAES")
-            result["circuito"] = (
+            circuito, circuito_llegada = self._extract_aes_circuito_from_block(root)
+            result["circuito"] = circuito or self.normalize_aes_circuito(
                 self._xml_text(root, "circuitoLlegada")
+                or self._xml_text(root, "circuitoAEAT")
                 or self._xml_text(root, "circuito")
+                or self._xml_text(root, "CusChanHEA")
+            )
+            result["circuito_llegada"] = circuito_llegada or self.normalize_aes_circuito(
+                self._xml_text(root, "circuitoLlegada")
             )
             result["csv_declaracion"] = self._xml_text(root, "CSVDeclaracionElectronica")
             result["csv_levante_export"] = self._xml_text(root, "CSVLevanteExportacion")
@@ -992,7 +1088,7 @@ class AduanaXmlParser(models.AbstractModel):
                     result["errors"].append(xe.get("error_text") or "Error XML")
             elif tr in ("OK", "AC", "P") or result["mrn"]:
                 result["success"] = True
-            if result["estado_aes"] in ("DE", "PL", "PS"):
+            if result["estado_aes"] in ("DE", "DS", "PL", "PS"):
                 result["released"] = True
             if result["estado_aes"] in ("SA", "SE") or result["fecha_salida_efectiva"]:
                 result["exited"] = True
@@ -1099,6 +1195,11 @@ class AduanaXmlParser(models.AbstractModel):
                         break
                     block = parent
                 msg = {"message_type": msg_type}
+                block_circuito, block_circuito_llegada = self._extract_aes_circuito_from_block(block)
+                if block_circuito:
+                    msg["circuito"] = block_circuito
+                if block_circuito_llegada:
+                    msg["circuito_llegada"] = block_circuito_llegada
                 for sub in block.iter() if hasattr(block, "iter") else []:
                     loc = sub.tag.split("}")[-1] if "}" in sub.tag else sub.tag
                     if loc == "MRN" and sub.text:
@@ -1163,6 +1264,20 @@ class AduanaXmlParser(models.AbstractModel):
                     )
                     if estado_m:
                         msg["estado_aes"] = estado_m.group(1).strip()
+                    circuito_m = re.search(
+                        r"<(?:[^:>]*:)?(?:circuitoLlegada|circuitoAEAT|circuito|CusChanHEA)>([^<]+)</",
+                        xml_text[m.end() : m.end() + 1200],
+                        re.IGNORECASE,
+                    )
+                    if circuito_m:
+                        msg["circuito"] = self.normalize_aes_circuito(circuito_m.group(1).strip())
+                    circuito_llegada_m = re.search(
+                        r"<(?:[^:>]*:)?circuitoLlegada>([^<]+)</",
+                        xml_text[m.end() : m.end() + 1200],
+                        re.IGNORECASE,
+                    )
+                    if circuito_llegada_m:
+                        msg["circuito_llegada"] = self.normalize_aes_circuito(circuito_llegada_m.group(1).strip())
                     csv_m = re.search(
                         r"<CSVLevanteSalida>([^<]+)</CSVLevanteSalida>",
                         xml_text[m.end() : m.end() + 800],

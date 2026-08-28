@@ -321,9 +321,23 @@ class AduanaExpediente(models.Model):
     # Seguimiento AES exportación (CC515C, CCAESC, CC507C y comunicaciones de bandeja)
     aes_estado = fields.Char(string="Estado AES", readonly=True, tracking=True,
                              help="Código de estado AES devuelto por AEAT (por ejemplo: DE, RE, PS, SA).")
+    aes_estado_display = fields.Char(
+        string="Estado AES",
+        compute="_compute_aes_display_labels",
+        help="Código AEAT con significado legible.",
+    )
     aes_circuito = fields.Char(string="Circuito AES", readonly=True,
                                help="Circuito de despacho/llegada: V=verde, N=naranja, R=rojo.")
+    aes_circuito_display = fields.Char(
+        string="Circuito AES",
+        compute="_compute_aes_display_labels",
+        help="Circuito AEAT con significado legible (V/N/R).",
+    )
     aes_circuito_llegada = fields.Char(string="Circuito llegada salida", readonly=True)
+    aes_circuito_llegada_display = fields.Char(
+        string="Circuito llegada salida",
+        compute="_compute_aes_display_labels",
+    )
     aes_csv_declaracion = fields.Char(string="CSV declaración AES", readonly=True)
     aes_csv_levante_exportacion = fields.Char(string="CSV levante exportación", readonly=True)
     aes_csv_levante_salida = fields.Char(string="CSV levante salida", readonly=True)
@@ -652,6 +666,11 @@ class AduanaExpediente(models.Model):
         compute="_compute_tiene_facturas_por_procesar",
         help="True si hay PDF legacy o facturas del expediente pendientes de OCR.",
     )
+    export_listo_para_dua = fields.Boolean(
+        string="Exportación lista para DUA",
+        compute="_compute_export_listo_para_dua",
+        help="True cuando hay líneas, remitente/consignatario y no quedan facturas por procesar.",
+    )
     factura_estado_procesamiento = fields.Selection([
         ("sin_factura", "Sin Factura"),
         ("pendiente", "Pendiente de Procesar"),
@@ -687,6 +706,25 @@ class AduanaExpediente(models.Model):
                         pending = True
                         break
             rec.tiene_facturas_por_procesar = pending
+
+    @api.depends(
+        "direction",
+        "line_ids",
+        "remitente",
+        "consignatario",
+        "tiene_facturas_por_procesar",
+    )
+    def _compute_export_listo_para_dua(self):
+        for rec in self:
+            if rec.direction != "export":
+                rec.export_listo_para_dua = False
+                continue
+            rec.export_listo_para_dua = bool(
+                rec.line_ids
+                and rec.remitente
+                and rec.consignatario
+                and not rec.tiene_facturas_por_procesar
+            )
 
     @api.depends('factura_estado_procesamiento', 'factura_mensaje_error')
     def _compute_factura_mensaje_html(self):
@@ -830,6 +868,14 @@ class AduanaExpediente(models.Model):
                 rec.levante_estado_color = "admitido"
             else:
                 rec.levante_estado_color = "pendiente"
+
+    @api.depends("aes_estado", "aes_circuito", "aes_circuito_llegada")
+    def _compute_aes_display_labels(self):
+        parser = self.env["aduanas.xml.parser"]
+        for rec in self:
+            rec.aes_estado_display = parser.format_aes_estado_display(rec.aes_estado)
+            rec.aes_circuito_display = parser.format_aes_circuito_display(rec.aes_circuito)
+            rec.aes_circuito_llegada_display = parser.format_aes_circuito_display(rec.aes_circuito_llegada)
 
     def _partner_country_code(self, partner):
         if partner and partner.country_id and partner.country_id.code:
@@ -1178,6 +1224,32 @@ class AduanaExpediente(models.Model):
             "tag": "display_notification",
             "params": {
                 "title": _("Importación validada"),
+                "message": _("Datos obligatorios correctos."),
+                "type": "success",
+                "sticky": False,
+            },
+        }
+
+    def action_validar_exportacion(self):
+        """Validación previa a generar/presentar el DUA de exportación."""
+        validator = self.env["aduanas.validator"]
+        for rec in self:
+            if rec.direction != "export":
+                raise UserError(_("Esta acción solo aplica a expedientes de exportación."))
+            if rec.tiene_facturas_por_procesar:
+                raise UserError(_("Procese las facturas pendientes antes de validar la exportación."))
+            if not rec.line_ids:
+                raise UserError(_("Agregue líneas de mercancía (procese la factura o créelas manualmente)."))
+            validator.validate_expediente_export(rec)
+            rec.message_post(
+                body=_("Validación exportación correcta."),
+                subtype_xmlid="mail.mt_note",
+            )
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Exportación validada"),
                 "message": _("Datos obligatorios correctos."),
                 "type": "success",
                 "sticky": False,
@@ -1630,6 +1702,27 @@ class AduanaExpediente(models.Model):
             value = "%s 00:00:00" % value
         return fields.Datetime.to_datetime(value.replace("T", " "))
 
+    _EXPORT_STATE_RANK = {
+        "draft": 0,
+        "predeclared": 1,
+        "presented": 2,
+        "accepted": 3,
+        "released": 4,
+        "exited": 5,
+        "closed": 6,
+        "error": -1,
+    }
+
+    def _export_state_rank(self, state):
+        return self._EXPORT_STATE_RANK.get(state, 0)
+
+    def _set_state_if_advanced(self, updates, new_state):
+        """No retroceder el expediente (p. ej. Levante → Aceptado tras CCAESC)."""
+        if not new_state or new_state == self.state:
+            return
+        if self._export_state_rank(new_state) > self._export_state_rank(self.state):
+            updates["state"] = new_state
+
     def _apply_aeat_parsed_response(self, parsed, source="AEAT"):
         self.ensure_one()
         updates = {"last_response_date": fields.Datetime.now()}
@@ -1647,6 +1740,11 @@ class AduanaExpediente(models.Model):
         for src, dst in mapping.items():
             if parsed.get(src):
                 updates[dst] = parsed[src]
+        parser = self.env["aduanas.xml.parser"]
+        if parsed.get("circuito"):
+            updates["aes_circuito"] = parser.normalize_aes_circuito(parsed["circuito"])
+        if parsed.get("circuito_llegada"):
+            updates["aes_circuito_llegada"] = parser.normalize_aes_circuito(parsed["circuito_llegada"])
         date_mapping = {
             "fecha_hora_alta": "fecha_recepcion",
             "fecha_admision": "fecha_admision_aes",
@@ -1659,17 +1757,23 @@ class AduanaExpediente(models.Model):
             if parsed.get(src):
                 updates[dst] = self._to_odoo_datetime(parsed[src])
 
-        estado = (parsed.get("estado_aes") or "").upper()
-        if parsed.get("exited") or estado == "SA":
-            updates["state"] = "exited"
+        estado = (parsed.get("estado_aes") or updates.get("aes_estado") or self.aes_estado or "").upper()
+        has_levante_signal = bool(
+            parsed.get("released")
+            or parsed.get("fecha_levante")
+            or parsed.get("fecha_levante_salida")
+            or estado in ("DE", "DS", "PL", "PS")
+            or self.fecha_levante
+        )
+        if parsed.get("exited") or estado in ("SA", "SE"):
+            self._set_state_if_advanced(updates, "exited")
             updates["iva_exportacion_exento"] = True
-        elif parsed.get("released"):
-            if self.state not in ("exited", "closed"):
-                updates["state"] = "released"
+        elif has_levante_signal:
+            self._set_state_if_advanced(updates, "released")
         elif parsed.get("accepted") or (
             parsed.get("mrn") and self.state in ("draft", "predeclared", "presented", "error")
         ):
-            updates["state"] = "accepted"
+            self._set_state_if_advanced(updates, "accepted")
         self.write(updates)
 
         if updates.get("state") == "exited":
@@ -3664,7 +3768,7 @@ class AduanaExpediente(models.Model):
                     "mrn": mrn or rec.mrn,
                     "estado_aes": msg.get("estado_aes"),
                     "circuito": msg.get("circuito"),
-                    "circuito_llegada": msg.get("circuito"),
+                    "circuito_llegada": msg.get("circuito_llegada"),
                     "csv_levante": msg.get("csv_levante_export"),
                     "csv_levante_salida": msg.get("csv_levante_salida"),
                     "fecha_salida_efectiva": msg.get("fecha_salida_efectiva"),
