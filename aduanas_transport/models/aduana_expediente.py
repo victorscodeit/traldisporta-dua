@@ -3459,36 +3459,138 @@ class AduanaExpediente(models.Model):
         return True
 
     # ===== Bandeja AEAT (común) =====
+    _NS_BANDEJA_LISTA = (
+        "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/"
+        "aduanas/es/aeat/adht/band/ws/li/ListaDecV4Ent.xsd"
+    )
+    _NS_BANDEJA_DETALLE = (
+        "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/"
+        "aduanas/es/aeat/adht/band/ws/det/DetalleV5Ent.xsd"
+    )
+
+    def _declarant_nif_for_bandeja(self):
+        self.ensure_one()
+        company = self.env.company
+        vat = (company.vat or "").replace(" ", "").upper()
+        if vat.startswith("ES") and len(vat) > 2:
+            return vat[2:]
+        return vat
+
+    def _declarant_name_for_bandeja(self):
+        self.ensure_one()
+        return (self.env.company.name or "Declarante")[:70]
+
+    def _bandeja_lista_endpoint(self, settings):
+        detalle = settings.get("aeat_endpoint_bandeja") or ""
+        if "/det/DetalleV5SOAP" in detalle:
+            return detalle.replace("/det/DetalleV5SOAP", "/li/ListaDecV4SOAP")
+        return "https://prewww1.aeat.es/wlpl/ADHT-BAND/ws/li/ListaDecV4SOAP"
+
+    def _build_bandeja_lista_soap(self):
+        """ListaDecV4Ent: mensajes pendientes de leer en la bandeja del declarante."""
+        self.ensure_one()
+        nif = self._declarant_nif_for_bandeja()
+        if not nif:
+            raise UserError(_("Configure el NIF/CIF de la compañía para consultar la bandeja AEAT."))
+        nombre = xml_escape(self._declarant_name_for_bandeja())
+        ns = self._NS_BANDEJA_LISTA
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:li="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<li:ListaDecV4Ent>
+<li:declarante>
+<li:NifDeclarante>%s</li:NifDeclarante>
+<li:NombreDeclarante>%s</li:NombreDeclarante>
+</li:declarante>
+</li:ListaDecV4Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (ns, xml_escape(nif), nombre)
+
+    def _build_bandeja_detalle_soap(self, clave):
+        """DetalleV5Ent: recupera el contenido de un mensaje por su clave."""
+        self.ensure_one()
+        if not clave:
+            raise UserError(_("Clave de bandeja AEAT vacía."))
+        ns = self._NS_BANDEJA_DETALLE
+        return """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:det="%s">
+<soapenv:Header/>
+<soapenv:Body>
+<det:DetalleV5Ent>
+<det:clave>%s</det:clave>
+</det:DetalleV5Ent>
+</soapenv:Body>
+</soapenv:Envelope>""" % (ns, xml_escape(str(clave)))
+
+    def _bandeja_filter_declaraciones(self, declaraciones):
+        """Prioriza declaraciones cuya referencia coincide con el expediente."""
+        self.ensure_one()
+        if not declaraciones:
+            return []
+        if self.name:
+            by_exp = [d for d in declaraciones if self.name in (d.get("referencia") or "")]
+            if by_exp:
+                return by_exp
+        return declaraciones
+
     def action_poll_bandeja(self, limit=50):
         client = self.env["aduanas.aeat.client"]
         parser = self.env["aduanas.xml.parser"]
         for rec in self:
             settings = rec._get_settings()
             codigo = "EXPORAES" if rec.direction == "export" else "IMPORAES"
-            xml = self.env['ir.ui.view']._render_template(
-                "aduanas_transport.tpl_bandeja_req",
-                {
-                    "codigo_bandeja": codigo,
-                    "ultimo": rec.bandeja_last_num,
-                    "maxm": limit,
-                }
-            )
-            endpoint = settings.get("aeat_endpoint_bandeja")
-            ultimo_inicial = rec.bandeja_last_num
-            status_code, resp = client.send_xml(endpoint, xml, service="BANDEJA")
+            lista_endpoint = rec._bandeja_lista_endpoint(settings)
+            detalle_endpoint = settings.get("aeat_endpoint_bandeja")
+            poll_num = rec.bandeja_last_num + 1
+
+            lista_xml = rec._build_bandeja_lista_soap()
+            status_code, lista_resp = client.send_xml(lista_endpoint, lista_xml, service="BANDEJA")
             if status_code != 200:
-                rec.error_message = _("Bandeja AEAT respondió HTTP %s.") % status_code
+                rec.error_message = _("Bandeja AEAT (lista) respondió HTTP %s.") % status_code
                 raise UserError(rec.error_message)
-            response_filename = "%s_BANDEJA_response_%s.xml" % (rec.name, rec.bandeja_last_num + 1)
-            rec._attach_xml(response_filename, resp or "")
-            bandeja = parser.parse_bandeja_response(resp or "")
+
+            lista_filename = "%s_BANDEJA_lista_%s.xml" % (rec.name, poll_num)
+            rec._attach_xml(lista_filename, lista_resp or "")
+
+            lista_data = parser.parse_bandeja_lista_response(lista_resp or "")
+            if lista_data.get("errors"):
+                rec.error_message = lista_data["errors"][0]
+                raise UserError(_("Bandeja AEAT: %s") % rec.error_message)
+
+            declaraciones = rec._bandeja_filter_declaraciones(lista_data.get("declaraciones") or [])
             rec.last_response_date = fields.Datetime.now()
-            if bandeja.get("last_message_num"):
-                rec.bandeja_last_num = max(rec.bandeja_last_num, bandeja["last_message_num"])
+            rec.bandeja_last_num = poll_num
 
             processed_count = 0
             skipped_count = 0
-            for msg in bandeja.get("messages") or []:
+            detalle_errors = []
+            all_messages = []
+
+            for dec in declaraciones[:limit]:
+                clave = dec.get("clave")
+                if not clave:
+                    continue
+                detalle_xml = rec._build_bandeja_detalle_soap(clave)
+                det_status, det_resp = client.send_xml(detalle_endpoint, detalle_xml, service="BANDEJA")
+                det_filename = "%s_BANDEJA_detalle_%s.xml" % (rec.name, clave)
+                rec._attach_xml(det_filename, det_resp or "")
+                if det_status != 200:
+                    detalle_errors.append(_("Clave %s: HTTP %s") % (clave, det_status))
+                    continue
+                fault = parser.parse_soap_fault(det_resp or "")
+                if fault:
+                    detalle_errors.append(_("Clave %s: %s") % (clave, fault))
+                    continue
+                bandeja = parser.parse_bandeja_response(det_resp or "")
+                detalle_errors.extend(bandeja.get("errors") or [])
+                for msg in bandeja.get("messages") or []:
+                    msg = dict(msg)
+                    msg.setdefault("tipo_lista", dec.get("tipoRespuesta"))
+                    msg.setdefault("referencia_lista", dec.get("referencia"))
+                    all_messages.append(msg)
+
+            for msg in all_messages:
                 mrn = msg.get("mrn")
                 if mrn and rec.mrn and mrn != rec.mrn:
                     skipped_count += 1
@@ -3504,7 +3606,7 @@ class AduanaExpediente(models.Model):
                     "fecha_salida_efectiva": msg.get("fecha_salida_efectiva"),
                     "fecha_levante": msg.get("fecha_levante"),
                 }
-                tipo = (msg.get("message_type") or "").upper()
+                tipo = (msg.get("message_type") or msg.get("tipo_lista") or "").upper()
                 if tipo == "CLEVEX":
                     parsed_msg["released"] = True
                 if tipo in ("CSALID", "RESUSA", "COMUNICARESULSALIDA") or msg.get("fecha_salida_efectiva"):
@@ -3516,30 +3618,33 @@ class AduanaExpediente(models.Model):
                         subtype_xmlid="mail.mt_note",
                     )
 
-            if not processed_count and not bandeja.get("errors"):
+            if detalle_errors:
                 rec.with_context(mail_notrack=True).message_post(
-                    body=_(
-                        "Bandeja AEAT consultada correctamente (HTTP %s).<br/>"
-                        "Endpoint: <code>%s</code><br/>"
-                        "Bandeja: <code>%s</code>. Desde mensaje: %s. Último número procesado: %s.<br/>"
-                        "Mensajes AEAT encontrados para este MRN: 0. Mensajes de otros MRN ignorados: %s.<br/>"
-                        "Respuesta adjunta: <code>%s</code> (%s bytes)."
-                    ) % (
-                        status_code,
-                        endpoint or "-",
-                        codigo,
-                        ultimo_inicial,
-                        rec.bandeja_last_num,
-                        skipped_count,
-                        response_filename,
-                        len(resp or ""),
-                    ),
+                    body=_("Errores al leer detalle de bandeja:\n%s") % "\n".join(detalle_errors),
                     subtype_xmlid="mail.mt_note",
                 )
 
-            if bandeja.get("errors"):
+            if not processed_count and not detalle_errors:
                 rec.with_context(mail_notrack=True).message_post(
-                    body=_("Errores al leer bandeja:\n%s") % "\n".join(bandeja["errors"]),
+                    body=_(
+                        "Bandeja AEAT consultada correctamente (HTTP %s).<br/>"
+                        "Lista: <code>%s</code><br/>"
+                        "Detalle: <code>%s</code><br/>"
+                        "Bandeja: <code>%s</code>. Consulta nº %s.<br/>"
+                        "Declaraciones pendientes en lista: %s. Mensajes procesados para este expediente: 0. "
+                        "Mensajes de otros MRN ignorados: %s.<br/>"
+                        "Respuesta lista adjunta: <code>%s</code> (%s bytes)."
+                    ) % (
+                        status_code,
+                        lista_endpoint or "-",
+                        detalle_endpoint or "-",
+                        codigo,
+                        poll_num,
+                        len(declaraciones),
+                        skipped_count,
+                        lista_filename,
+                        len(lista_resp or ""),
+                    ),
                     subtype_xmlid="mail.mt_note",
                 )
         return True

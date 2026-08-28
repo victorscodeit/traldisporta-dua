@@ -1001,12 +1001,73 @@ class AduanaXmlParser(models.AbstractModel):
                 return {"success": True, "mrn": mrn, "errors": [], "raw_xml": xml_text}
             return {"success": False, "error": str(e), "errors": [str(e)], "raw_xml": xml_text}
 
+    def parse_soap_fault(self, xml_text):
+        """Devuelve el texto del SOAP Fault o None si la respuesta no es un fallo SOAP."""
+        if not xml_text or not xml_text.strip():
+            return None
+        lower = xml_text.lower()
+        if "<fault" not in lower:
+            return None
+        try:
+            root, ok = _parse_with_lxml_recover(xml_text)
+            if not ok or root is None:
+                root = ET.fromstring(xml_text)
+            fault_string = self._xml_text(root, "faultstring") or self._xml_text(root, "FaultString")
+            fault_code = self._xml_text(root, "faultcode") or self._xml_text(root, "FaultCode")
+            if fault_string:
+                fault_string = fault_string.strip()
+                if fault_code and fault_code.strip() not in fault_string:
+                    return "%s (%s)" % (fault_string, fault_code.strip())
+                return fault_string
+            if fault_code:
+                return fault_code.strip()
+        except Exception:
+            m = re.search(r"<faultstring>([^<]+)</faultstring>", xml_text, re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        return _("Error SOAP en respuesta AEAT")
+
+    def parse_bandeja_lista_response(self, xml_text):
+        """
+        Parsea ListaDecV4Sal: claves pendientes de leer en la bandeja AEAT.
+        """
+        result = {"declaraciones": [], "errors": []}
+        if not xml_text:
+            return result
+        fault = self.parse_soap_fault(xml_text)
+        if fault:
+            result["errors"].append(fault)
+            return result
+        try:
+            root, ok = _parse_with_lxml_recover(xml_text)
+            if not ok or root is None:
+                root = ET.fromstring(xml_text)
+            for el in root.iter():
+                local = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+                if local != "declaracion":
+                    continue
+                dec = {}
+                for child in el:
+                    loc = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                    if loc in ("clave", "referencia", "tipoRespuesta") and child.text:
+                        dec[loc] = child.text.strip()
+                if dec.get("clave"):
+                    result["declaraciones"].append(dec)
+        except Exception as e:
+            _logger.warning("parse_bandeja_lista_response: %s", e)
+            result["errors"].append(str(e))
+        return result
+
     def parse_bandeja_response(self, xml_text):
         """
         Extrae mensajes de bandeja EXPORAES embebidos (ComunicaLevanteExpor, ComunicaResulSalida, etc.).
         """
         result = {"messages": [], "last_message_num": 0, "incidencias": [], "errors": []}
         if not xml_text:
+            return result
+        fault = self.parse_soap_fault(xml_text)
+        if fault:
+            result["errors"].append(fault)
             return result
         try:
             root, ok = _parse_with_lxml_recover(xml_text)

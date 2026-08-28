@@ -256,19 +256,6 @@
 </template>
 
 
-  <template id="tpl_bandeja_req" name="Bandeja AEAT XML" t-name="aduanas_transport.tpl_bandeja_req">
-  <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
-    <soapenv:Header/>
-    <soapenv:Body>
-      <DetalleV5Ent xmlns="urn:aeat:adht:band:det">
-        <CodigoBandeja><t t-esc="codigo_bandeja"/></CodigoBandeja>
-        <NumUltimoMensajeLeido><t t-esc="ultimo"/></NumUltimoMensajeLeido>
-        <MaxMensajes><t t-esc="maxm"/></MaxMensajes>
-      </DetalleV5Ent>
-    </soapenv:Body>
-  </soapenv:Envelope>
-</template>
-
   <!-- Template PDF del DUA - Formato imprimible oficial -->
   <template id="tpl_dua_pdf" name="DUA PDF (Formato Imprimible)" t-name="aduanas_transport.tpl_dua_pdf">
     <html>
