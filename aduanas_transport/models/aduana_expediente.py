@@ -3581,24 +3581,65 @@ class AduanaExpediente(models.Model):
             parts.append(desc)
         return " — ".join(parts)
 
+    def _aeat_error_subcode(self, text, codigo=None):
+        """Subcódigo AEAT (1020, 2115, 2014…) distinto del tipo genérico 14."""
+        if codigo and str(codigo) not in ("14", ""):
+            return str(codigo)
+        match = re.search(r"\bcódigo\s+14\s*-\s*(\d{4})\b", text or "", flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+        match = re.search(r"\b-\s*(\d{4})\s*-\s*(?:ADR_|AUDEG_|Harmonized)", text or "")
+        if match:
+            return match.group(1)
+        return ""
+
+    def _aeat_declarant_hint(self, text):
+        company = self.env.company
+        declarant = (company.vat or "").replace(" ", "").upper() or _("(NIF compañía Odoo no configurado)")
+        return _(
+            "→ Error del DECLARANTE (representante aduanero), no de partidas.\n"
+            "  EORI enviado: %s | Tipo representación: %s\n"
+            "  Revise en AEAT que el EORI exista, esté activo y que el certificado "
+            "tenga autorización vigente como representante para ese declarante "
+            "(preproducción/producción)."
+        ) % (declarant, dict(self._fields["tipo_representacion"].selection).get(self.tipo_representacion, self.tipo_representacion or "?"))
+
     def _enrich_aeat_error_text(self, error_text, goods_item_number=None, codigo=None):
         """Añade línea/partida del expediente al mensaje de error AEAT."""
         self.ensure_one()
         text = (error_text or "").strip()
         parser = self.env["aduanas.xml.parser"]
         item_num = goods_item_number or parser._goods_item_number_from_pointer(text)
+        subcode = self._aeat_error_subcode(text, codigo)
+
+        pointer_lower = text.lower()
+        if "/declarant/" in pointer_lower or subcode in ("1020", "9005"):
+            hint = self._aeat_declarant_hint(text)
+            if hint not in text:
+                if subcode == "1020":
+                    extra = _("\n  AEAT: el representante aduanero no existe o no está dado de alta a esa fecha.")
+                elif subcode == "9005":
+                    extra = _("\n  AEAT: el operador (certificado) no tiene autorización activa para este declarante.")
+                else:
+                    extra = ""
+                return text + extra + "\n" + hint
+            return text
 
         if item_num:
             line = self._line_by_goods_item_number(item_num)
             if line:
                 hint = self._format_line_partida_hint(line)
+                if subcode == "2014" and "AdditionalProcedure" in text:
+                    hint += _(
+                        "\n  → Producto sujeto a IIEE: en AES debe informarse AdditionalProcedure "
+                        "(121, 122, 123, 124, 125, 126 u 128). Consulte clasificación / departamento aduanero."
+                    )
                 if hint and hint not in text:
                     return _("%s\n→ Afecta a: %s") % (text, hint)
             return text
 
-        code = str(codigo or "")
         looks_arancel = (
-            code == "14"
+            subcode == "2115"
             or "HarmonizedSystem" in text
             or "CombinedNomenclature" in text
             or "no existe en arancel" in text.lower()
