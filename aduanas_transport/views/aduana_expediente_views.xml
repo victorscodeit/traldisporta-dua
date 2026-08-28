@@ -443,7 +443,7 @@
           <notebook>
             <page string="Líneas">
               <field name="line_ids" limit="40">
-                <tree editable="bottom" default_order="item_number">
+                <tree editable="bottom" default_order="item_number" delete="1">
                   <field name="expediente_id" invisible="1"/>
                   <field name="item_number"/>
                   <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
@@ -854,7 +854,7 @@ if records:
     <field name="name">aduana.expediente.line.tree</field>
     <field name="model">aduana.expediente.line</field>
     <field name="arch" type="xml">
-      <tree string="Líneas de mercancía" default_order="item_number" editable="bottom">
+      <tree string="Líneas de mercancía" default_order="item_number" editable="bottom" delete="1">
         <field name="expediente_id" invisible="1"/>
         <field name="factura_id" optional="hide"/>
         <field name="item_number"/>

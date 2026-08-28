@@ -27,6 +27,9 @@ if QUEUE_JOB_AVAILABLE:
 class AduanaExpedienteLine(models.Model):
     _name = "aduana.expediente.line"
     _description = "Línea de mercancía (expediente aduanero)"
+
+    _EDITABLE_EXPEDIENTE_STATES = ("draft", "predeclared", "error")
+
     expediente_id = fields.Many2one("aduana.expediente", required=True, ondelete="cascade")
     factura_id = fields.Many2one("aduana.expediente.factura", string="Factura", ondelete="set null", index=True,
                                  help="Factura del expediente de la que proviene esta línea, si aplica")
@@ -83,6 +86,23 @@ class AduanaExpedienteLine(models.Model):
                 if line.valor_linea and line.unidades and line.unidades > 0:
                     line.precio_unitario = line.valor_linea / line.unidades
         return result
+
+    def _check_expediente_editable_for_lines(self):
+        state_labels = dict(self.env["aduana.expediente"]._fields["state"].selection)
+        for line in self:
+            state = line.expediente_id.state
+            if state not in self._EDITABLE_EXPEDIENTE_STATES:
+                raise UserError(_(
+                    "No se pueden eliminar líneas cuando el expediente está en estado «%s». "
+                    "Solo en Borrador, Predeclarado o Error."
+                ) % state_labels.get(state, state))
+
+    def unlink(self):
+        self._check_expediente_editable_for_lines()
+        expedientes = self.mapped("expediente_id")
+        res = super().unlink()
+        expedientes._sync_valor_factura_from_lines()
+        return res
 
 class AduanaExpediente(models.Model):
     _name = "aduana.expediente"
@@ -1723,6 +1743,11 @@ class AduanaExpediente(models.Model):
         for rec in self:
             if rec.direction == "import" and not rec.lrn and rec.name:
                 rec.lrn = rec.name
+
+    def _sync_valor_factura_from_lines(self):
+        """Recalcula valor_factura como suma de valor_linea tras cambios en líneas."""
+        for rec in self:
+            rec.valor_factura = sum(rec.line_ids.mapped("valor_linea")) if rec.line_ids else 0.0
 
     def _auto_close_expediente_if_configured(self, trigger="exited"):
         """Cierra el expediente si la automatización está activa en configuración."""
