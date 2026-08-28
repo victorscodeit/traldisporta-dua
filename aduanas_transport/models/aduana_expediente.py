@@ -2237,7 +2237,12 @@ class AduanaExpediente(models.Model):
                 )
             else:
                 rec.state = "error"
-                error_msg = "\n".join(parsed.get("errors") or []) or parsed.get("error") or _("Error desconocido")
+                error_msg = "\n".join(
+                    rec._enrich_aeat_errors_list(
+                        parsed.get("errors") or [],
+                        parsed.get("incidencias") or [],
+                    )
+                ) or parsed.get("error") or _("Error desconocido")
                 rec.error_message = error_msg
                 tipo = parsed.get("tipo_respuesta") or ""
                 rec.with_context(mail_notrack=True).message_post(
@@ -3539,6 +3544,114 @@ class AduanaExpediente(models.Model):
                 )
         return True
     
+    def _line_by_goods_item_number(self, item_num):
+        """Devuelve la línea del expediente que corresponde al GoodsItem AES nº N."""
+        self.ensure_one()
+        if not item_num:
+            return self.env["aduana.expediente.line"]
+        lines = (self.line_ids or self.env["aduana.expediente.line"]).sorted(
+            key=lambda l: l.item_number or l.id or 0
+        )
+        for idx, line in enumerate(lines):
+            num = line.item_number or (idx + 1)
+            try:
+                if int(num) == int(item_num):
+                    return line
+            except (TypeError, ValueError):
+                continue
+        return self.env["aduana.expediente.line"]
+
+    def _format_line_partida_hint(self, line):
+        if not line:
+            return ""
+        partida = (line.partida or "").replace(" ", "")
+        hs8 = partida[:8] if partida else ""
+        desc = (line.descripcion or "")[:80]
+        art = ""
+        if "articulo" in line._fields:
+            art = line.articulo or ""
+        parts = [_("Línea AES nº %s") % (line.item_number or "?")]
+        if partida:
+            parts.append(_("partida %s") % partida)
+            if hs8:
+                parts.append(_("NC8 %s") % hs8)
+        if art:
+            parts.append(_("art. %s") % art)
+        if desc:
+            parts.append(desc)
+        return " — ".join(parts)
+
+    def _enrich_aeat_error_text(self, error_text, goods_item_number=None, codigo=None):
+        """Añade línea/partida del expediente al mensaje de error AEAT."""
+        self.ensure_one()
+        text = (error_text or "").strip()
+        parser = self.env["aduanas.xml.parser"]
+        item_num = goods_item_number or parser._goods_item_number_from_pointer(text)
+
+        if item_num:
+            line = self._line_by_goods_item_number(item_num)
+            if line:
+                hint = self._format_line_partida_hint(line)
+                if hint and hint not in text:
+                    return _("%s\n→ Afecta a: %s") % (text, hint)
+            return text
+
+        code = str(codigo or "")
+        looks_arancel = (
+            code == "14"
+            or "HarmonizedSystem" in text
+            or "CombinedNomenclature" in text
+            or "no existe en arancel" in text.lower()
+        )
+        if looks_arancel and self.line_ids:
+            lines = self.line_ids.sorted(key=lambda l: l.item_number or l.id or 0)
+            listing = []
+            for idx, line in enumerate(lines):
+                item = line.item_number or (idx + 1)
+                partida = (line.partida or "").replace(" ", "") or "?"
+                desc = (line.descripcion or "")[:60]
+                listing.append(_("  • Ítem %s → partida %s%s") % (
+                    item,
+                    partida,
+                    (" — %s" % desc) if desc else "",
+                ))
+            return _(
+                "%s\n→ AEAT no indicó el ítem concreto. Revise estas partidas del expediente:\n%s"
+            ) % (text, "\n".join(listing))
+        return text
+
+    def _enrich_aeat_errors_list(self, errors, incidencias=None):
+        """Enriquece lista de strings de error y/o incidencias con línea/partida."""
+        self.ensure_one()
+        enriched = []
+        incs = list(incidencias or [])
+        for idx, err in enumerate(errors or []):
+            item_num = False
+            codigo = False
+            if idx < len(incs):
+                item_num = incs[idx].get("goods_item_number")
+                codigo = incs[idx].get("codigo")
+            if isinstance(err, dict):
+                codigo = err.get("codigo") or codigo
+                item_num = err.get("goods_item_number") or item_num
+                msg = err.get("mensaje") or str(err)
+            else:
+                msg = str(err)
+            enriched.append(
+                self._enrich_aeat_error_text(msg, goods_item_number=item_num, codigo=codigo)
+            )
+        # Si no hay errors pero sí incidencias (caso típico del dict mostrado al usuario)
+        if not enriched and incs:
+            for inc in incs:
+                enriched.append(
+                    self._enrich_aeat_error_text(
+                        inc.get("mensaje") or str(inc),
+                        goods_item_number=inc.get("goods_item_number"),
+                        codigo=inc.get("codigo"),
+                    )
+                )
+        return enriched
+
     def _procesar_incidencias(self, incidencias_data, origen="bandeja"):
         """Procesa y crea incidencias desde datos parseados de AEAT"""
         self.ensure_one()
@@ -3567,15 +3680,20 @@ class AduanaExpediente(models.Model):
                 "notificacion": "baja",
             }
             prioridad = prioridad_map.get(inc_data.get("tipo", "error"), "media")
+            mensaje = self._enrich_aeat_error_text(
+                inc_data.get("mensaje") or "",
+                goods_item_number=inc_data.get("goods_item_number"),
+                codigo=inc_data.get("codigo"),
+            )
             
             # Crear incidencia
             incidencia = Incidencia.create({
                 "expediente_id": self.id,
                 "tipo_incidencia": inc_data.get("tipo", "error"),
                 "codigo_incidencia": inc_data.get("codigo", ""),
-                "titulo": inc_data.get("mensaje", _("Incidencia detectada"))[:200] or _("Incidencia detectada"),
-                "descripcion": inc_data.get("mensaje", ""),
-                "mensaje_aeat": str(inc_data),
+                "titulo": (mensaje or _("Incidencia detectada"))[:200] or _("Incidencia detectada"),
+                "descripcion": mensaje,
+                "mensaje_aeat": str(dict(inc_data, mensaje=mensaje)),
                 "fecha_incidencia": fields.Datetime.now(),
                 "origen": origen,
                 "prioridad": prioridad,

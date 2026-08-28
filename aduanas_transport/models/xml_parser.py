@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import models, _
+from odoo import models, api, _
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -288,6 +288,55 @@ class AduanaXmlParser(models.AbstractModel):
             })
         return errors
 
+    @api.model
+    def _goods_item_number_from_pointer(self, pointer):
+        """Extrae el nº de GoodsItem del errorPointer AEAT (si viene)."""
+        text = (pointer or "").strip()
+        if not text:
+            return False
+        patterns = (
+            r"GoodsItem\s*\[\s*(\d+)\s*\]",
+            r"declarationGoodsItemNumber\s*[=:]\s*(\d+)",
+            r"GOOITEGDS\s*\[\s*(\d+)\s*\]",
+            r"/GoodsItem/(\d+)(?:/|$)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                try:
+                    return int(match.group(1))
+                except (TypeError, ValueError):
+                    continue
+        return False
+
+    def _format_functional_error(self, fe):
+        parts = []
+        item_num = self._goods_item_number_from_pointer(fe.get("error_pointer"))
+        if item_num:
+            parts.append(_("partida/línea AES nº %s") % item_num)
+        if fe.get("error_pointer"):
+            parts.append(fe["error_pointer"])
+        if fe.get("error_code"):
+            parts.append(_("código %s") % fe["error_code"])
+        if fe.get("error_reason"):
+            parts.append(fe["error_reason"])
+        if fe.get("error_description"):
+            parts.append(fe["error_description"])
+        return " - ".join(parts) or _("Error funcional AEAT importación")
+
+    def _functional_error_to_incidencia(self, fe):
+        """Dict de incidencia con pointer, código y nº de GoodsItem si existe."""
+        item_num = self._goods_item_number_from_pointer(fe.get("error_pointer"))
+        mensaje = self._format_functional_error(fe)
+        return {
+            "tipo": "error",
+            "codigo": fe.get("error_code") or fe.get("error_reason") or "",
+            "mensaje": mensaje,
+            "error_pointer": fe.get("error_pointer") or "",
+            "goods_item_number": item_num or False,
+            "error_description": fe.get("error_description") or "",
+        }
+
     def _find_xml_errors(self, root):
         errors = []
         for xe in root.iter():
@@ -301,18 +350,6 @@ class AduanaXmlParser(models.AbstractModel):
                 ),
             })
         return errors
-
-    def _format_functional_error(self, fe):
-        parts = []
-        if fe.get("error_pointer"):
-            parts.append(fe["error_pointer"])
-        if fe.get("error_code"):
-            parts.append(_("código %s") % fe["error_code"])
-        if fe.get("error_reason"):
-            parts.append(fe["error_reason"])
-        if fe.get("error_description"):
-            parts.append(fe["error_description"])
-        return " - ".join(parts) or _("Error funcional AEAT importación")
 
     def parse_aeat_response(self, xml_text, service_name=""):
         """Parsea respuesta XML de AEAT y extrae información relevante"""
@@ -524,7 +561,20 @@ class AduanaXmlParser(models.AbstractModel):
                     if remarks:
                         parts.append(remarks)
                     incidencia_data["mensaje"] = " - ".join(parts) or "Error AEAT sin descripción textual"
-                
+                    incidencia_data["error_pointer"] = pointer or ""
+                    incidencia_data["goods_item_number"] = self._goods_item_number_from_pointer(
+                        pointer or incidencia_data.get("mensaje")
+                    )
+                else:
+                    # Conservar errorPointer aunque ya haya descripción (necesario para localizar GoodsItem)
+                    pointer = details.get("errorPointer") or details.get("ErrorPointer")
+                    if pointer and pointer not in (incidencia_data.get("mensaje") or ""):
+                        incidencia_data["mensaje"] = "%s - %s" % (pointer, incidencia_data["mensaje"])
+                    incidencia_data["error_pointer"] = pointer or ""
+                    incidencia_data["goods_item_number"] = self._goods_item_number_from_pointer(
+                        pointer or incidencia_data.get("mensaje")
+                    )
+
                 result["incidencias"].append(incidencia_data)
                 
                 # Mantener compatibilidad con formato anterior
@@ -820,14 +870,12 @@ class AduanaXmlParser(models.AbstractModel):
             "raw_xml": aes.get("raw_xml"),
         }
         for fe in aes.get("functional_errors") or []:
-            legacy["errors"].append(
-                "%s: %s" % (fe.get("error_pointer") or "", fe.get("error_description") or "")
-            )
-            legacy["incidencias"].append({
-                "tipo": "error",
-                "codigo": fe.get("error_code") or fe.get("error_reason") or "",
-                "mensaje": fe.get("error_description") or fe.get("error_pointer") or "",
-            })
+            incidencia = self._functional_error_to_incidencia(fe)
+            legacy["incidencias"].append(incidencia)
+            # No duplicar: parse_aes_export_response ya añadió errores con pointer
+            formatted = incidencia.get("mensaje") or ""
+            if formatted and formatted not in legacy["errors"]:
+                legacy["errors"].append(formatted)
         for xe in aes.get("xml_errors") or []:
             legacy["errors"].append(xe.get("error_text") or "Error XML")
         if (aes.get("tipo_respuesta") or "").upper() in ("EF", "EX"):
@@ -932,9 +980,7 @@ class AduanaXmlParser(models.AbstractModel):
             if tr == "EF":
                 result["success"] = False
                 for fe in result["functional_errors"]:
-                    result["errors"].append(
-                        "%s: %s" % (fe.get("error_pointer") or "", fe.get("error_description") or "")
-                    )
+                    result["errors"].append(self._format_functional_error(fe))
             elif tr == "EX":
                 result["success"] = False
                 for xe in result["xml_errors"]:
