@@ -3450,6 +3450,21 @@ class AduanaExpediente(models.Model):
 </soapenv:Body>
 </soapenv:Envelope>""" % (ns, xml_escape(msg_id[:40]), prep_time, xml_escape(self.mrn))
 
+    def _enrich_imp_query_error_message(self, errors):
+        """Añade contexto útil a errores de ConsultaImportacionV3."""
+        self.ensure_one()
+        text = "\n".join(errors or [])
+        if "99999" in text and "No existe declaración" in text:
+            hint = _(
+                "\n\nNota: en preproducción AEAT (testIndicator S) es habitual que el MRN "
+                "devuelto en la admisión CC415R no esté disponible aún en ConsultaImportacionV3. "
+                "Si el expediente ya está Aceptado con ese MRN en el adjunto CC415A_response, "
+                "la declaración sí fue registrada en el entorno de pruebas."
+            )
+            if hint.strip() not in text:
+                text += hint
+        return text
+
     def action_consultar_estado_importacion(self):
         """Consulta importación CAU/H1 por MRN mediante ConsultaImportacionV3."""
         client = self.env["aduanas.aeat.client"]
@@ -3478,10 +3493,28 @@ class AduanaExpediente(models.Model):
                 raise UserError(rec.error_message)
             parsed = parser.parse_aeat_response(resp_xml or "", "IMP_QUERY_V3")
             if parsed.get("errors"):
-                rec.error_message = "\n".join(parsed.get("errors") or [])
+                raw_errors = rec._enrich_aeat_errors_list(
+                    parsed.get("errors") or [], parsed.get("incidencias")
+                )
+                rec.error_message = rec._enrich_imp_query_error_message(raw_errors)
+                rec.with_context(mail_notrack=True).message_post(
+                    body=_("Consulta importación V3 — AEAT respondió:<br/>%s") % rec.error_message.replace("\n", "<br/>"),
+                    subtype_xmlid="mail.mt_note",
+                )
                 if parsed.get("incidencias"):
                     rec._procesar_incidencias(parsed["incidencias"], "imp_decl")
-                raise UserError(_("La consulta de importación devolvió errores:\n%s") % rec.error_message)
+                notif_type = "warning" if rec.state == "accepted" and rec.mrn else "danger"
+                return {
+                    "type": "ir.actions.client",
+                    "tag": "display_notification",
+                    "params": {
+                        "title": _("Consulta importación"),
+                        "message": rec.error_message,
+                        "type": notif_type,
+                        "sticky": True,
+                    },
+                }
+            rec.error_message = False
             rec._apply_import_parsed_response(parsed, source="ConsultaImportacionV3")
             rec.with_context(mail_notrack=True).message_post(
                 body=_("Consulta importación V3 realizada correctamente para MRN %s.") % (rec.mrn or "-"),
