@@ -231,6 +231,7 @@
                     <field name="factura_estado_procesamiento" widget="statusbar" 
                            statusbar_visible="sin_factura,pendiente,procesando,completado,advertencia,error"/>
                     <field name="factura_procesada" invisible="1"/>
+                    <field name="lineas_count" invisible="1"/>
                     <field name="fecha_procesamiento" readonly="1"/>
                   </group>
                   <group string="Pesos totales (opcional)">
