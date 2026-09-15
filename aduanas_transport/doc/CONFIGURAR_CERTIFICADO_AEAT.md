@@ -26,6 +26,12 @@ El módulo convierte el P12 a PEM usando **cryptography** (incluido en Odoo 16, 
 2. Genere el DUA y pulse **Presentar DUA a AEAT**.
 3. Si el certificado y la contraseña son correctos y la librería está instalada, la petición debería dejar de devolver 403 y podrá recibir la respuesta XML de la AEAT.
 
+## 5. Uso también para Consultar TARIC
+
+El mismo P12 se usa para la consulta del **Arancel Integrado AEAT (DD09)** al pulsar **Consultar TARIC** en Documentos requeridos. Sin certificado válido esa consulta falla. La estructuración de documentos puede usar la API key OpenAI de la misma configuración; si falla la IA, el módulo intenta parseo regex del HTML.
+
+**Fragilidad operativa:** la captura depende del HTML de Sede; si AEAT cambia la interfaz habrá que actualizar el scraper (`aduanas.aeat.taric.scraper`). En el servidor, conviene el canal de cola `root.taric_aeat:1` junto a `root.invoice_ocr` para no saturar el VPS.
+
 ## Notas
 
 - El certificado y la contraseña se guardan en la configuración de Odoo; el archivo P12 se almacena como adjunto. Restrinja el acceso a la configuración y a los adjuntos según su política de seguridad.

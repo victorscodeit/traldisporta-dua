@@ -1,0 +1,9 @@
+/* Textos largos de incidencias a ancho completo del formulario */
+.o_form_view .o_aduana_incidencia_wide,
+.o_form_view .o_aduana_incidencia_wide textarea,
+.o_form_view .o_field_widget.o_aduana_incidencia_wide,
+.o_form_view .o_field_widget.o_aduana_incidencia_wide textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 6rem;
+}

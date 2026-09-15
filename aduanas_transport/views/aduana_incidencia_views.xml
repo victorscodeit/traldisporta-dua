@@ -60,24 +60,40 @@
               <field name="usuario_resolucion" readonly="1"/>
             </group>
           </group>
-          
-          <group string="Descripción">
-            <field name="titulo" placeholder="Título de la incidencia..."/>
-            <field name="descripcion" placeholder="Descripción detallada de la incidencia..." nolabel="1"/>
-          </group>
-          
-          <group string="Mensaje Original AEAT" attrs="{'invisible': [('mensaje_aeat', '=', False)]}">
-            <field name="mensaje_aeat" readonly="1" nolabel="1" widget="text"/>
-          </group>
-          
-          <group string="Resolución" attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}">
-            <field name="resolucion" placeholder="Descripción de cómo se resolvió..." nolabel="1"/>
-            <field name="accion_tomada" placeholder="Acciones realizadas para resolver..." nolabel="1"/>
-          </group>
-          
-          <group string="Archivos Adjuntos">
-            <field name="attachment_ids" nolabel="1"/>
-          </group>
+
+          <!-- Separators + fields directos del sheet: ancho completo.
+               Grupos hermanos se colocan en 2 columnas y aplastan el texto. -->
+          <separator string="Descripción"/>
+          <label for="titulo"/>
+          <field name="titulo" placeholder="Título de la incidencia..."/>
+          <label for="descripcion"/>
+          <field name="descripcion" nolabel="1" widget="text"
+                   placeholder="Descripción detallada de la incidencia..."
+                   class="o_aduana_incidencia_wide"/>
+
+          <separator string="Mensaje Original AEAT"
+                     attrs="{'invisible': [('mensaje_aeat', '=', False)]}"/>
+          <field name="mensaje_aeat" nolabel="1" readonly="1" widget="text"
+                   attrs="{'invisible': [('mensaje_aeat', '=', False)]}"
+                   class="o_aduana_incidencia_wide"/>
+
+          <separator string="Resolución"
+                     attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}"/>
+          <label for="resolucion"
+                 attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}"/>
+          <field name="resolucion" nolabel="1" widget="text"
+                   placeholder="Descripción de cómo se resolvió..."
+                   attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}"
+                   class="o_aduana_incidencia_wide"/>
+          <label for="accion_tomada"
+                 attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}"/>
+          <field name="accion_tomada" nolabel="1" widget="text"
+                   placeholder="Acciones realizadas para resolver..."
+                   attrs="{'invisible': [('state', 'in', ['pendiente', 'en_revision'])]}"
+                   class="o_aduana_incidencia_wide"/>
+
+          <separator string="Archivos Adjuntos"/>
+          <field name="attachment_ids" nolabel="1"/>
         </sheet>
         <div class="oe_chatter">
           <field name="message_follower_ids" widget="mail_followers"/>

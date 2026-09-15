@@ -57,6 +57,11 @@ class AduanaExpedienteLine(models.Model):
     precio_unitario = fields.Float(string="Precio Unitario")
     descuento = fields.Float(string="Descuento (%)", help="Porcentaje de descuento aplicado a la línea")
     subtotal = fields.Float(string="Subtotal")
+    pais_origen_id = fields.Many2one(
+        "res.country",
+        string="País origen",
+        ondelete="restrict",
+    )
     pais_origen = fields.Char(default="ES")
     verificacion_estado = fields.Selection([
         ("pendiente", "Pendiente"),
@@ -72,20 +77,36 @@ class AduanaExpedienteLine(models.Model):
         """Calcular precio_unitario desde valor_linea / unidades si falta.
         valor_linea es el total de línea (ya con descuento si aplica).
         """
+        Expediente = self.env["aduana.expediente"]
         for vals in vals_list:
             if 'precio_unitario' not in vals or vals.get('precio_unitario') in (None, 0, 0.0):
                 if vals.get('valor_linea') and vals.get('unidades') and vals.get('unidades') > 0:
                     vals['precio_unitario'] = vals['valor_linea'] / vals['unidades']
+            vals.update(Expediente._prepare_line_country_vals(vals))
         return super().create(vals_list)
     
     def write(self, vals):
         """Recalcular precio_unitario si cambian valor_linea o unidades."""
+        vals = dict(vals)
+        if "pais_origen_id" in vals or "pais_origen" in vals:
+            vals.update(self.env["aduana.expediente"]._prepare_line_country_vals(vals))
         result = super().write(vals)
         if any(field in vals for field in ['valor_linea', 'unidades']) and 'precio_unitario' not in vals:
-                for line in self:
-                    if line.valor_linea and line.unidades and line.unidades > 0:
+            for line in self:
+                if line.valor_linea and line.unidades and line.unidades > 0:
                     line.precio_unitario = line.valor_linea / line.unidades
         return result
+
+    @api.onchange("pais_origen_id")
+    def _onchange_pais_origen_id(self):
+        for line in self:
+            line.pais_origen = (line.pais_origen_id.code or "").upper() or False
+
+    @api.onchange("pais_origen")
+    def _onchange_pais_origen_code(self):
+        Expediente = self.env["aduana.expediente"]
+        for line in self:
+            line.pais_origen_id = Expediente._country_from_iso(line.pais_origen)
 
     def _check_expediente_editable_for_lines(self):
         state_labels = dict(self.env["aduana.expediente"]._fields["state"].selection)
@@ -169,6 +190,49 @@ class AduanaExpediente(models.Model):
     
     # Documentos requeridos por partida arancelaria (TARIC)
     documento_requerido_ids = fields.One2many("aduana.expediente.documento.requerido", "expediente_id", string="Documentos Requeridos")
+    taric_linea_ids = fields.One2many(
+        "aduana.expediente.taric.linea", "expediente_id", string="Revisiones TARIC por línea"
+    )
+    taric_medida_ids = fields.One2many(
+        "aduana.expediente.taric.medida", "expediente_id", string="Medidas TARIC"
+    )
+    taric_operativo_resumen = fields.Char(
+        string="Resumen operativo TARIC",
+        compute="_compute_taric_operativo_resumen",
+    )
+    taric_siguiente_accion = fields.Char(
+        string="Siguiente acción TARIC",
+        compute="_compute_taric_operativo_resumen",
+    )
+
+    @api.depends(
+        "taric_linea_ids.situacion",
+        "taric_linea_ids.preguntas_pendientes_count",
+        "taric_linea_ids.docs_pendientes_count",
+        "taric_linea_ids.item_number",
+    )
+    def _compute_taric_operativo_resumen(self):
+        for rec in self:
+            lineas = rec.taric_linea_ids
+            preg = sum(lineas.mapped("preguntas_pendientes_count"))
+            docs = sum(lineas.mapped("docs_pendientes_count"))
+            parts = []
+            if preg:
+                parts.append(_("Faltan %s respuesta(s)") % preg)
+            if docs:
+                parts.append(_("%s documento(s) por aportar/revisar") % docs)
+            rec.taric_operativo_resumen = (
+                _(" y ").join(parts) + "." if parts else _("Requisitos TARIC al día.")
+            )
+            next_line = lineas.filtered(
+                lambda l: l.situacion in ("faltan_respuestas", "pendiente_aportar", "pendiente_revision")
+            )[:1]
+            if next_line:
+                rec.taric_siguiente_accion = _(
+                    "Siguiente acción: revisar los requisitos de la partida %s."
+                ) % (next_line.item_number or next_line.id)
+            else:
+                rec.taric_siguiente_accion = False
 
     # Facturas del expediente (varios PDF por expediente; no son expedientes hijo)
     factura_ids = fields.One2many("aduana.expediente.factura", "expediente_id", string="Facturas", help="Facturas PDF subidas a este expediente")
@@ -177,10 +241,26 @@ class AduanaExpediente(models.Model):
     lineas_count = fields.Integer(string="Nº Líneas", compute="_compute_lineas_count", store=False)
     fecha_procesamiento = fields.Datetime(string="Fecha Procesamiento", readonly=True, help="Fecha en que se procesó la factura (cuando hay una sola factura en el expediente)")
 
-    # Países
-    pais_origen = fields.Char(default="ES")
-    pais_destino = fields.Char(
+    # Países (UI = res.country; Char ISO se mantiene sincronizado para XML/AEAT)
+    pais_origen_id = fields.Many2one(
+        "res.country",
+        string="País origen",
+        ondelete="restrict",
+        help="País de expedición / origen. Se rellena desde el remitente o la factura.",
+    )
+    pais_destino_id = fields.Many2one(
+        "res.country",
         string="País destino",
+        ondelete="restrict",
+        help="País del destinatario. Se rellena desde el consignatario o la factura.",
+    )
+    pais_origen = fields.Char(
+        string="País origen (ISO)",
+        default="ES",
+        help="Código ISO-2 (técnico). Preferir el selector País origen.",
+    )
+    pais_destino = fields.Char(
+        string="País destino (ISO)",
         help="Código ISO del país del destinatario (consignatario). En exportación se rellena desde el país del consignatario o de la factura.",
     )
     consignatario_country_id = fields.Many2one(
@@ -402,8 +482,53 @@ class AduanaExpediente(models.Model):
     factura_pdf_url = fields.Char(string="URL Factura PDF", compute="_compute_factura_pdf_url", help="URL para previsualizar el PDF")
     
     # Documentos relacionados
-    documento_ids = fields.Many2many("ir.attachment", string="Documentos", compute="_compute_documento_ids", store=False)
+    documento_ids = fields.Many2many(
+        "ir.attachment",
+        string="Documentos",
+        compute="_compute_documento_ids",
+        store=False,
+    )
+    documentos_count = fields.Integer(
+        string="Nº Documentos",
+        compute="_compute_documento_ids",
+        store=False,
+    )
+    xml_tecnico_ids = fields.Many2many(
+        "ir.attachment",
+        string="XML técnico (request/response)",
+        compute="_compute_documento_ids",
+        store=False,
+        help="XML de peticiones y respuestas AEAT. Visibles en Bandeja / Técnico.",
+    )
     dua_generado = fields.Boolean(string="DUA Generado", compute="_compute_dua_generado", store=False)
+
+    @api.model
+    def _attachment_is_xml_tecnico(self, attachment):
+        """XML de request/response AEAT (no documentos operativos del expediente)."""
+        name = (attachment.name or "").lower()
+        mimetype = (attachment.mimetype or "").lower()
+        is_xml = ("xml" in mimetype) or name.endswith(".xml")
+        if not is_xml:
+            return False
+        markers = (
+            "request",
+            "response",
+            "cc515c",
+            "ccaesc",
+            "cc507c",
+            "cc511c",
+            "cc415a",
+            "cusdec",
+            "ie615",
+            "imp_query",
+            "bandeja",
+            "g4dec",
+            "g4_",
+            "_lista",
+            "_det_",
+            "soap",
+        )
+        return any(marker in name for marker in markers)
     
     @api.depends('name')
     def _compute_dua_generado(self):
@@ -418,16 +543,23 @@ class AduanaExpediente(models.Model):
     
     @api.depends('factura_ids', 'factura_ids.factura_pdf')
     def _compute_documento_ids(self):
-        """Documentos del expediente: attachments con res_model=expediente (incluyen facturas subidas, que se copian al expediente al subir)."""
+        """Separa documentos operativos (PDF/facturas) de XML técnicos AEAT."""
+        Attachment = self.env["ir.attachment"]
         for rec in self:
             if not rec.id:
-                rec.documento_ids = self.env['ir.attachment']
+                rec.documento_ids = Attachment
+                rec.xml_tecnico_ids = Attachment
+                rec.documentos_count = 0
                 continue
-            attachments = self.env['ir.attachment'].search([
-                ('res_model', '=', rec._name),
-                ('res_id', '=', rec.id)
+            attachments = Attachment.search([
+                ("res_model", "=", rec._name),
+                ("res_id", "=", rec.id),
             ])
-            rec.documento_ids = attachments
+            xml_tecnico = attachments.filtered(lambda a: rec._attachment_is_xml_tecnico(a))
+            rec.xml_tecnico_ids = xml_tecnico
+            docs = attachments - xml_tecnico
+            rec.documento_ids = docs
+            rec.documentos_count = len(docs)
     
     @api.model_create_multi
     def create(self, vals_list):
@@ -441,6 +573,7 @@ class AduanaExpediente(models.Model):
             for key, value in profile.items():
                 if key not in vals or vals.get(key) in (False, None, ""):
                     vals[key] = value
+            vals.update(self._prepare_country_vals(vals))
             if direction == "import" and not vals.get("lrn") and vals.get("name"):
                 vals["lrn"] = vals["name"]
             # Si se sube una factura, cambiar el estado a "pendiente", si no, mantener "sin_factura"
@@ -472,6 +605,11 @@ class AduanaExpediente(models.Model):
     
     def write(self, vals):
         """Override write para crear/actualizar attachment cuando se cambia factura_pdf"""
+        vals = dict(vals)
+        if any(k in vals for k in (
+            "pais_origen", "pais_destino", "pais_origen_id", "pais_destino_id"
+        )):
+            vals.update(self._prepare_country_vals(vals))
         # Si se sube una factura y el estado es "sin_factura", cambiar a "pendiente"
         if 'factura_pdf' in vals and vals.get('factura_pdf'):
             for rec in self:
@@ -513,7 +651,7 @@ class AduanaExpediente(models.Model):
                             'datas': rec.factura_pdf
                         })
                 # Invalidar el campo computed para que se recalcule
-                rec.invalidate_recordset(['documento_ids'])
+                rec.invalidate_recordset(["documento_ids", "documentos_count", "xml_tecnico_ids"])
         if not self.env.context.get("skip_country_partner_sync") and any(
             field in vals for field in ("direction", "remitente", "consignatario")
         ):
@@ -631,7 +769,7 @@ class AduanaExpediente(models.Model):
             })
 
         new_rec._recompute_factura_estado_from_facturas()
-        new_rec.invalidate_recordset(["documento_ids"])
+        new_rec.invalidate_recordset(["documento_ids", "documentos_count", "xml_tecnico_ids"])
         return new_rec
     
     @api.depends('factura_pdf')
@@ -821,6 +959,10 @@ class AduanaExpediente(models.Model):
             defaults.update({
                 "pais_origen": "AD",
                 "pais_destino": "ES",
+                "pais_origen_id": self.env.ref("base.ad", raise_if_not_found=False).id
+                if self.env.ref("base.ad", raise_if_not_found=False) else False,
+                "pais_destino_id": self.env.ref("base.es", raise_if_not_found=False).id
+                if self.env.ref("base.es", raise_if_not_found=False) else False,
                 "oficina": (
                     icp.get_param("aduanas_transport.default_oficina_import") or "ES000101"
                 ).strip(),
@@ -833,6 +975,8 @@ class AduanaExpediente(models.Model):
         else:
             defaults.update({
                 "pais_origen": "ES",
+                "pais_origen_id": self.env.ref("base.es", raise_if_not_found=False).id
+                if self.env.ref("base.es", raise_if_not_found=False) else False,
                 "region_of_dispatch": "46",
                 "oficina": (
                     icp.get_param("aduanas_transport.default_oficina_export") or "ES000101"
@@ -881,6 +1025,52 @@ class AduanaExpediente(models.Model):
         if partner and partner.country_id and partner.country_id.code:
             return partner.country_id.code.upper()
         return False
+
+    @api.model
+    def _country_from_iso(self, value):
+        """Devuelve res.country a partir de ISO-2 o nombre."""
+        code = self._normalize_iso_country_code(value)
+        if not code:
+            return self.env["res.country"]
+        return self.env["res.country"].search([("code", "=ilike", code)], limit=1)
+
+    @api.model
+    def _prepare_country_vals(self, vals):
+        """Sincroniza Char ISO <-> Many2one res.country dentro de un dict vals."""
+        vals = dict(vals or {})
+        Country = self.env["res.country"]
+
+        def _sync(code_field, id_field):
+            if id_field in vals and code_field not in vals:
+                country = Country.browse(vals.get(id_field)) if vals.get(id_field) else Country
+                vals[code_field] = (country.code or "").upper() or False
+            elif code_field in vals and id_field not in vals:
+                country = self._country_from_iso(vals.get(code_field))
+                vals[id_field] = country.id or False
+                if country:
+                    vals[code_field] = (country.code or "").upper()
+            elif id_field in vals and code_field in vals and vals.get(id_field):
+                country = Country.browse(vals[id_field])
+                if country and country.code:
+                    vals[code_field] = country.code.upper()
+
+        _sync("pais_origen", "pais_origen_id")
+        _sync("pais_destino", "pais_destino_id")
+        return vals
+
+    @api.model
+    def _prepare_line_country_vals(self, vals):
+        vals = dict(vals or {})
+        Country = self.env["res.country"]
+        if "pais_origen_id" in vals and "pais_origen" not in vals:
+            country = Country.browse(vals.get("pais_origen_id")) if vals.get("pais_origen_id") else Country
+            vals["pais_origen"] = (country.code or "").upper() or False
+        elif "pais_origen" in vals and "pais_origen_id" not in vals:
+            country = self._country_from_iso(vals.get("pais_origen"))
+            vals["pais_origen_id"] = country.id or False
+            if country:
+                vals["pais_origen"] = (country.code or "").upper()
+        return vals
 
     @api.model
     def _normalize_iso_country_code(self, value):
@@ -940,7 +1130,7 @@ class AduanaExpediente(models.Model):
                 elif normalized and current != normalized:
                     vals[field] = normalized
             if vals:
-                rec.with_context(skip_country_partner_sync=True).write(vals)
+                rec.with_context(skip_country_partner_sync=True).write(self._prepare_country_vals(vals))
 
     def _ensure_country_codes_for_dua(self):
         """Sincroniza y normaliza países antes de validar/generar DUA."""
@@ -950,22 +1140,27 @@ class AduanaExpediente(models.Model):
             if rec.direction == "export":
                 code = rec._normalize_iso_country_code(rec.pais_destino)
                 if not code or code == "ES":
-                    # Último recurso: país del consignatario / lugar de entrega
                     for partner in (rec.consignatario, rec.export_delivery_partner_id):
                         partner_code = rec._partner_country_code(partner)
                         if partner_code and partner_code != "ES":
                             code = partner_code
                             break
                 if code and code != "ES" and (rec.pais_destino or "").upper() != code:
-                    rec.with_context(skip_country_partner_sync=True).write({"pais_destino": code})
+                    rec.with_context(skip_country_partner_sync=True).write(
+                        self._prepare_country_vals({"pais_destino": code})
+                    )
             elif rec.direction == "import":
                 code = rec._normalize_iso_country_code(rec.pais_origen)
                 if not code or code == "ES":
                     code = rec._partner_country_code(rec.remitente)
                 if code and code != "ES" and (rec.pais_origen or "").upper() != code:
-                    rec.with_context(skip_country_partner_sync=True).write({"pais_origen": code})
+                    rec.with_context(skip_country_partner_sync=True).write(
+                        self._prepare_country_vals({"pais_origen": code})
+                    )
                 if (rec.pais_destino or "").upper() != "ES":
-                    rec.with_context(skip_country_partner_sync=True).write({"pais_destino": "ES"})
+                    rec.with_context(skip_country_partner_sync=True).write(
+                        self._prepare_country_vals({"pais_destino": "ES"})
+                    )
 
     def _get_country_values_from_partners(self):
         """Solo actualiza países cuando el partner tiene código ISO válido.
@@ -983,15 +1178,31 @@ class AduanaExpediente(models.Model):
             vals["pais_destino"] = "ES"
             if sender_country and sender_country != "ES":
                 vals["pais_origen"] = sender_country
-        return vals
+        return self._prepare_country_vals(vals)
 
     def _sync_country_fields_from_partners(self):
         for rec in self:
+            partner_vals = rec._get_country_values_from_partners()
             vals = {
                 field: value
-                for field, value in rec._get_country_values_from_partners().items()
+                for field, value in partner_vals.items()
                 if rec[field] != value
             }
+            if vals:
+                rec.with_context(skip_country_partner_sync=True).write(vals)
+
+    def _sync_country_ids_from_codes(self):
+        """Rellena Many2one vacíos a partir de Char ISO (migración / datos legacy)."""
+        for rec in self:
+            vals = {}
+            if rec.pais_origen and not rec.pais_origen_id:
+                country = rec._country_from_iso(rec.pais_origen)
+                if country:
+                    vals["pais_origen_id"] = country.id
+            if rec.pais_destino and not rec.pais_destino_id:
+                country = rec._country_from_iso(rec.pais_destino)
+                if country:
+                    vals["pais_destino_id"] = country.id
             if vals:
                 rec.with_context(skip_country_partner_sync=True).write(vals)
 
@@ -1004,6 +1215,26 @@ class AduanaExpediente(models.Model):
                 rec.import_delivery_partner_id = rec.consignatario
             elif rec.direction == "export" and rec.consignatario and not rec.export_delivery_partner_id:
                 rec.export_delivery_partner_id = rec.consignatario
+
+    @api.onchange("pais_origen_id")
+    def _onchange_pais_origen_id(self):
+        for rec in self:
+            rec.pais_origen = (rec.pais_origen_id.code or "").upper() or False
+
+    @api.onchange("pais_destino_id")
+    def _onchange_pais_destino_id(self):
+        for rec in self:
+            rec.pais_destino = (rec.pais_destino_id.code or "").upper() or False
+
+    @api.onchange("pais_origen")
+    def _onchange_pais_origen_code(self):
+        for rec in self:
+            rec.pais_origen_id = rec._country_from_iso(rec.pais_origen)
+
+    @api.onchange("pais_destino")
+    def _onchange_pais_destino_code(self):
+        for rec in self:
+            rec.pais_destino_id = rec._country_from_iso(rec.pais_destino)
 
     @api.onchange("direction")
     def _onchange_direction_traldis_profile(self):
@@ -1303,7 +1534,12 @@ class AduanaExpediente(models.Model):
             
             # Verificar documentos faltantes (obligatorios sin subir)
             documentos_faltantes = rec.documento_requerido_ids.filtered(
-                lambda d: d.mandatory and d.estado == 'pendiente'
+                lambda d: d.estado_requisito in ("pendiente_aportar", "pendiente_revision")
+                or (
+                    d.aplicabilidad == "required"
+                    and d.estado_requisito not in ("validado", "no_aplica")
+                    and d.estado == "pendiente"
+                )
             )
             num_docs_faltantes = len(documentos_faltantes)
             tiene_docs_faltantes = num_docs_faltantes > 0
@@ -1470,6 +1706,7 @@ class AduanaExpediente(models.Model):
                 "mimetype": mimetype,
                 "datas": base64.b64encode((xml_text or "").encode("utf-8"))
             })
+            rec.invalidate_recordset(["documento_ids", "documentos_count", "xml_tecnico_ids"])
     
     _CHATTER_XML_PREVIEW_MAX = 32000
 
@@ -1908,7 +2145,7 @@ class AduanaExpediente(models.Model):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Añadir documento"),
+            "name": _("Subir documento"),
             "res_model": "ir.attachment",
             "view_mode": "form",
             "target": "new",
@@ -2360,7 +2597,7 @@ class AduanaExpediente(models.Model):
             if parsed.get("success") and parsed.get("mrn"):
                 rec.error_message = False
                 rec._apply_aeat_parsed_response(parsed, source="CC515C")
-                    rec.with_context(mail_notrack=True).message_post(
+                rec.with_context(mail_notrack=True).message_post(
                     body=_("DUA presentado (CC515C). MRN: %s") % rec.mrn,
                     subtype_xmlid="mail.mt_note",
                 )
@@ -3164,8 +3401,11 @@ class AduanaExpediente(models.Model):
             raise UserError(_("CustomsOfficeOfImport obligatorio."))
         if not (self.oficina or "").strip():
             raise UserError(_("CustomsOfficeOfPresentation obligatorio."))
-        if (self.pais_origen or "").upper() != "AD" or (self.pais_destino or "").upper() != "ES":
-            raise UserError(_("Para importación Andorra → España debe declarar countryOfDispatch=AD y countryOfDestination=ES."))
+        if (self.pais_origen or "").strip().upper() in ("", "ES") or (self.pais_destino or "").strip().upper() != "ES":
+            raise UserError(_(
+                "Para importación (país tercero → España) declare countryOfDispatch = país tercero "
+                "(no ES) y countryOfDestination = ES."
+            ))
 
     def _build_cc415a_soap_envelope(self):
         """Genera una declaración completa H1 CC415A básica según CC415AV1Ent.xsd."""
@@ -3474,7 +3714,7 @@ class AduanaExpediente(models.Model):
                         "AEAT respondió 403 Forbidden. Revise certificado P12 y permisos del servicio importación."
                     )
                 else:
-                rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
+                    rec.error_message = _("AEAT respondió HTTP %s. Revisar adjunto de respuesta.") % status_code
                 rec.with_context(mail_notrack=True).message_post(
                     body=rec.error_message,
                     subtype_xmlid="mail.mt_note",
@@ -3781,7 +4021,7 @@ class AduanaExpediente(models.Model):
                     parsed_msg["exited"] = True
                 rec._apply_aeat_parsed_response(parsed_msg, source="Bandeja %s" % (tipo or "AEAT"))
                 if tipo:
-                rec.with_context(mail_notrack=True).message_post(
+                    rec.with_context(mail_notrack=True).message_post(
                         body=_("Bandeja AEAT: mensaje %s (MRN %s).") % (tipo, mrn or rec.mrn or "-"),
                         subtype_xmlid="mail.mt_note",
                     )
@@ -4104,6 +4344,36 @@ class AduanaExpediente(models.Model):
             "context": {"default_expediente_id": self.id, "search_default_pending": 1},
         }
 
+    def action_view_documentos(self):
+        """Abre los documentos operativos del expediente (sin XML AEAT técnicos)."""
+        self.ensure_one()
+        # Forzar recálculo por si se acaban de adjuntar facturas/documentos
+        self.invalidate_recordset(["documento_ids", "documentos_count"])
+        doc_ids = self.documento_ids.ids
+        tree_view = self.env.ref(
+            "aduanas_transport.view_aduana_expediente_documentos_tree",
+            raise_if_not_found=False,
+        )
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Documentos de %s", self.name),
+            "res_model": "ir.attachment",
+            "view_mode": "tree,form",
+            "views": [
+                (tree_view.id if tree_view else False, "tree"),
+                (False, "form"),
+            ],
+            "domain": [("id", "in", doc_ids)] if doc_ids else [("id", "=", 0)],
+            "context": {
+                "default_res_model": self._name,
+                "default_res_id": self.id,
+                "default_type": "binary",
+                "default_name": _("Documento"),
+                "create": False,
+            },
+            "target": "current",
+        }
+
     def action_view_lineas(self):
         """Abre la vista de líneas del expediente/factura"""
         self.ensure_one()
@@ -4172,7 +4442,7 @@ class AduanaExpediente(models.Model):
         self.ensure_one()
         att = self._get_xml_attachment("_CC415A.xml")
         if not att:
-        att = self._get_xml_attachment("IMP_DECL.xml")
+            att = self._get_xml_attachment("IMP_DECL.xml")
         return att
 
     def _ensure_cc415a_xml(self):
@@ -4305,8 +4575,9 @@ class AduanaExpediente(models.Model):
             })
             # Encolar con queue_job si está disponible; si no, forzar sync
             rec.with_delay(
+                channel="root.invoice_ocr",
                 description=f"Procesar factura PDF expediente {rec.name}",
-                max_retries=3,
+                max_retries=5,
                 identity_key=lambda job, rec_id=rec.id: f"process_pdf_{rec_id}",
             ).process_pdf_job()
         # Notificación inmediata
@@ -4350,8 +4621,9 @@ class AduanaExpediente(models.Model):
                     "factura_procesada": False,
                 })
                 factura.with_delay(
+                    channel="root.invoice_ocr",
                     description=_("Procesar factura PDF %s", factura.name),
-                    max_retries=3,
+                    max_retries=5,
                     identity_key=lambda job, rec_id=factura.id: f"process_pdf_factura_{rec_id}",
                 ).process_pdf_job()
                 facturas_procesadas += 1
@@ -4592,8 +4864,9 @@ class AduanaExpediente(models.Model):
         for rec in pending_exp:
             try:
                 rec.with_delay(
+                    channel="root.invoice_ocr",
                     description=_("Procesar factura PDF expediente %s", rec.name),
-                    max_retries=3,
+                    max_retries=5,
                     identity_key=lambda job, rec_id=rec.id: f"process_pdf_{rec_id}",
                 ).process_pdf_job()
             except Exception as e:
@@ -4608,8 +4881,9 @@ class AduanaExpediente(models.Model):
         for factura in pending_facturas:
             try:
                 factura.with_delay(
+                    channel="root.invoice_ocr",
                     description=_("Procesar factura PDF %s", factura.name),
-                    max_retries=3,
+                    max_retries=5,
                     identity_key=lambda job, fid=factura.id: f"process_pdf_factura_{fid}",
                 ).process_pdf_job()
             except Exception as e:
@@ -4667,6 +4941,28 @@ class AduanaExpediente(models.Model):
                     _logger.exception("Error en job de factura expediente %s", rec.id)
                 raise
 
+    def _lock_expediente_for_invoice_ocr(self):
+        """Evita que dos jobs OCR actualicen el mismo expediente a la vez (SerializationFailure)."""
+        self.ensure_one()
+        if not self.id:
+            return
+        # Bloqueo transaccional: se libera al commit/rollback del job.
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (hash("aduana.expediente") & 0x7FFFFFFF, int(self.id)),
+        )
+
+    def _safe_invalidate_after_ocr(self):
+        """invalidate_recordset hace flush; si la TX ya falló, no empeorar el error."""
+        try:
+            self.invalidate_recordset()
+        except Exception as exc:
+            _logger.warning(
+                "No se pudo invalidar expediente %s tras OCR (se ignora): %s",
+                self.ids,
+                exc,
+            )
+
     def _process_factura_pdf_sync(self, factura):
         """Procesa el PDF de una factura (aduana.expediente.factura) y rellena este expediente con las líneas."""
         self.ensure_one()
@@ -4678,6 +4974,7 @@ class AduanaExpediente(models.Model):
         Si viene factura_id en el contexto, procesa esa factura (aduana.expediente.factura) del expediente.
         """
         for rec in self:
+            rec._lock_expediente_for_invoice_ocr()
             # Desactivar notificaciones de email durante todo el proceso
             ctx_no_mail = dict(self.env.context)
             ctx_no_mail.update({
@@ -5053,6 +5350,9 @@ class AduanaExpediente(models.Model):
                 if factura and cambios_factura:
                     # Escribir cambios en la factura específica
                     factura.with_context(**ctx_no_mail).write(cambios_factura)
+                    # Si el operario ya había indicado pesos totales, repartirlos a las nuevas líneas
+                    if (factura.peso_neto_total or 0) > 0 or (factura.peso_bruto_total or 0) > 0:
+                        factura._prorratear_pesos_a_lineas()
                 elif cambios_finales:
                     # Modo legacy: escribir cambios en el expediente
                     cambios_finales['factura_procesada'] = True
@@ -5081,7 +5381,7 @@ class AduanaExpediente(models.Model):
                         _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
                 
                 # Forzar recarga del registro para actualizar la vista
-                rec.invalidate_recordset()
+                rec._safe_invalidate_after_ocr()
                 
                 # Preparar mensaje de notificación
                 notif_title = _("Factura Procesada con Advertencias") if advertencias else _("Factura Procesada")
@@ -5145,7 +5445,7 @@ class AduanaExpediente(models.Model):
                     except Exception as msg_error:
                         _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.error("Error al procesar factura PDF (UserError): %s", error_msg)
-                rec.invalidate_recordset()
+                rec._safe_invalidate_after_ocr()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
                     return {
                         "type": "ir.actions.act_window",
@@ -5160,18 +5460,24 @@ class AduanaExpediente(models.Model):
                 mensaje_error_detallado = _("Error al procesar la factura: %s\n\nPosibles causas:\n- El PDF está corrupto o protegido\n- El PDF es una imagen escaneada de muy baja calidad\n- No se pudo conectar con el servicio de OCR\n- El formato del PDF no es compatible\n- Error en la API de OpenAI\n- Falta configuración de API Key") % error_msg
                 mensaje_chatter = _("❌ Error al procesar factura: %s\n\nDetalles técnicos:\n%s") % (error_msg, mensaje_error_detallado)
                 # Escribir error en factura específica si existe, sino en expediente
-                if factura:
-                    factura.with_context(**ctx_no_mail).write({
-                        'factura_estado_procesamiento': 'error',
-                        'factura_mensaje_error': mensaje_error_detallado
-                    })
-                else:
-                    cambios_finales.update({
-                        'factura_estado_procesamiento': 'error',
-                        'factura_mensaje_error': mensaje_error_detallado
-                    })
-                    if cambios_finales:
-                        rec.with_context(**ctx_no_mail).write(cambios_finales)
+                try:
+                    if factura:
+                        factura.with_context(**ctx_no_mail).write({
+                            'factura_estado_procesamiento': 'error',
+                            'factura_mensaje_error': mensaje_error_detallado
+                        })
+                    else:
+                        cambios_finales.update({
+                            'factura_estado_procesamiento': 'error',
+                            'factura_mensaje_error': mensaje_error_detallado
+                        })
+                        if cambios_finales:
+                            rec.with_context(**ctx_no_mail).write(cambios_finales)
+                except Exception as write_err:
+                    _logger.warning(
+                        "No se pudo guardar estado de error OCR (TX probablemente abortada): %s",
+                        write_err,
+                    )
                 # Crear mensaje de error SOLO AL FINAL
                 if mensaje_chatter:
                     try:
@@ -5190,7 +5496,7 @@ class AduanaExpediente(models.Model):
                     except Exception as msg_error:
                         _logger.warning("No se pudo crear mensaje de error en chatter (error ignorado): %s", msg_error)
                 _logger.exception("Error al procesar factura PDF: %s", e)
-                rec.invalidate_recordset()
+                rec._safe_invalidate_after_ocr()
                 if self.env.context.get("force_sync") or self.env.context.get("process_async") is False:
                     return {
                         "type": "ir.actions.act_window",
@@ -5273,11 +5579,44 @@ class AduanaExpediente(models.Model):
         return partidas_unicas, partidas_normalizadas
     
     def action_consultar_taric_manual(self):
-        """Consulta TARIC para todas las partidas del expediente"""
+        """Encola consulta TARIC AEAT para todas las partidas del expediente."""
         self.ensure_one()
+        # Preflight: certificado obligatorio si fuente AEAT
+        if (self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.taric_source") or "aeat") == "aeat":
+            err = self.env["aduanas.aeat.client"].check_certificate_ready()
+            if err:
+                raise UserError(err)
         documento_model = self.env["aduana.expediente.documento.requerido"]
-        # Llamar directamente a la lógica sin pasar por ensure_one
-        return documento_model._consultar_taric_para_expediente(self)
+        try:
+            documento_model.with_delay(
+                channel="root.taric_aeat",
+                description=_("Consultar TARIC AEAT %s") % (self.name or self.id),
+                max_retries=2,
+            )._job_consultar_taric_para_expediente(self.id)
+        except AttributeError:
+            # queue_job no disponible
+            return documento_model._consultar_taric_para_expediente(self)
+        self.message_post(
+            body=_(
+                "<b>Consulta TARIC AEAT encolada</b><br/>"
+                "Se consultará el Arancel Integrado AEAT con el certificado del módulo "
+                "y se actualizarán los documentos requeridos al terminar."
+            ),
+            subtype_xmlid="mail.mt_note",
+        )
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Consulta TARIC encolada"),
+                "message": _(
+                    "La consulta a AEAT se ejecuta en segundo plano. "
+                    "Recibirá el resumen en el chatter al finalizar."
+                ),
+                "type": "info",
+                "sticky": False,
+            },
+        }
 
 
 class AduanaExpedienteDocumentoRequerido(models.Model):
@@ -5292,8 +5631,66 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
     codigo_documento = fields.Char(string="Código Documento", help="Código del documento según TARIC")
     name = fields.Char(string="Nombre del Documento", required=True, help="Nombre o descripción del documento requerido")
     description = fields.Text(string="Descripción", help="Descripción detallada del documento")
-    mandatory = fields.Boolean(string="Obligatorio", default=True, help="Indica si el documento es obligatorio o opcional")
-    documento_subido = fields.Binary(string="Documento Subido", help="Archivo del documento subido")
+    aplicabilidad = fields.Selection(
+        [
+            ("required", "Obligatorio (REQUIRED)"),
+            ("alternative", "Alternativa (ALTERNATIVE)"),
+            ("not_applicable", "No aplicable (NOT_APPLICABLE)"),
+            ("pending_information", "Pendiente de información (PENDING_INFORMATION)"),
+            ("optional_benefit", "Beneficio opcional (OPTIONAL_BENEFIT)"),
+        ],
+        string="Aplicabilidad TARIC",
+        default="pending_information",
+        index=True,
+        help="Estado lógico respecto a la matriz de medidas TARIC (no todo es obligatorio).",
+    )
+    tipo_requisito = fields.Selection(
+        [
+            ("documento", "Documento"),
+            ("declaracion", "Declaración"),
+            ("autorizacion", "Autorización"),
+        ],
+        string="Tipo requisito",
+        default="documento",
+    )
+    estado_requisito = fields.Selection(
+        [
+            ("por_determinar", "Por determinar"),
+            ("pendiente_aportar", "Pendiente de aportar"),
+            ("pendiente_revision", "Pendiente de revisión"),
+            ("validado", "Validado"),
+            ("no_aplica", "No aplica"),
+        ],
+        string="Estado requisito",
+        default="por_determinar",
+        index=True,
+    )
+    motivo_no_aplica = fields.Char(string="Motivo no aplica")
+    mandatory = fields.Boolean(
+        string="Obligatorio",
+        default=False,
+        help="Compatibilidad: True solo si aplicabilidad = required.",
+    )
+    taric_medida_id = fields.Many2one(
+        "aduana.expediente.taric.medida",
+        string="Medida TARIC",
+        ondelete="set null",
+        index=True,
+    )
+    taric_linea_id = fields.Many2one(
+        "aduana.expediente.taric.linea",
+        string="Revisión TARIC línea",
+        ondelete="cascade",
+        index=True,
+    )
+    line_id = fields.Many2one(
+        "aduana.expediente.line", string="Línea mercancía", ondelete="cascade", index=True
+    )
+    documento_subido = fields.Binary(
+        string="Documento Subido",
+        attachment=True,
+        help="Archivo del documento subido",
+    )
     documento_filename = fields.Char(string="Nombre Archivo", help="Nombre del archivo subido")
     fecha_subida = fields.Datetime(string="Fecha Subida", readonly=True, help="Fecha en que se subió el documento")
     subido_por = fields.Many2one("res.users", string="Subido por", readonly=True, help="Usuario que subió el documento")
@@ -5303,10 +5700,106 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         ("verificado", "Verificado"),
     ], string="Estado", default="pendiente", help="Estado del documento")
     notas = fields.Text(string="Notas", help="Notas adicionales sobre el documento")
+
+    # Contexto TARIC / AEAT (consulta Arancel Integrado)
+    taric_fecha_consulta = fields.Date(
+        string="Fecha consulta TARIC",
+        help="Fecha usada en la consulta al Arancel Integrado AEAT.",
+    )
+    taric_nomenclatura_desc = fields.Char(
+        string="Descripción nomenclatura",
+        help="Descripción larga de la partida en AEAT.",
+    )
+    taric_medida = fields.Char(
+        string="Medida AEAT",
+        help="Código de medida (p.ej. 117-SUSSH, 710-CITES).",
+    )
+    taric_medida_titulo = fields.Char(
+        string="Título medida",
+        help="Texto descriptivo de la medida AEAT.",
+    )
+    taric_reglamento = fields.Char(
+        string="Reglamento",
+        help="Referencia de reglamento AEAT asociada a la medida.",
+    )
+    taric_ambito_geo = fields.Char(
+        string="Ámbito geográfico",
+        help="Ámbito A.GEO. de la medida (p.ej. TODOS ERGA OMNES).",
+    )
+    taric_es_alternativa = fields.Boolean(
+        string="Alternativa Y/B",
+        default=False,
+        help="Indica si el código es una alternativa/exención de la matriz de condiciones.",
+    )
+    taric_matriz_condiciones = fields.Text(
+        string="Matriz de condiciones",
+        help="Bloque Condiciones AEAT donde aparece este código junto a sus alternativas.",
+    )
+    taric_codigos_alternativos = fields.Char(
+        string="Códigos alternativos",
+        help="Otros códigos de la misma matriz de condiciones.",
+    )
+    taric_derechos = fields.Char(
+        string="Derechos (medida)",
+        help="Derechos asociados a la medida concreta de este documento.",
+    )
+    taric_resumen_arancelario = fields.Text(
+        string="Resumen arancelario",
+        help="Resumen de derechos/suspensiones de la partida (informativo).",
+    )
     
     # Campos computed para previsualización
     is_pdf = fields.Boolean(string="Es PDF", compute="_compute_is_pdf", store=False)
     is_image = fields.Boolean(string="Es Imagen", compute="_compute_is_image", store=False)
+
+    @api.model
+    def _vals_from_taric_doc_info(self, doc_info):
+        """Mapea el dict del servicio TARIC a campos del modelo."""
+        fecha = doc_info.get("fecha_consulta") or False
+        if fecha and isinstance(fecha, str):
+            try:
+                from datetime import date as date_cls
+                y, m, d = fecha[:10].split("-")
+                fecha = date_cls(int(y), int(m), int(d))
+            except Exception:
+                fecha = False
+        aplic = doc_info.get("aplicabilidad") or (
+            "required" if doc_info.get("mandatory") else "pending_information"
+        )
+        code = (doc_info.get("code") or "").upper()
+        if code[:1] == "Y":
+            tipo = "declaracion"
+        elif code in ("C990",) or "autoriz" in (doc_info.get("name") or "").lower():
+            tipo = "autorizacion"
+        else:
+            tipo = "documento"
+        if aplic in ("pending_information", "alternative"):
+            estado_req = "por_determinar"
+        elif aplic == "not_applicable":
+            estado_req = "no_aplica"
+        elif aplic in ("required", "optional_benefit"):
+            estado_req = "pendiente_aportar"
+        else:
+            estado_req = "por_determinar"
+        return {
+            "name": doc_info.get("name") or "",
+            "description": doc_info.get("description") or "",
+            "aplicabilidad": aplic,
+            "tipo_requisito": tipo,
+            "estado_requisito": estado_req,
+            "mandatory": aplic == "required",
+            "taric_fecha_consulta": fecha,
+            "taric_nomenclatura_desc": (doc_info.get("nomenclatura_desc") or "")[:300] or False,
+            "taric_medida": (doc_info.get("medida") or "")[:64] or False,
+            "taric_medida_titulo": (doc_info.get("medida_titulo") or "")[:300] or False,
+            "taric_reglamento": (doc_info.get("reglamento") or "")[:80] or False,
+            "taric_ambito_geo": (doc_info.get("ambito_geo") or "")[:200] or False,
+            "taric_es_alternativa": bool(doc_info.get("es_alternativa")),
+            "taric_matriz_condiciones": doc_info.get("matriz_condiciones") or False,
+            "taric_codigos_alternativos": (doc_info.get("codigos_alternativos") or "")[:300] or False,
+            "taric_derechos": (doc_info.get("derechos") or "")[:120] or False,
+            "taric_resumen_arancelario": doc_info.get("resumen_arancelario") or False,
+        }
     
     @api.depends('documento_filename')
     def _compute_is_pdf(self):
@@ -5327,16 +5820,79 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
     def action_view_documento_detalle(self):
         """Abre un popup con toda la información del documento y previsualización"""
         self.ensure_one()
+        view = self.env.ref("aduanas_transport.view_aduana_expediente_documento_requerido_popup")
         return {
-            'type': 'ir.actions.act_window',
-            'name': _('Detalle del Documento Requerido'),
-            'res_model': 'aduana.expediente.documento.requerido',
-            'res_id': self.id,
-            'view_mode': 'form',
-            'view_id': self.env.ref('aduanas_transport.view_aduana_expediente_documento_requerido_popup').id,
-            'target': 'new',
-            'context': {'form_view_initial_mode': 'readonly'},
+            "type": "ir.actions.act_window",
+            "name": _("Detalle del Documento Requerido"),
+            "res_model": "aduana.expediente.documento.requerido",
+            "res_id": self.id,
+            "view_mode": "form",
+            "views": [(view.id, "form")],
+            "view_id": view.id,
+            "target": "new",
+            "context": {"form_view_initial_mode": "readonly", "dialog_size": "extra-large"},
         }
+
+    def action_adjuntar_requisito(self):
+        """Abre el detalle en modo edición para adjuntar archivo / referencia."""
+        self.ensure_one()
+        view = self.env.ref("aduanas_transport.view_aduana_expediente_documento_requerido_popup")
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Adjuntar / registrar — %s") % (self.name or self.codigo_documento or ""),
+            "res_model": "aduana.expediente.documento.requerido",
+            "res_id": self.id,
+            "view_mode": "form",
+            "views": [(view.id, "form")],
+            "view_id": view.id,
+            "target": "new",
+            "context": {"form_view_initial_mode": "edit", "dialog_size": "extra-large"},
+        }
+
+    def action_guardar_adjunto(self):
+        """Guarda el adjunto (el form ya persiste los valores) y vuelve a requisitos."""
+        self.ensure_one()
+        if not self.documento_subido:
+            raise UserError(_("Seleccione un archivo PDF u otro documento antes de guardar."))
+        vals = {
+            "estado": "subido",
+            "estado_requisito": "pendiente_revision",
+            "fecha_subida": fields.Datetime.now(),
+            "subido_por": self.env.user.id,
+        }
+        self.write(vals)
+        return self._action_reload_taric_linea()
+
+    def action_confirmar_declaracion(self):
+        """Confirma una declaración TARIC sin necesidad de adjunto."""
+        for rec in self:
+            if rec.tipo_requisito != "declaracion" and (rec.codigo_documento or "")[:1] != "Y":
+                raise UserError(_("Este requisito no es una declaración TARIC."))
+            rec.write({
+                "estado": "verificado",
+                "estado_requisito": "validado",
+                "notas": rec.notas or _("Declaración confirmada por el operario."),
+            })
+        return self._action_reload_taric_linea()
+
+    def action_marcar_pendiente_revision(self):
+        for rec in self:
+            rec.write({"estado_requisito": "pendiente_revision", "estado": "subido"})
+        return self._action_reload_taric_linea()
+
+    def action_marcar_validado(self):
+        for rec in self:
+            rec.write({"estado_requisito": "validado", "estado": "verificado"})
+        return self._action_reload_taric_linea()
+
+    def _action_reload_taric_linea(self):
+        """Recarga el popup de requisitos si la acción se lanza desde ahí."""
+        linea = self.mapped("taric_linea_id")[:1]
+        if linea:
+            linea.invalidate_recordset()
+            linea._compute_situacion()
+            return linea.action_revisar_requisitos()
+        return True
     
     @api.model
     def create(self, vals):
@@ -5347,117 +5903,267 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
                 vals['subido_por'] = self.env.user.id
             if vals.get('estado') == 'pendiente':
                 vals['estado'] = 'subido'
+            if vals.get('estado_requisito') in (False, None, 'pendiente_aportar', 'por_determinar'):
+                vals['estado_requisito'] = 'pendiente_revision'
         return super().create(vals)
     
     def write(self, vals):
         """Al actualizar, registrar usuario y fecha si se sube documento"""
-        if vals.get('documento_subido'):
-            vals['fecha_subida'] = fields.Datetime.now()
-            if not vals.get('subido_por'):
-                vals['subido_por'] = self.env.user.id
-            if vals.get('estado') == 'pendiente' or not vals.get('estado'):
-                vals['estado'] = 'subido'
+        if vals.get("documento_subido"):
+            # No pisar un clear explícito (False)
+            vals.setdefault("fecha_subida", fields.Datetime.now())
+            vals.setdefault("subido_por", self.env.user.id)
+            vals["estado"] = "subido"
+            if "estado_requisito" not in vals:
+                vals["estado_requisito"] = "pendiente_revision"
         return super().write(vals)
     
     def action_consultar_taric(self):
-        """Consulta la API TARIC para obtener documentos requeridos de todas las partidas del expediente"""
-        # Si hay un recordset, usar el primero; si no, obtener del contexto
+        """Consulta TARIC AEAT (encolada) para el expediente del contexto."""
         if self:
             self.ensure_one()
             expediente = self.expediente_id
         else:
-            # Obtener del contexto
-            expediente_id = self.env.context.get('default_expediente_id')
+            expediente_id = self.env.context.get("default_expediente_id")
             if not expediente_id:
                 raise UserError(_("No se especificó el expediente para consultar TARIC."))
             expediente = self.env["aduana.expediente"].browse(expediente_id)
             if not expediente.exists():
                 raise UserError(_("El expediente especificado no existe."))
-        
-        # Llamar al método auxiliar
-        return self._consultar_taric_para_expediente(expediente)
-    
+        return expediente.action_consultar_taric_manual()
+
+    def _job_consultar_taric_para_expediente(self, expediente_id):
+        """Job queue_job: consulta TARIC AEAT y actualiza documentos requeridos."""
+        expediente = self.env["aduana.expediente"].browse(expediente_id)
+        if not expediente.exists():
+            _logger.warning("Job TARIC: expediente %s no existe", expediente_id)
+            return True
+        try:
+            self._consultar_taric_para_expediente(expediente)
+        except Exception as e:
+            _logger.exception("Job TARIC falló para expediente %s: %s", expediente_id, e)
+            try:
+                expediente.message_post(
+                    body=_(
+                        "<b>Consulta TARIC fallida</b><br/>%s"
+                    ) % html_escape(str(e)),
+                    subtype_xmlid="mail.mt_note",
+                )
+            except Exception as msg_error:
+                _logger.warning("No se pudo notificar fallo TARIC en chatter: %s", msg_error)
+            raise
+        return True
+
     @api.model
     def _consultar_taric_para_expediente(self, expediente):
-        """Método auxiliar para consultar TARIC para un expediente específico"""
-        
+        """Consulta TARIC AEAT y crea revisión operativa por cada línea de mercancía."""
         if not expediente.line_ids:
             raise UserError(_("No hay líneas de productos en el expediente para consultar documentos."))
-        
+
         country_code = expediente._taric_country_code()
         taric_service = self.env["aduanas.taric.service"]
+        LineaTaric = self.env["aduana.expediente.taric.linea"]
+        Medida = self.env["aduana.expediente.taric.medida"]
+        Condicion = self.env["aduana.expediente.taric.condicion"]
+
         documentos_creados = 0
         documentos_actualizados = 0
         documentos_eliminados = 0
         errores_taric = []
-        
-        partidas_unicas, partidas_normalizadas = expediente._taric_partidas_from_lines()
-        if not partidas_unicas:
-            raise UserError(_(
-                "No hay partidas arancelarias válidas en las líneas. "
-                "Informe partida o TARIC completo (mínimo 8 dígitos)."
-            ))
-        
-        # PASO 1: Eliminar documentos TARIC que ya no corresponden a ninguna partida actual
-        documentos_existentes = self.search([('expediente_id', '=', expediente.id)])
-        for doc in documentos_existentes:
-            # Normalizar la partida del documento para comparar usando el método del expediente
-            doc_partida_limpia = expediente._normalize_partida_arancelaria(doc.partida_arancelaria)
-            # Si la partida del documento no está en las partidas actuales, eliminarlo
-            if not doc_partida_limpia or doc_partida_limpia not in partidas_normalizadas:
-                doc.unlink()
-                documentos_eliminados += 1
-        
-        # PASO 2: Consultar TARIC y actualizar/crear documentos para las partidas actuales
-        for partida_limpia in partidas_unicas:
-            # Consultar TARIC
-            try:
-                documentos_taric = taric_service.get_required_documents(
-                    goods_code=partida_limpia,
-                    country_code=country_code,
-                    direction=expediente.direction
-                )
-            except UserError as e:
-                errores_taric.append("Partida %s: %s" % (partida_limpia, str(e)))
-                documentos_taric = []
-            except Exception as e:
-                _logger.warning("Error consultando TARIC para partida %s: %s", partida_limpia, e)
-                errores_taric.append(f"Partida {partida_limpia}: {str(e)}")
-                documentos_taric = []
-            
-            if documentos_taric:
-                # Crear o actualizar documentos requeridos
-                for doc_info in documentos_taric:
-                    # Buscar si ya existe un documento con el mismo código y partida
+        structure_cache = {}
+        keep_line_ids = set()
+        keep_doc_ids = set()
+        keep_medida_ids = set()
+
+        def _explicacion(medida_info):
+            kind = medida_info.get("kind")
+            title = medida_info.get("titulo") or medida_info.get("medida") or ""
+            if kind == "optional_benefit":
+                return _(
+                    "Compruebe si desea solicitar este beneficio arancelario. "
+                    "Solicitarlo no acredita automáticamente el cumplimiento: "
+                    "deberá aportar la autorización/documentación asociada. (%s)"
+                ) % title
+            if kind == "declaration":
+                return _(
+                    "Revise la característica de la mercancía descrita en la pregunta. "
+                    "Si no aplica el supuesto controlado, normalmente bastará la declaración TARIC. (%s)"
+                ) % title
+            return _(
+                "Compruebe en la mercancía la característica que determina qué alternativa TARIC aplica. "
+                "No marque una opción sin haberla contrastado. (%s)"
+            ) % title
+
+        for line in expediente.line_ids.sorted(lambda l: (l.item_number or 0, l.id)):
+            partida_limpia = expediente._normalize_partida_arancelaria(
+                (line.taric_completo or line.partida or "").strip()
+            )
+            if not partida_limpia or len(partida_limpia) < 8:
+                continue
+
+            if partida_limpia not in structure_cache:
+                try:
+                    structure_cache[partida_limpia] = taric_service.get_taric_structure_aeat(
+                        goods_code=partida_limpia,
+                        country_code=country_code,
+                        direction=expediente.direction,
+                    )
+                except UserError as e:
+                    errores_taric.append(_("Línea %s (%s): %s") % (line.item_number, partida_limpia, e))
+                    structure_cache[partida_limpia] = None
+                except Exception as e:
+                    _logger.warning("Error TARIC línea %s partida %s: %s", line.id, partida_limpia, e)
+                    errores_taric.append(_("Línea %s (%s): %s") % (line.item_number, partida_limpia, e))
+                    structure_cache[partida_limpia] = None
+
+            structure = structure_cache.get(partida_limpia)
+            if not structure:
+                continue
+
+            fecha = False
+            if structure.get("fecha"):
+                try:
+                    from datetime import date as date_cls
+                    y, m, d = str(structure["fecha"])[:10].split("-")
+                    fecha = date_cls(int(y), int(m), int(d))
+                except Exception:
+                    fecha = False
+
+            taric_linea = LineaTaric.search([
+                ("expediente_id", "=", expediente.id),
+                ("line_id", "=", line.id),
+            ], limit=1)
+            lvals = {
+                "expediente_id": expediente.id,
+                "line_id": line.id,
+                "factura_id": line.factura_id.id if line.factura_id else False,
+                "partida_arancelaria": partida_limpia,
+                "nomenclatura_desc": structure.get("nomenclatura_desc") or False,
+                "fecha_consulta": fecha,
+                "resumen_arancelario": structure.get("resumen_arancelario") or False,
+            }
+            if taric_linea:
+                taric_linea.write(lvals)
+            else:
+                taric_linea = LineaTaric.create(lvals)
+            keep_line_ids.add(taric_linea.id)
+
+            for medida_info in structure.get("medidas") or []:
+                measure_code = medida_info.get("medida") or ""
+                if not measure_code:
+                    continue
+                domain_m = [
+                    ("taric_linea_id", "=", taric_linea.id),
+                    ("measure_code", "=", measure_code),
+                ]
+                medida = Medida.search(domain_m, limit=1)
+                kind = medida_info.get("kind") or "other"
+                mvals = {
+                    "expediente_id": expediente.id,
+                    "taric_linea_id": taric_linea.id,
+                    "line_id": line.id,
+                    "factura_id": line.factura_id.id if line.factura_id else False,
+                    "partida_arancelaria": partida_limpia,
+                    "measure_code": measure_code,
+                    "measure_title": medida_info.get("titulo") or False,
+                    "ambito_geo": medida_info.get("ambito_geo") or False,
+                    "reglamento": medida_info.get("reglamento") or False,
+                    "derechos": medida_info.get("derechos") or False,
+                    "condiciones_raw": medida_info.get("condiciones_raw") or False,
+                    "indicaciones_raw": medida_info.get("indicaciones_raw") or False,
+                    "kind": kind,
+                    "decision_question": medida_info.get("decision_question") or False,
+                    "decision_status": medida_info.get("decision_status") or "info_only",
+                    "fecha_consulta": fecha,
+                    "nomenclatura_desc": structure.get("nomenclatura_desc") or False,
+                    "option_yes_code": medida_info.get("option_yes_code") or False,
+                    "option_no_code": medida_info.get("option_no_code") or False,
+                    "option_yes_label": medida_info.get("option_yes_label") or False,
+                    "option_no_label": medida_info.get("option_no_label") or False,
+                    "operador_explicacion": _explicacion(medida_info),
+                }
+                if medida and medida.decision_status == "decided":
+                    mvals.pop("decision_status", None)
+                if medida:
+                    medida.write(mvals)
+                else:
+                    medida = Medida.create(mvals)
+                keep_medida_ids.add(medida.id)
+
+                medida.condicion_ids.unlink()
+                for cond in medida_info.get("condiciones") or []:
+                    Condicion.create({
+                        "medida_id": medida.id,
+                        "sequence": cond.get("sequence") or 10,
+                        "condition_branch": cond.get("condition_branch") or False,
+                        "certificate_code": cond.get("certificate_code") or False,
+                        "name": cond.get("name") or False,
+                        "role": cond.get("role") or "other",
+                        "action_label": cond.get("action_label") or False,
+                    })
+
+                for doc_info in medida_info.get("documentos") or []:
+                    code = doc_info.get("code") or ""
+                    if not code or str(code)[:1].upper() == "B":
+                        continue
                     existing = self.search([
-                        ('expediente_id', '=', expediente.id),
-                        ('partida_arancelaria', '=', partida_limpia),
-                        ('codigo_documento', '=', doc_info.get('code', ''))
+                        ("taric_linea_id", "=", taric_linea.id),
+                        ("codigo_documento", "=", code),
+                        ("taric_medida_id", "=", medida.id),
                     ], limit=1)
-                    
+                    vals = self._vals_from_taric_doc_info(doc_info)
+                    vals.update({
+                        "factura_id": line.factura_id.id if line.factura_id else False,
+                        "taric_medida_id": medida.id,
+                        "taric_linea_id": taric_linea.id,
+                        "line_id": line.id,
+                    })
+                    if medida.decision_status == "decided" and existing:
+                        for k in ("aplicabilidad", "mandatory", "estado_requisito", "motivo_no_aplica"):
+                            vals.pop(k, None)
                     if existing:
-                        # Actualizar existente
-                        existing.write({
-                            'name': doc_info.get('name', ''),
-                            'description': doc_info.get('description', ''),
-                            'mandatory': doc_info.get('mandatory', True),
-                        })
+                        existing.write(vals)
                         documentos_actualizados += 1
+                        keep_doc_ids.add(existing.id)
                     else:
-                        # Crear nuevo
-                        self.create({
-                            'expediente_id': expediente.id,
-                            'partida_arancelaria': partida_limpia,
-                            'codigo_documento': doc_info.get('code', ''),
-                            'name': doc_info.get('name', _("Documento requerido para partida %s") % partida_limpia),
-                            'description': doc_info.get('description', ''),
-                            'mandatory': doc_info.get('mandatory', True),
-                            'estado': 'pendiente',
+                        create_vals = dict(vals)
+                        create_vals.update({
+                            "expediente_id": expediente.id,
+                            "partida_arancelaria": partida_limpia,
+                            "codigo_documento": code,
+                            "name": vals.get("name")
+                                or _("Documento requerido para partida %s") % partida_limpia,
+                            "estado": "pendiente",
                         })
+                        new_doc = self.create(create_vals)
                         documentos_creados += 1
-            # Si TARIC no devuelve documentos, NO crear ningún documento genérico
-            # Solo se crean documentos cuando la API devuelve resultados
-        
+                        keep_doc_ids.add(new_doc.id)
+
+                if medida.decision_status == "decided" and medida.decision_answer:
+                    medida._aplicar_decision(medida.decision_answer)
+
+        # Limpieza de revisiones/medidas/docs huérfanos
+        for taric_linea in LineaTaric.search([("expediente_id", "=", expediente.id)]):
+            if taric_linea.id not in keep_line_ids:
+                taric_linea.unlink()
+                continue
+            for med in taric_linea.medida_ids:
+                if med.id not in keep_medida_ids:
+                    med.unlink()
+            for doc in taric_linea.documento_ids:
+                if doc.id not in keep_doc_ids:
+                    if doc.documento_subido:
+                        continue
+                    doc.unlink()
+                    documentos_eliminados += 1
+
+        # Legacy cleanup: docs sin línea TARIC
+        for doc in self.search([("expediente_id", "=", expediente.id), ("taric_linea_id", "=", False)]):
+            if doc.documento_subido:
+                continue
+            doc.unlink()
+            documentos_eliminados += 1
+
         # Construir mensaje con resultados
         mensaje_partes = []
         if documentos_eliminados > 0:
@@ -5466,18 +6172,26 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
             mensaje_partes.append(_("%d documento(s) creado(s)") % documentos_creados)
         if documentos_actualizados > 0:
             mensaje_partes.append(_("%d documento(s) actualizado(s)") % documentos_actualizados)
+        mensaje_partes.append(_("%d línea(s) de mercancía revisadas") % len(keep_line_ids))
+
+        source_label = (
+            self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.taric_source") or "aeat"
+        ).upper()
         
         if errores_taric:
-            mensaje = _("Consulta TARIC completada con advertencias:\n- %s\n\nErrores:\n%s") % (
+            mensaje = _("Consulta TARIC (%s) completada con advertencias:\n- %s\n\nErrores:\n%s") % (
+                source_label,
                 "\n- ".join(mensaje_partes) if mensaje_partes else _("Sin cambios"),
                 "\n".join(errores_taric[:5])  # Mostrar máximo 5 errores
             )
             tipo_notificacion = 'warning'
         else:
             if mensaje_partes:
-                mensaje = _("Consulta TARIC completada:\n- %s") % "\n- ".join(mensaje_partes)
+                mensaje = _("Consulta TARIC (%s) completada:\n- %s") % (
+                    source_label, "\n- ".join(mensaje_partes)
+                )
             else:
-                mensaje = _("Consulta TARIC completada: Sin cambios necesarios.")
+                mensaje = _("Consulta TARIC (%s) completada: Sin cambios necesarios.") % source_label
             tipo_notificacion = 'success'
         
         # Si no se crearon documentos y hubo errores, sugerir añadir manualmente
@@ -5486,32 +6200,31 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         
         # Publicar resumen en el chatter (siempre, con o sin errores)
         if errores_taric:
-            mensaje_chatter = _("<b>🔍 Consulta TARIC - Resumen con errores</b><br/><br/>")
+            mensaje_chatter = _("<b>Consulta TARIC (%s) - Resumen con errores</b><br/><br/>") % source_label
         else:
-            mensaje_chatter = _("<b>🔍 Consulta TARIC - Resumen</b><br/><br/>")
+            mensaje_chatter = _("<b>Consulta TARIC (%s) - Resumen</b><br/><br/>") % source_label
         
         # Agregar información de documentos procesados
         if documentos_eliminados > 0:
-            mensaje_chatter += _("📄 %d documento(s) eliminado(s) (partidas obsoletas)<br/>") % documentos_eliminados
+            mensaje_chatter += _("%d documento(s) eliminado(s) (partidas obsoletas)<br/>") % documentos_eliminados
         if documentos_creados > 0:
-            mensaje_chatter += _("➕ %d documento(s) creado(s)<br/>") % documentos_creados
+            mensaje_chatter += _("%d documento(s) creado(s)<br/>") % documentos_creados
         if documentos_actualizados > 0:
-            mensaje_chatter += _("🔄 %d documento(s) actualizado(s)<br/>") % documentos_actualizados
+            mensaje_chatter += _("%d documento(s) actualizado(s)<br/>") % documentos_actualizados
         if not mensaje_partes:
-            mensaje_chatter += _("ℹ️ Sin cambios en documentos<br/>")
+            mensaje_chatter += _("Sin cambios en documentos<br/>")
         
-        # Agregar información de partidas consultadas
-        if partidas_unicas:
-            mensaje_chatter += _("<br/><b>País consultado:</b> %s<br/>") % country_code
-            mensaje_chatter += _("<br/><b>📋 Partidas consultadas:</b><br/>")
-            for partida in partidas_unicas[:10]:  # Mostrar hasta 10 partidas
-                mensaje_chatter += f"• {partida}<br/>"
-            if len(partidas_unicas) > 10:
-                mensaje_chatter += _("... y %d partida(s) más.<br/>") % (len(partidas_unicas) - 10)
+        # Agregar información de líneas consultadas
+        mensaje_chatter += _("<br/><b>País consultado:</b> %s<br/>") % country_code
+        mensaje_chatter += _("<br/><b>Líneas de mercancía consultadas:</b> %s<br/>") % len(keep_line_ids)
+        for partida in list(structure_cache.keys())[:10]:
+            mensaje_chatter += "• %s<br/>" % partida
+        if len(structure_cache) > 10:
+            mensaje_chatter += _("... y %d código(s) TARIC más.<br/>") % (len(structure_cache) - 10)
         
         # Agregar errores si los hay
         if errores_taric:
-            mensaje_chatter += _("<br/><b>⚠️ Errores encontrados:</b><br/>")
+            mensaje_chatter += _("<br/><b>Errores encontrados:</b><br/>")
             for error in errores_taric[:10]:  # Mostrar hasta 10 errores en el chatter
                 mensaje_chatter += f"• {error}<br/>"
             
@@ -5528,7 +6241,10 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
             _logger.warning("No se pudo crear mensaje en chatter (error ignorado): %s", msg_error)
         
         # Forzar recarga de la lista de documentos en la vista
-        expediente.invalidate_recordset(["documento_requerido_ids"])
+        expediente.invalidate_recordset([
+            "documento_requerido_ids", "taric_linea_ids", "taric_medida_ids",
+            "taric_operativo_resumen", "taric_siguiente_accion",
+        ])
 
         reload_action = {
             "type": "ir.actions.act_window",

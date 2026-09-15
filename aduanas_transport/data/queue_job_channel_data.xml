@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+  <!-- Canal serializado para consulta TARIC AEAT (scrape + IA); capacidad real en odoo.conf -->
+  <record id="channel_taric_aeat" model="queue.job.channel">
+    <field name="name">taric_aeat</field>
+    <field name="parent_id" ref="queue_job.channel_root"/>
+  </record>
+</odoo>

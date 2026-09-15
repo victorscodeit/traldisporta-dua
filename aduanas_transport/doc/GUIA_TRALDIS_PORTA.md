@@ -89,7 +89,7 @@ Al crear un expediente nuevo, estos valores se aplican automáticamente según e
 | **PDF DUA export** (`DUA_EXP-xxx_OFICIAL.pdf`) | Se genera con **Generar DUA** | **No** — archivo interno |
 | **XML CC515C / CC415A** | Odoo lo genera y adjunta | **Sí** — es la presentación |
 | **CMR / albarán** | Opcional en pestaña Documentos | Referencia N705 en export (matrícula/ref.) |
-| **Certificados TARIC** | Pestaña *Documentos requeridos* | **No** automático; gestión interna / requerimientos posteriores AEAT |
+| **Certificados TARIC** | Pestaña *Documentos requeridos* | **No** automático; gestión interna / requerimientos posteriores AEAT. Consulta vía Arancel Integrado AEAT (certificado + IA opcional); scraper frágil ante cambios de Sede. |
 | **G4 / DDT** | Solo si `requiere_ddt = true` | MRN N337 en CC415A (no PDF) |
 
 **Conclusión:** tras subir la factura y completar datos, **no hace falta generar un PDF para presentar a AEAT**. En exportación, **Generar DUA** incluye PDF interno opcional; en importación solo existe el XML CC415A.
@@ -249,7 +249,7 @@ Activar en **Ajustes → Técnico → Automatización → Acciones planificadas*
 |---------|-------------|
 | **Subir facturas** (wizard) | Crear expedientes o añadir PDFs en lote |
 | **Import MSoft** | Carga desde sistema origen (si configurado) |
-| **Documentos requeridos TARIC** | Consulta API UE; subir certificados si la mercancía lo exige |
+| **Documentos requeridos TARIC** | Consulta Arancel Integrado AEAT (certificado + IA); subir certificados si la mercancía lo exige. Fragilidad: cambios de Sede pueden romper el scraper. |
 
 ---
 

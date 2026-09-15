@@ -67,11 +67,11 @@
 
           <!-- Exportación AES -->
           <button name="action_validar_exportacion" string="1. Validar exportación" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
-                  help="Comprueba datos obligatorios antes de generar el DUA."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'export'), ('state', '!=', 'draft')]}"
+                  help="Comprueba datos obligatorios antes de generar el DUA. Solo en borrador."/>
           <button name="action_generate_dua" string="2. Generar DUA" type="object"
                   class="oe_highlight"
-                  attrs="{'invisible': ['|', '|', '|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', True), ('export_listo_para_dua', '=', False), ('state', 'not in', ('draft', 'error'))]}"
+                  attrs="{'invisible': ['|', '|', '|', ('direction', '!=', 'export'), ('dua_generado', '=', True), ('export_listo_para_dua', '=', False), ('state', 'not in', ('draft', 'error'))]}"
                   help="Genera el DUA de exportación (CUSDEC EX1). Requiere líneas y facturas procesadas."/>
           <button name="action_generate_dua" string="Regenerar DUA" type="object"
                   class="oe_highlight"
@@ -96,8 +96,8 @@
                   attrs="{'invisible': ['|', '|', ('direction', '!=', 'import'), ('requiere_ddt', '=', False), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
                   help="Solo si requiere DDT/G4 y el expediente aún está en preparación."/>
           <button name="action_validar_importacion" string="1. Validar importación" type="object"
-                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', 'not in', ('draft', 'predeclared', 'error'))]}"
-                  help="Comprueba datos obligatorios antes de generar/presentar."/>
+                  attrs="{'invisible': ['|', ('direction', '!=', 'import'), ('state', '!=', 'draft')]}"
+                  help="Comprueba datos obligatorios antes de generar/presentar. Solo en borrador."/>
 
           <!-- Botones adicionales de exportación (ocultos) -->
           <button name="action_generate_cc515c" string="(Export) Generar CC515C" type="object"
@@ -141,11 +141,28 @@
 
         <sheet>
           <div class="oe_button_box" name="button_box">
-            <button name="action_view_incidencias" type="object" class="oe_stat_button" context="{'search_default_expediente_id': active_id}">
-              <field name="incidencias_count" widget="statinfo" string="Incidencias"/>
+            <button name="action_view_documentos" type="object" class="oe_stat_button" icon="fa-folder-open-o"
+                    help="Documentos operativos del expediente (PDF, facturas adjuntas, etc.). Los XML AEAT están en Bandeja / Técnico.">
+              <div class="o_stat_info">
+                <span class="o_stat_text">Documentos</span>
+              </div>
+              <field name="documentos_count" invisible="1"/>
             </button>
-            <button name="action_view_incidencias_pendientes" type="object" class="oe_stat_button" context="{'search_default_expediente_id': active_id, 'search_default_pending': 1}">
-              <field name="incidencias_pendientes_count" widget="statinfo" string="Pendientes"/>
+            <button name="action_view_incidencias" type="object" class="oe_stat_button" icon="fa-exclamation-triangle"
+                    context="{'search_default_expediente_id': active_id}"
+                    help="Todas las incidencias vinculadas a este expediente.">
+              <div class="o_stat_info">
+                <span class="o_stat_text">Incidencias</span>
+              </div>
+              <field name="incidencias_count" invisible="1"/>
+            </button>
+            <button name="action_view_incidencias_pendientes" type="object" class="oe_stat_button" icon="fa-clock-o"
+                    context="{'search_default_expediente_id': active_id, 'search_default_pending': 1}"
+                    help="Incidencias aún abiertas (pendiente o en revisión) de este expediente.">
+              <div class="o_stat_info">
+                <span class="o_stat_text">Pendientes</span>
+              </div>
+              <field name="incidencias_pendientes_count" invisible="1"/>
             </button>
           </div>
           
@@ -159,18 +176,22 @@
           
           <!-- FACTURAS DEL EXPEDIENTE -->
           <group string="Facturas" colspan="2">
-            <button name="action_subir_facturas" string="Subir facturas" type="object"
-                    class="oe_highlight"
-                    icon="fa-upload"
-                    attrs="{'invisible': [('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                    help="Sube facturas PDF. Solo en preparación (antes de aceptar el DUA)."/>
-            <button name="action_procesar_todas_facturas" 
-                    string="Procesar facturas" 
-                    type="object"
-                    class="oe_highlight"
-                    icon="fa-cog"
-                    attrs="{'invisible': ['|', ('tiene_facturas_por_procesar', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
-                    help="Procesa facturas pendientes. Solo en preparación."/>
+            <div colspan="2" class="mb-2">
+              <button name="action_subir_facturas" string="Subir facturas" type="object"
+                      class="oe_highlight btn-primary me-2"
+                      icon="fa-upload"
+                      style="white-space: nowrap; margin-right: 0.5rem;"
+                      attrs="{'invisible': [('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                      help="Sube facturas PDF. Solo en preparación (antes de aceptar el DUA)."/>
+              <button name="action_procesar_todas_facturas"
+                      string="Procesar facturas"
+                      type="object"
+                      class="oe_highlight btn-primary"
+                      icon="fa-cog"
+                      style="white-space: nowrap; margin-left: 8px;"
+                      attrs="{'invisible': ['|', ('tiene_facturas_por_procesar', '=', False), ('state', 'in', ('accepted', 'released', 'exited', 'closed'))]}"
+                      help="Procesa facturas pendientes. Solo en preparación."/>
+            </div>
             <field name="factura_ids" nolabel="1" colspan="2"
                    context="{'default_expediente_id': id}">
               <tree>
@@ -185,10 +206,16 @@
                        decoration-muted="factura_estado_procesamiento in ('sin_factura', 'pendiente')"
                        decoration-danger="factura_estado_procesamiento == 'error'"/>
                 <field name="lineas_count" string="Nº Líneas"/>
+                <field name="peso_neto_total" string="Peso neto total" optional="show"/>
+                <field name="peso_bruto_total" string="Peso bruto total" optional="show"/>
                 <field name="fecha_procesamiento"/>
                 <button name="action_process_invoice_pdf" string="Procesar" type="object"
                         attrs="{'invisible': ['|', ('factura_procesada', '=', True), ('factura_estado_procesamiento', '==', 'procesando')]}"
                         icon="fa-play"/>
+                <button name="action_prorratear_pesos" string="Prorratear pesos" type="object"
+                        attrs="{'invisible': [('lineas_count', '=', 0)]}"
+                        icon="fa-balance-scale"
+                        title="Repartir peso neto/bruto total entre las líneas de esta factura"/>
                 <button name="action_view_lineas" string="Ver Líneas" type="object"
                         attrs="{'invisible': [('lineas_count', '=', 0)]}"
                         icon="fa-list"/>
@@ -206,6 +233,17 @@
                     <field name="factura_procesada" invisible="1"/>
                     <field name="fecha_procesamiento" readonly="1"/>
                   </group>
+                  <group string="Pesos totales (opcional)">
+                    <field name="peso_neto_total"/>
+                    <field name="peso_bruto_total"/>
+                    <div colspan="2" class="text-muted">
+                      Si indica peso neto y/o bruto total, al guardar se prorratea entre las líneas
+                      de esta factura (por valor; si no hay valor, por unidades).
+                    </div>
+                    <button name="action_prorratear_pesos" string="Prorratear a líneas" type="object"
+                            class="btn-secondary" icon="fa-balance-scale"
+                            attrs="{'invisible': [('lineas_count', '=', 0)]}"/>
+                  </group>
                   <group colspan="2" attrs="{'invisible': [('factura_mensaje_html', '=', False)]}">
                     <field name="factura_mensaje_html" nolabel="1" readonly="1" 
                            widget="html"
@@ -222,22 +260,25 @@
             </field>
           </group>
           
-          <!-- RESUMEN VERIFICACIÓN IA -->
-          <group string="Verificación IA" col="2" attrs="{'invisible': [('line_ids', '=', [])]}">
-            <group>
-              <field name="verificacion_ia_resumen" readonly="1" nolabel="1" 
-                     widget="text" 
+          <!-- RESUMEN VERIFICACIÓN IA (texto hasta ~50% del ancho) -->
+          <separator string="Verificación IA" attrs="{'invisible': [('line_ids', '=', [])]}"/>
+          <div class="row mb-3" attrs="{'invisible': [('line_ids', '=', [])]}">
+            <div class="col-md-6 col-12">
+              <field name="verificacion_ia_resumen" readonly="1" nolabel="1"
+                     widget="text"
                      placeholder="Ejecuta la verificación IA para ver el resumen"/>
-            </group>
-            <group>
-              <field name="verificacion_ia_estado" widget="badge" 
-                     decoration-success="verificacion_ia_estado == 'ok'"
-                     decoration-warning="verificacion_ia_estado == 'advertencia'"
-                     decoration-danger="verificacion_ia_estado == 'critico'"
-                     decoration-muted="verificacion_ia_estado == 'pendiente'"
-                     readonly="1"/>
-            </group>
-          </group>
+            </div>
+            <div class="col-md-6 col-12">
+              <group>
+                <field name="verificacion_ia_estado" widget="badge"
+                       decoration-success="verificacion_ia_estado == 'ok'"
+                       decoration-warning="verificacion_ia_estado == 'advertencia'"
+                       decoration-danger="verificacion_ia_estado == 'critico'"
+                       decoration-muted="verificacion_ia_estado == 'pendiente'"
+                       readonly="1"/>
+              </group>
+            </div>
+          </div>
           
           <!-- INFORMACIÓN GENERAL -->
           <group string="Información general" col="2">
@@ -257,15 +298,19 @@
               <field name="remitente"/>
               <field name="consignatario"/>
               <field name="consignatario_country_id" invisible="1"/>
-              <field name="pais_origen" string="País origen (ISO)"
+              <field name="pais_origen_id" string="País origen"
+                       options="{'no_create': True, 'no_open': True}"
                        attrs="{'invisible': [('direction', '!=', 'export')]}"
-                       help="Código ISO del país de expedición (normalmente ES)."/>
-              <field name="pais_destino" string="País destino (ISO)"
+                       help="País de expedición (normalmente España)."/>
+              <field name="pais_destino_id" string="País destino"
+                       options="{'no_create': True, 'no_open': True}"
                        attrs="{
                          'invisible': [('direction', '!=', 'export')],
                          'readonly': [('consignatario_country_id', '!=', False)]
                        }"
-                       help="País del destinatario/consignatario (ISO de 2 letras, ej: AD, CH, GB). Editable solo si el consignatario no tiene país en su ficha."/>
+                       help="País del destinatario/consignatario. Editable solo si el consignatario no tiene país en su ficha."/>
+              <field name="pais_origen" invisible="1"/>
+              <field name="pais_destino" invisible="1"/>
               <field name="oficina"/>
               <field name="oficina_destino" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
               <field name="tipo_representacion" attrs="{'invisible': [('direction', '!=', 'export')]}"/>
@@ -307,11 +352,19 @@
                 <field name="valor_factura" class="oe_inline"/>
                 <field name="moneda" class="oe_inline"/>
               </div>
-              <label for="pais_origen"/>
+              <label for="pais_origen_id" string="País expedición / destino"/>
               <div class="o_row">
-                <field name="pais_origen" string="Expedición" class="oe_inline"/>
-                <field name="pais_destino" string="Destino" class="oe_inline"/>
+                <field name="pais_origen_id" string="Expedición" class="oe_inline"
+                         options="{'no_create': True, 'no_open': True}"
+                         placeholder="Andorra"
+                         help="País desde el que se expide la mercancía (país tercero). No puede ser España en importación."/>
+                <span class="mx-1">→</span>
+                <field name="pais_destino_id" string="Destino" class="oe_inline"
+                         options="{'no_create': True, 'no_open': True}"
+                         help="En importación debe ser España."/>
               </div>
+              <field name="pais_origen" invisible="1"/>
+              <field name="pais_destino" invisible="1"/>
               <field name="import_delivery_partner_id"/>
               <field name="import_delivery_location" invisible="1"/>
               <field name="import_region_of_destination"/>
@@ -397,58 +450,6 @@
             <field name="error_message" readonly="1" nolabel="1" colspan="2"/>
             <field name="last_response_date" readonly="1"/>
           </group>
-          
-          <!-- Documentos: facturas subidas + documentos adjuntos; se pueden subir más PDFs -->
-          <group string="Documentos" colspan="2">
-            <group colspan="2">
-              <button name="action_anadir_documento" string="Subir documento (PDF u otro)" type="object"
-                      class="oe_highlight" icon="fa-upload"
-                      help="Añadir un nuevo documento PDF u otro archivo al expediente. Las facturas subidas en la pestaña Facturas también aparecen aquí."/>
-            </group>
-            <field name="documento_ids" nolabel="1" colspan="2">
-              <tree create="0" delete="0" string="Documentos y facturas" multi_edit="0">
-                <field name="name"/>
-                <field name="tipo_documento" optional="show"/>
-                <field name="file_size" optional="show"/>
-                <field name="create_date" optional="show"/>
-                <field name="datas" filename="name" widget="binary" readonly="1"/>
-                <button name="action_eliminar_documento" type="object" class="btn-link" icon="fa-trash-o" title="Eliminar documento"/>
-              </tree>
-              <form>
-                <sheet>
-                  <group>
-                    <field name="name"/>
-                    <field name="mimetype"/>
-                    <field name="file_size"/>
-                    <field name="create_date"/>
-                  </group>
-                  <group string="Archivo">
-                    <field name="datas" filename="name" widget="binary"/>
-                  </group>
-                  <!-- Campos invisibles para determinar tipo de archivo -->
-                  <field name="is_xml" invisible="1"/>
-                  <field name="is_pdf" invisible="1"/>
-                  <!-- Vista Previa PDF -->
-                  <group string="Vista Previa PDF" colspan="2" attrs="{'invisible': [('is_pdf', '=', False)]}">
-                    <field name="datas" filename="name" widget="pdf_viewer" 
-                           readonly="1" nolabel="1" colspan="2"
-                           options="{'disable_zoom': false, 'disable_scroll': false}"/>
-                  </group>
-                  <!-- Vista Previa XML -->
-                  <group string="Vista Previa XML" colspan="2" attrs="{'invisible': [('is_xml', '=', False)]}">
-                    <button name="action_preview_xml" string="Abrir XML en nueva pestaña" 
-                            type="object" 
-                            class="oe_highlight"
-                            icon="fa-external-link"/>
-                    <field name="xml_content_text" nolabel="1" readonly="1" 
-                           widget="text" colspan="2"
-                           placeholder="Cargando contenido XML..."
-                           options="{'wrap': false}"/>
-                  </group>
-                </sheet>
-              </form>
-            </field>
-          </group>
 
           <notebook>
             <page string="Líneas">
@@ -472,6 +473,8 @@
                   <field name="precio_unitario"/>
                   <field name="descuento"/>
                   <field name="valor_linea" sum="Total"/>
+                  <field name="pais_origen_id" options="{'no_create': True, 'no_open': True}"/>
+                  <field name="pais_origen" invisible="1"/>
                   <field name="verificacion_estado"
                          decoration-success="verificacion_estado == 'correcto'"
                          decoration-info="verificacion_estado == 'verificado'"
@@ -479,7 +482,6 @@
                          decoration-muted="verificacion_estado == 'pendiente'"
                          decoration-danger="verificacion_estado == 'corregido'"/>
                   <field name="verificacion_detalle"/>
-                  <field name="pais_origen"/>
                 </tree>
               </field>
             </page>
@@ -489,70 +491,55 @@
                 <field name="valor_factura"/>
                 <field name="moneda"/>
                 <field name="consignatario_country_id" invisible="1"/>
-                <field name="pais_origen" help="Código ISO de 2 letras. Se rellena desde el remitente/consignatario o la factura."/>
-                <field name="pais_destino" string="País destino (ISO)"
+                <field name="pais_origen_id" options="{'no_create': True, 'no_open': True}"
+                       help="País de expedición. Se rellena desde el remitente o la factura."/>
+                <field name="pais_destino_id" string="País destino"
+                       options="{'no_create': True, 'no_open': True}"
                        attrs="{'readonly': [('consignatario_country_id', '!=', False)]}"
-                       help="Código ISO de 2 letras (ej: AD, CH, GB). Editable solo si el consignatario no tiene país en su ficha."/>
+                       help="País del destinatario. Editable solo si el consignatario no tiene país en su ficha."/>
+                <field name="pais_origen" invisible="1"/>
+                <field name="pais_destino" invisible="1"/>
                 <field name="region_of_dispatch"/>
               </group>
             </page>
-            <page string="Documentos Requeridos" name="documentos_requeridos">
-              <group>
-                <button name="action_consultar_taric_manual" 
-                        string="Consultar TARIC" 
+            <page string="TARIC" name="documentos_requeridos">
+              <div class="mb-2">
+                <button name="action_consultar_taric_manual"
+                        string="Consultar TARIC"
                         type="object"
-                        class="oe_highlight"
+                        class="oe_highlight btn-primary"
                         icon="fa-search"
-                        help="Consulta la API TARIC de la UE para obtener los documentos requeridos por cada partida arancelaria del expediente. Actualiza todos los códigos según las líneas actuales y elimina los que ya no existen."/>
-              </group>
-              <field name="documento_requerido_ids">
-                <tree editable="bottom" create="0" delete="1">
-                  <field name="expediente_id" column_invisible="1"/>
-                  <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
-                  <field name="partida_arancelaria" readonly="1"/>
-                  <field name="codigo_documento" readonly="1"/>
-                  <field name="name" readonly="1"/>
-                  <field name="mandatory" widget="boolean_toggle"/>
-                  <field name="estado" widget="badge" 
-                         decoration-success="estado == 'verificado'"
-                         decoration-info="estado == 'subido'"
-                         decoration-warning="estado == 'pendiente'"/>
-                  <field name="documento_subido" filename="documento_filename"/>
-                  <field name="documento_filename" invisible="1"/>
-                  <field name="fecha_subida" readonly="1"/>
-                  <field name="subido_por" readonly="1"/>
-                  <field name="description" invisible="1"/>
-                  <field name="notas"/>
-                  <button name="action_view_documento_detalle" 
-                          string="Ver Detalles" 
+                        style="white-space: nowrap;"
+                        help="Consulta el Arancel Integrado AEAT y actualiza requisitos por línea de mercancía."/>
+              </div>
+              <div class="alert alert-info mb-2" role="status"
+                   attrs="{'invisible': [('taric_operativo_resumen', '=', False)]}">
+                <field name="taric_operativo_resumen" readonly="1" nolabel="1" class="oe_inline"/>
+                <br/>
+                <field name="taric_siguiente_accion" readonly="1" nolabel="1"
+                       attrs="{'invisible': [('taric_siguiente_accion', '=', False)]}"/>
+              </div>
+              <separator string="Resumen por partida"/>
+              <field name="taric_linea_ids" nolabel="1"
+                     context="{'default_expediente_id': id}">
+                <tree create="0" delete="0"
+                      decoration-warning="situacion == 'faltan_respuestas'"
+                      decoration-danger="situacion in ('pendiente_aportar', 'pendiente_revision')"
+                      decoration-success="situacion == 'completo'"
+                      decoration-muted="situacion == 'sin_consulta'">
+                  <field name="item_number" string="Partida"/>
+                  <field name="descripcion" string="Mercancía"/>
+                  <field name="partida_arancelaria" string="Clasificación TARIC"/>
+                  <field name="situacion" string="Situación"/>
+                  <field name="situacion_detalle" optional="hide"/>
+                  <field name="preguntas_pendientes_count" optional="hide"/>
+                  <field name="docs_pendientes_count" optional="hide"/>
+                  <button name="action_revisar_requisitos"
                           type="object"
-                          class="oe_link"
-                          icon="fa-eye"
-                          title="Ver información completa y previsualización del documento"/>
+                          string="Revisar requisitos"
+                          class="btn-primary"
+                          icon="fa-list-alt"/>
                 </tree>
-                <form>
-                  <sheet>
-                    <group>
-                      <group>
-                        <field name="expediente_id" readonly="1"/>
-                        <field name="factura_id" string="Factura" domain="[('expediente_id', '=', expediente_id)]"/>
-                        <field name="partida_arancelaria" readonly="1"/>
-                        <field name="codigo_documento" readonly="1"/>
-                        <field name="name" readonly="1"/>
-                        <field name="mandatory"/>
-                        <field name="estado"/>
-                      </group>
-                      <group>
-                        <field name="description" readonly="1"/>
-                        <field name="documento_subido" filename="documento_filename"/>
-                        <field name="documento_filename"/>
-                        <field name="fecha_subida" readonly="1"/>
-                        <field name="subido_por" readonly="1"/>
-                        <field name="notas"/>
-                      </group>
-                    </group>
-                  </sheet>
-                </form>
               </field>
             </page>
             <page string="Incidencias" name="incidencias">
@@ -568,6 +555,54 @@
                   <field name="dias_pendiente"/>
                   <field name="origen"/>
                 </tree>
+              </field>
+            </page>
+            <page string="Documentos" name="documentos">
+              <div class="mb-2">
+                <button name="action_anadir_documento" string="Subir documento" type="object"
+                        class="oe_highlight btn-primary" icon="fa-upload"
+                        style="white-space: nowrap;"
+                        help="Añadir un documento operativo al expediente (PDF, etc.). Los XML de request/response AEAT van en Bandeja / Técnico."/>
+              </div>
+              <field name="documento_ids" nolabel="1">
+                <tree create="0" delete="0" string="Documentos y facturas" multi_edit="0">
+                  <field name="name"/>
+                  <field name="tipo_documento" optional="show"/>
+                  <field name="file_size" optional="show"/>
+                  <field name="create_date" optional="show"/>
+                  <field name="datas" filename="name" widget="binary" readonly="1"/>
+                  <button name="action_eliminar_documento" type="object" class="btn-link" icon="fa-trash-o" title="Eliminar documento"/>
+                </tree>
+                <form>
+                  <sheet>
+                    <group>
+                      <field name="name"/>
+                      <field name="mimetype"/>
+                      <field name="file_size"/>
+                      <field name="create_date"/>
+                    </group>
+                    <group string="Archivo">
+                      <field name="datas" filename="name" widget="binary"/>
+                    </group>
+                    <field name="is_xml" invisible="1"/>
+                    <field name="is_pdf" invisible="1"/>
+                    <group string="Vista Previa PDF" colspan="2" attrs="{'invisible': [('is_pdf', '=', False)]}">
+                      <field name="datas" filename="name" widget="pdf_viewer"
+                             readonly="1" nolabel="1" colspan="2"
+                             options="{'disable_zoom': false, 'disable_scroll': false}"/>
+                    </group>
+                    <group string="Vista Previa XML" colspan="2" attrs="{'invisible': [('is_xml', '=', False)]}">
+                      <button name="action_preview_xml" string="Abrir XML en nueva pestaña"
+                              type="object"
+                              class="oe_highlight"
+                              icon="fa-external-link"/>
+                      <field name="xml_content_text" nolabel="1" readonly="1"
+                             widget="text" colspan="2"
+                             placeholder="Cargando contenido XML..."
+                             options="{'wrap': false}"/>
+                    </group>
+                  </sheet>
+                </form>
               </field>
             </page>
 
@@ -613,6 +648,79 @@
                 <field name="bandeja_last_num"/>
                 <field name="last_response_date" readonly="1"/>
               </group>
+              <group string="XML request / response AEAT" colspan="2">
+                <field name="xml_tecnico_ids" nolabel="1" colspan="2">
+                  <tree create="0" delete="0" string="XML técnicos" default_order="create_date desc">
+                    <field name="name"/>
+                    <field name="tipo_documento" optional="show"/>
+                    <field name="file_size" optional="show"/>
+                    <field name="create_date"/>
+                    <field name="datas" filename="name" widget="binary" readonly="1"/>
+                    <button name="action_preview_xml" type="object" class="btn-link"
+                            icon="fa-external-link" title="Abrir XML"/>
+                    <button name="action_eliminar_documento" type="object" class="btn-link"
+                            icon="fa-trash-o" title="Eliminar XML"/>
+                  </tree>
+                  <form>
+                    <sheet>
+                      <group>
+                        <field name="name"/>
+                        <field name="mimetype"/>
+                        <field name="file_size"/>
+                        <field name="create_date"/>
+                      </group>
+                      <group string="Archivo">
+                        <field name="datas" filename="name" widget="binary"/>
+                      </group>
+                      <field name="is_xml" invisible="1"/>
+                      <group string="Vista Previa XML" colspan="2" attrs="{'invisible': [('is_xml', '=', False)]}">
+                        <button name="action_preview_xml" string="Abrir XML en nueva pestaña"
+                                type="object" class="oe_highlight" icon="fa-external-link"/>
+                        <field name="xml_content_text" nolabel="1" readonly="1"
+                               widget="text" colspan="2"
+                               options="{'wrap': false}"/>
+                      </group>
+                    </sheet>
+                  </form>
+                </field>
+              </group>
+            </page>
+            <page string="TARIC / Técnico" name="taric_tecnico">
+              <separator string="Detalle TARIC (consulta técnica)"/>
+              <field name="taric_medida_ids" nolabel="1"
+                     context="{'default_expediente_id': id}">
+                <tree create="0" delete="0"
+                      decoration-info="decision_status == 'requires_decision'"
+                      decoration-muted="decision_status in ('not_applicable', 'info_only')"
+                      decoration-success="decision_status == 'decided' and decision_answer in ('yes', 'claim')"
+                      decoration-danger="decision_answer == 'no'">
+                  <field name="item_number" string="Partida" optional="show"/>
+                  <field name="partida_arancelaria"/>
+                  <field name="measure_code"/>
+                  <field name="measure_title"/>
+                  <field name="kind"/>
+                  <field name="decision_status"/>
+                  <field name="decision_answer" optional="show"
+                         decoration-danger="decision_answer == 'no'"
+                         decoration-success="decision_answer in ('yes', 'claim')"
+                         decoration-warning="decision_answer == 'unknown'"/>
+                  <field name="selected_certificate_code" optional="show"/>
+                  <button name="action_ver_fundamento" type="object" string="Ver fundamento" class="oe_link"/>
+                </tree>
+              </field>
+              <separator string="Historial / candidatos descartados"/>
+              <field name="documento_requerido_ids" nolabel="1"
+                     domain="[('estado_requisito', 'in', ['no_aplica', 'por_determinar'])]">
+                <tree create="0" delete="0" decoration-muted="1">
+                  <field name="line_id" string="Línea"/>
+                  <field name="name"/>
+                  <field name="codigo_documento"/>
+                  <field name="tipo_requisito"/>
+                  <field name="estado_requisito"/>
+                  <field name="motivo_no_aplica"/>
+                  <field name="aplicabilidad" optional="hide"/>
+                </tree>
+              </field>
             </page>
           </notebook>
         </sheet>
@@ -791,7 +899,7 @@ if records:
     </field>
   </record>
 
-  <!-- Vista Popup para Detalle de Documento Requerido -->
+  <!-- Vista Popup para Detalle / Adjuntar Documento Requerido -->
   <record id="view_aduana_expediente_documento_requerido_popup" model="ir.ui.view">
     <field name="name">aduana.expediente.documento.requerido.popup</field>
     <field name="model">aduana.expediente.documento.requerido</field>
@@ -801,64 +909,104 @@ if records:
           <group>
             <group>
               <field name="expediente_id" readonly="1"/>
+              <field name="factura_id" readonly="1"/>
               <field name="partida_arancelaria" readonly="1"/>
               <field name="codigo_documento" readonly="1"/>
               <field name="name" readonly="1"/>
-              <field name="mandatory" readonly="1"/>
+              <field name="tipo_requisito" readonly="1"/>
+              <field name="estado_requisito" readonly="1"/>
               <field name="estado" readonly="1"/>
             </group>
             <group>
+              <field name="aplicabilidad" readonly="1"/>
+              <field name="taric_medida" string="Medida TARIC" readonly="1"/>
+              <field name="taric_medida_titulo" string="Descripción medida" readonly="1"/>
               <field name="fecha_subida" readonly="1"/>
               <field name="subido_por" readonly="1"/>
-              <field name="documento_filename" readonly="1"/>
+              <field name="taric_medida_id" invisible="1"/>
+              <field name="mandatory" invisible="1"/>
             </group>
           </group>
-          
-          <group string="Descripción Completa" colspan="2">
-            <field name="description" readonly="1" nolabel="1" widget="text" 
-                   placeholder="No hay descripción disponible"
-                   colspan="2"/>
-          </group>
-          
-          <group string="Notas" colspan="2" attrs="{'invisible': [('notas', '=', False)]}">
-            <field name="notas" readonly="1" nolabel="1" widget="text" colspan="2"/>
-          </group>
-          
-          <!-- Campos invisibles para determinar tipo de archivo -->
-          <field name="is_pdf" invisible="1"/>
-          <field name="is_image" invisible="1"/>
-          
-          <!-- Vista Previa PDF -->
-          <group string="Vista Previa del Documento" colspan="2" 
-                 attrs="{'invisible': [('documento_subido', '=', False)]}">
-            <group colspan="2" attrs="{'invisible': [('is_pdf', '=', False)]}">
-              <field name="documento_subido" filename="documento_filename" 
-                     widget="pdf_viewer" 
-                     readonly="1" nolabel="1" colspan="2"
-                     options="{'disable_zoom': false, 'disable_scroll': false}"/>
-            </group>
-            <group colspan="2" attrs="{'invisible': [('is_image', '=', False)]}">
-              <field name="documento_subido" filename="documento_filename" 
-                     widget="image" 
-                     readonly="1" nolabel="1" colspan="2"
-                     options="{'preview_image': true}"/>
-            </group>
-            <group colspan="2" attrs="{'invisible': ['|', ('is_pdf', '=', True), ('is_image', '=', True)]}">
-              <div class="alert alert-info" role="alert" colspan="2">
-                <p>El documento está subido pero no se puede previsualizar en este formato.</p>
-                <p><strong>Nombre del archivo:</strong> <field name="documento_filename" readonly="1" nolabel="1"/></p>
+
+          <notebook>
+            <page string="Documento" name="doc_general">
+              <separator string="Descripción"/>
+              <field name="description" readonly="1" nolabel="1" widget="text"
+                     placeholder="No hay descripción disponible"/>
+              <separator string="Referencia / notas"/>
+              <field name="notas" nolabel="1" widget="text"
+                     placeholder="Nº de licencia, referencia documental u observaciones"/>
+              <field name="is_pdf" invisible="1"/>
+              <field name="is_image" invisible="1"/>
+              <!-- filename debe ser editable por el widget binary (no readonly en la vista) -->
+              <field name="documento_filename" invisible="1"/>
+
+              <group string="Adjuntar archivo">
+                <field name="documento_subido" filename="documento_filename" widget="binary"
+                       string="Archivo PDF / documento"/>
+              </group>
+              <div class="alert alert-warning mt-2" role="status"
+                   attrs="{'invisible': [('documento_subido', '!=', False)]}">
+                <p class="mb-0">Este documento aún no ha sido subido. Elija un archivo y pulse Guardar.</p>
               </div>
-            </group>
-          </group>
-          
-          <group string="Documento no subido" colspan="2" 
-                 attrs="{'invisible': [('documento_subido', '!=', False)]}">
-            <div class="alert alert-warning" role="alert">
-              <p>Este documento aún no ha sido subido.</p>
-            </div>
-          </group>
+              <div class="alert alert-success mt-2" role="status"
+                   attrs="{'invisible': [('documento_subido', '=', False)]}">
+                <p class="mb-0">
+                  Archivo listo:
+                  <field name="documento_filename" readonly="1" nolabel="1" class="oe_inline"/>
+                  — pulse Guardar para registrarlo en el expediente.
+                </p>
+              </div>
+            </page>
+
+            <page string="Contexto TARIC" name="doc_taric">
+              <group>
+                <group string="Consulta">
+                  <field name="taric_fecha_consulta" readonly="1"/>
+                  <field name="taric_nomenclatura_desc" readonly="1"/>
+                  <field name="taric_ambito_geo" readonly="1"/>
+                </group>
+                <group string="Medida / Reglamento">
+                  <field name="taric_medida" readonly="1"/>
+                  <field name="taric_medida_titulo" readonly="1"/>
+                  <field name="taric_reglamento" readonly="1"/>
+                  <field name="taric_derechos" readonly="1"/>
+                  <field name="taric_es_alternativa" readonly="1"/>
+                  <field name="taric_codigos_alternativos" readonly="1"/>
+                </group>
+              </group>
+              <separator string="Matriz de condiciones (alternativas)"/>
+              <field name="taric_matriz_condiciones" readonly="1" nolabel="1" widget="text"
+                     placeholder="Sin matriz de condiciones capturada"/>
+              <separator string="Resumen arancelario (derechos / suspensiones)"/>
+              <field name="taric_resumen_arancelario" readonly="1" nolabel="1" widget="text"
+                     placeholder="Sin resumen arancelario"/>
+            </page>
+          </notebook>
         </sheet>
+        <footer>
+          <button name="action_guardar_adjunto" type="object" string="Guardar" class="btn-primary"
+                  context="{'dialog_size': 'extra-large'}"/>
+          <button string="Cancelar" special="cancel" class="btn-secondary"/>
+        </footer>
       </form>
+    </field>
+  </record>
+
+  <!-- Tree Documentos (smart button): Subir documento en lugar de Nuevo -->
+  <record id="view_aduana_expediente_documentos_tree" model="ir.ui.view">
+    <field name="name">aduana.expediente.documentos.tree</field>
+    <field name="model">ir.attachment</field>
+    <field name="arch" type="xml">
+      <tree string="Documentos" create="0" delete="0" js_class="expediente_documentos_list" multi_edit="0">
+        <field name="name"/>
+        <field name="tipo_documento" optional="show"/>
+        <field name="mimetype" optional="hide"/>
+        <field name="file_size" optional="show"/>
+        <field name="create_date" optional="show"/>
+        <field name="datas" filename="name" widget="binary" readonly="1"/>
+        <button name="action_eliminar_documento" type="object" class="btn-link" icon="fa-trash-o" title="Eliminar documento"/>
+      </tree>
     </field>
   </record>
 
@@ -881,8 +1029,147 @@ if records:
         <field name="descuento"/>
         <field name="valor_linea" sum="Total"/>
         <field name="verificacion_estado"/>
-        <field name="pais_origen"/>
+        <field name="pais_origen_id" options="{'no_create': True, 'no_open': True}"/>
+        <field name="pais_origen" invisible="1"/>
       </tree>
+    </field>
+  </record>
+
+  <!-- Formulario operativo: requisitos TARIC por línea de mercancía -->
+  <record id="view_aduana_expediente_taric_linea_form" model="ir.ui.view">
+    <field name="name">aduana.expediente.taric.linea.form</field>
+    <field name="model">aduana.expediente.taric.linea</field>
+    <field name="arch" type="xml">
+      <form string="Requisitos TARIC">
+        <sheet>
+          <group>
+            <group>
+              <field name="expediente_id" readonly="1"/>
+              <field name="item_number" readonly="1"/>
+              <field name="descripcion" readonly="1"/>
+            </group>
+            <group>
+              <field name="partida_arancelaria" readonly="1"/>
+              <field name="factura_id" readonly="1"/>
+              <field name="situacion" readonly="1"/>
+              <field name="fecha_consulta" readonly="1"/>
+            </group>
+          </group>
+          <separator string="Preguntas pendientes"/>
+          <field name="pregunta_ids" nolabel="1" colspan="2">
+            <tree create="0" delete="0" editable="0"
+                  decoration-warning="decision_status == 'requires_decision'"
+                  decoration-success="decision_status == 'decided' and decision_answer in ('yes', 'claim')"
+                  decoration-danger="decision_answer == 'no'"
+                  decoration-muted="decision_status in ('not_applicable', 'info_only')">
+              <field name="measure_title" string="Requisito"/>
+              <field name="decision_question" string="Pregunta"/>
+              <field name="operador_explicacion" string="Qué comprobar" optional="show"/>
+              <field name="kind" invisible="1"/>
+              <field name="decision_status" invisible="1"/>
+              <field name="decision_answer" string="Respuesta" optional="show"
+                     decoration-danger="decision_answer == 'no'"
+                     decoration-success="decision_answer in ('yes', 'claim')"
+                     decoration-warning="decision_answer == 'unknown'"/>
+              <field name="option_yes_label" invisible="1"/>
+              <field name="option_no_label" invisible="1"/>
+              <button name="action_decidir_si" type="object" string="Procede / Sí"
+                      attrs="{'invisible': [('kind', 'not in', ['mandatory_control', 'declaration'])]}"/>
+              <button name="action_decidir_no" type="object" string="No procede"
+                      attrs="{'invisible': [('kind', 'not in', ['mandatory_control', 'declaration'])]}"/>
+              <button name="action_decidir_acogerse" type="object" string="Solicitar"
+                      attrs="{'invisible': [('kind', '!=', 'optional_benefit')]}"/>
+              <button name="action_decidir_no_acogerse" type="object" string="No solicitar"
+                      attrs="{'invisible': [('kind', '!=', 'optional_benefit')]}"/>
+              <button name="action_decidir_desconocido" type="object" string="No lo sé / revisión"/>
+              <button name="action_ver_fundamento" type="object" string="Ver fundamento TARIC" class="oe_link"/>
+            </tree>
+          </field>
+          <separator string="Documentación necesaria"/>
+          <field name="documento_tarea_ids" nolabel="1" colspan="2">
+            <tree create="0" delete="0"
+                  decoration-danger="estado_requisito == 'pendiente_aportar'"
+                  decoration-warning="estado_requisito == 'pendiente_revision'"
+                  decoration-success="estado_requisito == 'validado'">
+              <field name="name" string="Requisito"/>
+              <field name="codigo_documento" string="Código" optional="show"/>
+              <field name="tipo_requisito" string="Tipo"/>
+              <field name="estado_requisito" string="Estado"/>
+              <field name="documento_subido" filename="documento_filename" optional="show"/>
+              <field name="documento_filename" invisible="1"/>
+              <field name="notas" string="Referencia / notas" optional="show"/>
+              <button name="action_adjuntar_requisito" type="object" string="Adjuntar"
+                      attrs="{'invisible': [('tipo_requisito', '=', 'declaracion')]}"/>
+              <button name="action_confirmar_declaracion" type="object" string="Confirmar declaración"
+                      attrs="{'invisible': [('tipo_requisito', '!=', 'declaracion')]}"/>
+              <button name="action_marcar_pendiente_revision" type="object" string="Revisar"
+                      attrs="{'invisible': [('estado_requisito', '!=', 'pendiente_aportar')]}"/>
+              <button name="action_marcar_validado" type="object" string="Validar"
+                      attrs="{'invisible': [('estado_requisito', 'not in', ['pendiente_revision', 'pendiente_aportar'])]}"/>
+            </tree>
+          </field>
+          <separator string="Aranceles y beneficios"/>
+          <field name="arancel_ids" nolabel="1" colspan="2">
+            <tree create="0" delete="0">
+              <field name="measure_title" string="Concepto"/>
+              <field name="derechos" string="Información"/>
+              <field name="ambito_geo" optional="show"/>
+              <field name="reglamento" optional="show"/>
+              <button name="action_ver_fundamento" type="object" string="Ver fundamento" class="oe_link"/>
+            </tree>
+          </field>
+          <field name="resumen_arancelario" readonly="1" nolabel="1" colspan="2"
+                 attrs="{'invisible': [('resumen_arancelario', '=', False)]}"/>
+        </sheet>
+        <footer>
+          <button string="Cerrar" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_aduana_expediente_taric_medida_fundamento" model="ir.ui.view">
+    <field name="name">aduana.expediente.taric.medida.fundamento</field>
+    <field name="model">aduana.expediente.taric.medida</field>
+    <field name="arch" type="xml">
+      <form string="Fundamento TARIC">
+        <sheet>
+          <group>
+            <group>
+              <field name="measure_code" readonly="1"/>
+              <field name="measure_title" readonly="1"/>
+              <field name="kind" readonly="1"/>
+              <field name="ambito_geo" readonly="1"/>
+              <field name="reglamento" readonly="1"/>
+              <field name="derechos" readonly="1"/>
+            </group>
+            <group>
+              <field name="partida_arancelaria" readonly="1"/>
+              <field name="fecha_consulta" readonly="1"/>
+              <field name="option_yes_code" readonly="1"/>
+              <field name="option_no_code" readonly="1"/>
+              <field name="selected_certificate_code" readonly="1"/>
+            </group>
+          </group>
+          <!-- Fuera de group de 2 columnas: ocupan todo el ancho del popup -->
+          <separator string="Condiciones AEAT"/>
+          <field name="condicion_ids" nolabel="1" readonly="1" colspan="2">
+            <tree>
+              <field name="sequence" optional="hide"/>
+              <field name="role"/>
+              <field name="certificate_code"/>
+              <field name="name"/>
+            </tree>
+          </field>
+          <separator string="Texto condiciones"/>
+          <field name="condiciones_raw" readonly="1" nolabel="1" colspan="2"/>
+          <separator string="Indicaciones"/>
+          <field name="indicaciones_raw" readonly="1" nolabel="1" colspan="2"/>
+        </sheet>
+        <footer>
+          <button string="Cerrar" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
     </field>
   </record>
 

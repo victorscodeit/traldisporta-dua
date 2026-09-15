@@ -98,6 +98,30 @@ def init_expediente_profile_defaults(env):
             icp.set_param(key, value)
 
 
+def migrate_country_many2one_fields(env):
+    """Rellena pais_*_id desde códigos ISO existentes en expedientes y líneas."""
+    Expediente = env["aduana.expediente"].sudo()
+    Line = env["aduana.expediente.line"].sudo()
+    exps = Expediente.search([
+        "|",
+        "&", ("pais_origen", "!=", False), ("pais_origen_id", "=", False),
+        "&", ("pais_destino", "!=", False), ("pais_destino_id", "=", False),
+    ])
+    if exps:
+        exps._sync_country_ids_from_codes()
+        _logger.info("Migración países: %s expedientes sincronizados", len(exps))
+    lines = Line.search([
+        ("pais_origen", "!=", False),
+        ("pais_origen_id", "=", False),
+    ])
+    for line in lines:
+        country = Expediente._country_from_iso(line.pais_origen)
+        if country:
+            line.write({"pais_origen_id": country.id})
+    if lines:
+        _logger.info("Migración países: %s líneas sincronizadas", len(lines))
+
+
 def post_init_hook(cr, registry):
     from odoo import api, SUPERUSER_ID
 
@@ -105,3 +129,4 @@ def post_init_hook(cr, registry):
     migrate_aeat_config_to_companies(env)
     migrate_import_ddt_fields(env)
     init_expediente_profile_defaults(env)
+    migrate_country_many2one_fields(env)

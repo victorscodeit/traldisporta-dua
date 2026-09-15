@@ -799,7 +799,7 @@
       <tbody>
         <tr>
           <td><strong>Consultar TARIC</strong></td>
-          <td>Consulta la API TARIC de la UE por cada partida única del expediente. Usa país destino (export) u origen (import). Crea/actualiza filas de documentos requeridos. Muestra aviso si la API no está accesible desde el servidor.</td>
+          <td>Consulta el Arancel Integrado AEAT (DD09) con el certificado P12 del módulo, por cada partida única del expediente. Opcionalmente estructura el resultado con OpenAI. Crea/actualiza filas de documentos requeridos en cola (<code>root.taric_aeat</code>). El resumen queda en el chatter.</td>
         </tr>
         <tr>
           <td><strong>Subir documento</strong></td>
@@ -809,7 +809,9 @@
     </table>
     <div class="note">
       La consulta TARIC es <strong>informativa</strong>: no se envía automáticamente a AEAT en la presentación CC515C/CC415A.
-      El servidor Odoo debe poder acceder a <code>ec.europa.eu</code> (HTTPS saliente).
+      Requisitos: certificado P12 válido en Configuración Aduanas, y (recomendado) API key OpenAI para estructurar el HTML.
+      La captura de Sede es <strong>frágil</strong> ante cambios de interfaz; la API TARIC UE queda solo como fallback de emergencia
+      (<code>Fuente consulta TARIC = API TARIC UE</code>).
     </div>
   </section>
 
@@ -880,9 +882,9 @@
           <td>Usar <code>ES000101</code> en pruebas (automático si endpoint contiene <code>prewww</code>).</td>
         </tr>
         <tr>
-          <td>TARIC: sin resultados / firewall</td>
-          <td>Servidor sin salida a UE o API caída</td>
-          <td>Abrir HTTPS a <code>ec.europa.eu</code> o añadir documentos manualmente.</td>
+          <td>TARIC: sin resultados / certificado / Sede</td>
+          <td>Fallo P12, timeout AEAT o cambio HTML Sede</td>
+          <td>Comprobar certificado y OpenAI; o añadir documentos manualmente. Fallback UE solo en Configuración.</td>
         </tr>
       </tbody>
     </table>
@@ -917,7 +919,7 @@
         <tr><td>Validar importación</td><td>Import</td><td>No</td><td>—</td></tr>
         <tr><td>Generar declaración</td><td>Import</td><td>No</td><td>—</td></tr>
         <tr><td>Presentar importación</td><td>Import</td><td><strong>Sí</strong></td><td>CC415A</td></tr>
-        <tr><td>Consultar TARIC</td><td>Ambos</td><td>Sí (API UE)</td><td>TARIC goodsMeasForWs</td></tr>
+        <tr><td>Consultar TARIC</td><td>Ambos</td><td>Sí (cert AEAT + cola)</td><td>Arancel Integrado DD09 + IA</td></tr>
         <tr><td>Consultar estado</td><td>Import</td><td><strong>Sí</strong></td><td>ConsultaImportacionV3</td></tr>
         <tr><td>Bandeja importación</td><td>Import</td><td><strong>Sí</strong></td><td>ListaDecV4 + DetalleV5 (IMPORAES)</td></tr>
         <tr><td>Cerrar expediente</td><td>Ambos</td><td>No</td><td>—</td></tr>

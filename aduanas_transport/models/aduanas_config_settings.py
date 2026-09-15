@@ -73,6 +73,35 @@ class AduanasConfigSettings(models.TransientModel):
         help="Tras presentación CC415A aceptada, cierra el expediente de importación automáticamente.",
     )
 
+    taric_source = fields.Selection(
+        [("aeat", "AEAT (Arancel Integrado / certificado)"), ("ue", "API TARIC UE (emergencia)")],
+        string="Fuente consulta TARIC",
+        default="aeat",
+        help="Por defecto consulta el Arancel Integrado AEAT con el certificado P12 del módulo.",
+    )
+    taric_aeat_base_url = fields.Char(
+        string="URL base Arancel AEAT",
+        default="https://www1.agenciatributaria.gob.es",
+        help="Host de la consulta telemática DD09 (normalmente www1 producción).",
+    )
+    taric_aeat_ageo = fields.Char(
+        string="Ámbito geográfico (ageo)",
+        default="1011",
+        help="Código ageo AEAT; 1011 = ERGA OMNES / todos (probado en consulta).",
+    )
+    taric_aeat_timeout = fields.Integer(
+        string="Timeout TARIC AEAT (s)",
+        default=60,
+        help="Timeout HTTP por petición al Arancel Integrado.",
+    )
+    taric_aeat_use_ai = fields.Boolean(
+        string="Estructurar TARIC AEAT con OpenAI",
+        default=True,
+        store=False,
+        help="Si está activo, OpenAI normaliza el HTML/texto AEAT a documentos requeridos "
+             "(además del parseo regex). Requiere API key OpenAI.",
+    )
+
     _PARAMS = {
         "aeat_endpoint_cc515c": ("aduanas_transport.endpoint.cc515c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC515CV1SOAP"),
         "aeat_endpoint_cc511c": ("aduanas_transport.endpoint.cc511c", "https://prewww1.aeat.es/wlpl/ADEX-JDIT/ws/aes/CC511CV1SOAP"),
@@ -99,6 +128,13 @@ class AduanasConfigSettings(models.TransientModel):
         "default_oficina_export": ("aduanas_transport.default_oficina_export", "ES000101"),
         "default_oficina_import": ("aduanas_transport.default_oficina_import", "ES000101"),
         "default_pais_transporte": ("aduanas_transport.default_pais_transporte", "ES"),
+        "taric_source": ("aduanas_transport.taric_source", "aeat"),
+        "taric_aeat_base_url": (
+            "aduanas_transport.taric_aeat_base_url",
+            "https://www1.agenciatributaria.gob.es",
+        ),
+        "taric_aeat_ageo": ("aduanas_transport.taric_aeat_ageo", "1011"),
+        "taric_aeat_timeout": ("aduanas_transport.taric_aeat_timeout", "60"),
     }
 
     @api.model
@@ -110,7 +146,7 @@ class AduanasConfigSettings(models.TransientModel):
                 value = icp.get_param(param) or default
                 if field_name == "aeat_endpoint_imp_decl" and "ADIM-JDIT/ws/imp/DeclaracionSOAP" in value:
                     value = self._PARAMS[field_name][1]
-                if field_name in ("ocr_max_workers", "ocr_dpi"):
+                if field_name in ("ocr_max_workers", "ocr_dpi", "taric_aeat_timeout"):
                     try:
                         value = int(value)
                     except (TypeError, ValueError):
@@ -126,6 +162,10 @@ class AduanasConfigSettings(models.TransientModel):
             values["auto_close_import_on_accepted"] = icp.get_param(
                 "aduanas_transport.auto_close_import_on_accepted", "0"
             ) == "1"
+        if "taric_aeat_use_ai" in fields_list:
+            values["taric_aeat_use_ai"] = icp.get_param(
+                "aduanas_transport.taric_aeat_use_ai", "1"
+            ) not in ("0", "false", "False", "no")
         return values
 
     def action_apply(self):
@@ -145,9 +185,18 @@ class AduanasConfigSettings(models.TransientModel):
                     value = max(72, min(400, int(value)))
                 except (TypeError, ValueError):
                     value = 250
+            if field_name == "taric_aeat_timeout":
+                try:
+                    value = max(10, min(300, int(value)))
+                except (TypeError, ValueError):
+                    value = 60
             if field_name in ("ocr_vision_model", "ocr_text_model"):
                 value = (str(value or default).strip() or default)
-            if field_name in ("ocr_max_workers", "ocr_dpi"):
+            if field_name == "taric_source":
+                value = (str(value or default).strip().lower() or default)
+                if value not in ("aeat", "ue"):
+                    value = "aeat"
+            if field_name in ("ocr_max_workers", "ocr_dpi", "taric_aeat_timeout"):
                 value = str(value)
             icp.set_param(param, value)
         form_vals = {}
@@ -191,6 +240,10 @@ class AduanasConfigSettings(models.TransientModel):
         icp.set_param(
             "aduanas_transport.auto_close_import_on_accepted",
             "1" if self.auto_close_import_on_accepted else "0",
+        )
+        icp.set_param(
+            "aduanas_transport.taric_aeat_use_ai",
+            "1" if self.taric_aeat_use_ai else "0",
         )
         if form_vals:
             self.write(form_vals)

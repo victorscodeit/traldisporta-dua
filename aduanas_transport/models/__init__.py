@@ -1,5 +1,6 @@
 from . import (
     aduana_expediente_factura,
+    aduana_expediente_taric,
     aduana_expediente,
     aduanas_config_settings,
     res_company,

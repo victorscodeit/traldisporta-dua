@@ -339,7 +339,7 @@ Errores AEAT: campo *Mensaje de error*, incidencias enlazadas y notas del chatte
 |---------|-------------|
 | Subir facturas (wizard) | Crear expedientes (1 PDF = 1 expediente) o añadir PDFs a uno existente |
 | Import MSoft | Carga desde sistema origen (si configurado) |
-| Documentos requeridos TARIC | Certificados según partida (consulta API UE) |
+| Documentos requeridos TARIC | Certificados según partida (consulta AEAT + IA) |
 
 ### 8.1 Seguimiento post-MRN: manual vs cron
 

@@ -213,11 +213,14 @@ class AduanaValidator(models.AbstractModel):
         pais_origen = (expediente.pais_origen or "").strip().upper()
         pais_destino = (expediente.pais_destino or "").strip().upper()
         if not re.match(r"^[A-Z]{2}$", pais_origen):
-            errors.append(_("El país origen debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA)"))
-        elif pais_origen != "AD":
-            errors.append(_("En importación Andorra → España, countryOfDispatch debe ser AD. Revise el remitente."))
+            errors.append(_("El país de expedición (origen) debe ser un código ISO de 2 letras (ej: AD, CH, GB, MA). Revise el remitente o el campo País origen."))
+        elif pais_origen == "ES":
+            errors.append(_(
+                "En importación (país tercero → España), el país de expedición no puede ser ES. "
+                "Debe ser el país del remitente/exportador (ej: AD). Revise el remitente y su país."
+            ))
         if pais_destino != "ES":
-            errors.append(_("En importación Andorra → España, countryOfDestination debe ser ES."))
+            errors.append(_("En importación, el país destino debe ser ES (España)."))
         if not (getattr(expediente, "import_region_of_destination", "") or "").strip():
             errors.append(_("En importación H1 debe informarse Region of Destination."))
         preference = (getattr(expediente, "import_preference", "") or "").strip()

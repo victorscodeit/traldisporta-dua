@@ -91,6 +91,27 @@
             </group>
           </group>
 
+          <group string="Consulta TARIC / Documentos requeridos">
+            <group>
+              <field name="taric_source"/>
+              <field name="taric_aeat_use_ai"/>
+              <field name="taric_aeat_timeout"/>
+            </group>
+            <group>
+              <field name="taric_aeat_base_url" placeholder="https://www1.agenciatributaria.gob.es"/>
+              <field name="taric_aeat_ageo" placeholder="1011"/>
+              <div class="text-muted" style="margin-top: 8px;">
+                Por defecto se consulta el <strong>Arancel Integrado AEAT (DD09)</strong> con el
+                certificado P12 del módulo (mTLS). OpenAI (si está activo) solo estructura el
+                resultado scrapeado; no inventa códigos sin contenido AEAT.
+                <br/>
+                La consulta es <strong>frágil</strong> ante cambios de HTML en Sede. Requiere
+                certificado válido + cola <code>root.taric_aeat</code> en el servidor.
+                La API TARIC UE queda solo como fallback de emergencia.
+              </div>
+            </group>
+          </group>
+
           <group string="Perfil operativo expedientes (agente + flota)">
             <group>
               <field name="default_tipo_representacion"/>

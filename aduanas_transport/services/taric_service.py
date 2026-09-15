@@ -1,101 +1,320 @@
 # -*- coding: utf-8 -*-
 """
-Servicio para consultar la API TARIC de la Unión Europea
-Documentación: https://ec.europa.eu/taxation_customs/dds2/taric/services/goods?wsdl
+Servicio TARIC / documentos requeridos.
+
+Fuente por defecto: Arancel Integrado AEAT (certificado + scraper + IA).
+Fallback opcional: API TARIC de la UE (ec.europa.eu).
+
+Config:
+  aduanas_transport.taric_source = aeat | ue
 """
+import json
 import logging
+import re
+
 from odoo import models, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
 
+
 class TaricService(models.AbstractModel):
     _name = "aduanas.taric.service"
-    _description = "Servicio para consultar API TARIC de la UE"
+    _description = "Servicio consulta TARIC (AEAT / UE)"
 
     TARIC_WSDL_URL = "https://ec.europa.eu/taxation_customs/dds2/taric/services/goods?wsdl"
     TARIC_SERVICE_URL = "https://ec.europa.eu/taxation_customs/dds2/taric/services/goods"
-    
-    def get_required_documents(self, goods_code, country_code="ES", reference_date=None, trade_movement=None, direction=None):
+
+    def _taric_source(self):
+        src = (
+            self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.taric_source")
+            or "aeat"
+        ).strip().lower()
+        return src if src in ("aeat", "ue") else "aeat"
+
+    def _use_ai_parse(self):
+        icp = self.env["ir.config_parameter"].sudo()
+        flag = (icp.get_param("aduanas_transport.taric_aeat_use_ai") or "1").strip().lower()
+        return flag not in ("0", "false", "no")
+
+    def get_required_documents(
+        self,
+        goods_code,
+        country_code="ES",
+        reference_date=None,
+        trade_movement=None,
+        direction=None,
+    ):
         """
-        Consulta los documentos requeridos para una partida arancelaria usando la API TARIC.
-        
-        :param goods_code: Código de la partida arancelaria (8-10 dígitos)
-        :param country_code: Código del país destino/origen según el sentido (ISO de 2 letras)
-        :param reference_date: Fecha de referencia en formato YYYY-MM-DD (opcional, por defecto hoy)
-        :param trade_movement: Movimiento comercial - "E" para exportación, "I" para importación (opcional)
-        :param direction: Dirección del expediente ("export" o "import") - se usa para determinar trade_movement si no se proporciona
-        :return: Lista de diccionarios con información de documentos requeridos
+        Documentos requeridos para una partida.
+
+        Por defecto consulta AEAT (Sede Arancel Integrado) con el certificado del módulo.
         """
+        goods_code = "".join(ch for ch in str(goods_code or "") if ch.isdigit())[:10]
+        if len(goods_code) < 8:
+            _logger.warning("Código de partida arancelaria inválido: %s", goods_code)
+            return []
+
+        source = self._taric_source()
+        if source == "ue":
+            return self._get_required_documents_ue(
+                goods_code, country_code, reference_date, trade_movement, direction
+            )
+        return self._get_required_documents_aeat(
+            goods_code, country_code, reference_date, direction
+        )
+
+    def _get_required_documents_aeat(self, goods_code, country_code, reference_date, direction):
+        structure = self.get_taric_structure_aeat(
+            goods_code, country_code, reference_date, direction
+        )
+        docs = []
+        for medida in structure.get("medidas") or []:
+            for doc in medida.get("documentos") or []:
+                docs.append(doc)
+        _logger.info(
+            "AEAT TARIC %s → %d documento(s) en %d medida(s)",
+            goods_code, len(docs), len(structure.get("medidas") or []),
+        )
+        return docs
+
+    def get_taric_structure_aeat(
+        self, goods_code, country_code="ES", reference_date=None, direction=None
+    ):
+        """Consulta AEAT y devuelve medidas+condiciones+documentos derivados."""
+        scraper = self.env["aduanas.aeat.taric.scraper"]
+        try:
+            raw = scraper.fetch_taric_raw(
+                goods_code=goods_code,
+                direction=direction,
+                country_code=country_code,
+                reference_date=reference_date,
+            )
+        except UserError:
+            raise
+        except Exception as e:
+            _logger.exception("Error scrape AEAT TARIC: %s", e)
+            raise UserError(_("Error consultando TARIC en AEAT: %s") % str(e)) from e
+
+        structure = scraper.build_taric_structure(
+            raw, direction=direction, country_code=country_code
+        )
+
+        # Opcional: mejorar nombres con IA sin alterar la matriz
+        if self._use_ai_parse():
+            ai_docs = self._parse_aeat_text_with_ai(raw)
+            by_code = {
+                (d.get("code") or "").upper(): d
+                for d in (ai_docs or [])
+                if d.get("code")
+            }
+            for medida in structure.get("medidas") or []:
+                for doc in medida.get("documentos") or []:
+                    ai = by_code.get((doc.get("code") or "").upper())
+                    if not ai:
+                        continue
+                    if ai.get("name") and len(ai["name"]) > 8:
+                        doc["name"] = ai["name"][:200]
+                    if ai.get("description") and len(ai.get("description") or "") > len(
+                        doc.get("description") or ""
+                    ):
+                        doc["description"] = ai["description"][:2000]
+        return structure
+
+    def _get_required_documents_aeat_legacy_flat(self, goods_code, country_code, reference_date, direction):
+        """Compat: flat list (delegado a estructura)."""
+        return self._get_required_documents_aeat(
+            goods_code, country_code, reference_date, direction
+        )
+    def _merge_documents(self, primary, secondary):
+        """Une listas por código; prioriza nombre/descripción más específicos."""
+        by_code = {}
+        enrich_keys = (
+            "medida", "medida_titulo", "reglamento", "ambito_geo", "derechos",
+            "es_alternativa", "matriz_condiciones", "codigos_alternativos",
+            "fecha_consulta", "nomenclatura_desc", "resumen_arancelario",
+        )
+
+        def _score(doc):
+            name = (doc.get("name") or "").strip()
+            desc = (doc.get("description") or "").strip()
+            score = len(desc) + len(name)
+            src = doc.get("source") or ""
+            if src.endswith("_docs") or src == "aeat_ai":
+                score += 500
+            if src.endswith("_cond"):
+                score -= 200
+            # Penalizar etiquetas genéricas cortas
+            low = name.lower()
+            for bad in (
+                "aplicar el derecho",
+                "presentación de un certificado",
+                "importación/exportación autorizada",
+                "otras condiciones",
+                "condición taric",
+            ):
+                if bad in low:
+                    score -= 100
+            return score
+
+        for doc in (primary or []) + (secondary or []):
+            code = (doc.get("code") or "").strip().upper()
+            if not code:
+                continue
+            if code not in by_code or _score(doc) > _score(by_code[code]):
+                prev = by_code.get(code) or {}
+                by_code[code] = dict(doc)
+                by_code[code]["code"] = code
+                # conservar enriquecimiento previo si el ganador no lo trae
+                for key in enrich_keys:
+                    if not by_code[code].get(key) and prev.get(key):
+                        by_code[code][key] = prev[key]
+            else:
+                cur = by_code[code]
+                if len(doc.get("description") or "") > len(cur.get("description") or ""):
+                    cur["description"] = doc["description"]
+                if doc.get("mandatory"):
+                    cur["mandatory"] = True
+                for key in enrich_keys:
+                    if not cur.get(key) and doc.get(key):
+                        cur[key] = doc[key]
+        return list(by_code.values())
+
+    def _parse_aeat_text_with_ai(self, raw):
+        """Estructura el texto AEAT en documentos requeridos vía OpenAI."""
+        api_key = self.env["res.config.settings"].get_openai_api_key()
+        if not api_key:
+            _logger.info("TARIC AEAT: sin OpenAI API key; se usa solo parseo regex")
+            return []
+        text = (raw.get("text") or "")[:12000]
+        if not text:
+            return []
+        model = (
+            self.env["ir.config_parameter"].sudo().get_param("aduanas_transport.ocr_text_model")
+            or "gpt-4.1-mini"
+        )
+        prompt = (
+            "Eres un experto en aduanas españolas (TARIC / Arancel Integrado AEAT).\n"
+            "A partir del texto de medidas AEAT, extrae documentos, certificados, "
+            "autorizaciones o exenciones (códigos B/C/U/Y…).\n"
+            "PRIORIZA el texto de «Indicaciones especiales/Documentos presentados/"
+            "Certificados y autorizaciones»: ahí está la descripción real.\n"
+            "NO uses etiquetas genéricas del bloque Condiciones "
+            "(«Aplicar el derecho mencionado», «Presentación de un certificado…», "
+            "«Importación/exportación autorizada después de control», «Otras condiciones»).\n"
+            "NO inventes códigos que no aparezcan en el texto.\n"
+            "Para cada código: name corto y distintivo; description con el detalle AEAT "
+            "(qué es, reglamento o condición si aparece).\n"
+            "mandatory=true si parece documento a presentar; false si es exención/alternativa Yxxx.\n"
+            "Responde ÚNICAMENTE un JSON array:\n"
+            '[{"code":"C990","name":"...","description":"...","mandatory":true}]\n'
+            "Si no hay documentos, responde [].\n\n"
+            "Código nomenclatura: %s\n"
+            "Descripción mercancía: %s\n\n"
+            "TEXTO AEAT:\n%s"
+        ) % (
+            raw.get("dotted_code") or raw.get("goods_code") or "",
+            raw.get("description") or "",
+            text,
+        )
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=model,
+                temperature=0,
+                messages=[
+                    {"role": "system", "content": "Devuelve solo JSON válido."},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            content = (response.choices[0].message.content or "").strip()
+            # strip fences
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+            data = json.loads(content)
+            if not isinstance(data, list):
+                return []
+            docs = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                code = (item.get("code") or "").strip().upper()
+                if not code:
+                    continue
+                name = (item.get("name") or code).strip()
+                desc = (item.get("description") or name).strip()
+                docs.append({
+                    "code": code,
+                    "name": name[:200],
+                    "description": desc[:2000],
+                    "mandatory": bool(item.get("mandatory", True)),
+                    "source": "aeat_ai",
+                })
+            return docs
+        except Exception as e:
+            _logger.warning("TARIC AEAT IA parse falló: %s", e)
+            return []
+
+    def _get_required_documents_ue(
+        self, goods_code, country_code="ES", reference_date=None, trade_movement=None, direction=None
+    ):
+        """Consulta legacy API TARIC UE (SOAP)."""
         try:
             try:
-                from zeep import Client
-                from zeep.exceptions import Fault
+                from zeep import Client  # noqa: F401
+                from zeep.exceptions import Fault  # noqa: F401
             except ImportError:
                 raise UserError(_(
                     "Falta la librería zeep en el servidor Odoo. Instale: pip install zeep"
                 ))
-            
-            if not goods_code or len(str(goods_code).strip()) < 8:
-                _logger.warning("Código de partida arancelaria inválido: %s", goods_code)
-                return []
-            
-            # Limpiar código (solo números)
-            goods_code = ''.join(filter(str.isdigit, str(goods_code)))[:10]
-            if len(goods_code) < 8:
-                _logger.warning("Código de partida arancelaria debe tener al menos 8 dígitos: %s", goods_code)
-                return []
-            
-            # Determinar trade_movement si no se proporciona
+
             if not trade_movement and direction:
-                # E = Exportación (España → país tercero), I = Importación (país tercero → España)
                 trade_movement = "E" if direction == "export" else "I"
             elif not trade_movement:
-                # Por defecto, si no hay dirección, usar E (exportación)
                 trade_movement = "E"
-            
-            # Determinar country_code según dirección si no se proporciona
+
             if not country_code and direction:
-                # Para exportación (ES → AD), country_code es AD (destino)
-                # Para importación (AD → ES), country_code es ES (destino)
                 country_code = "AD" if direction == "export" else "ES"
-            
-            # Fecha de referencia por defecto (hoy)
+
             if not reference_date:
                 from datetime import date
                 reference_date = date.today().strftime("%Y-%m-%d")
-            
-            _logger.info("Consultando TARIC para código: %s, país: %s, trade_movement: %s, fecha: %s", 
-                        goods_code, country_code, trade_movement, reference_date)
-            
-            # Usar requests directamente (método que funciona en Postman)
-            # El WSDL puede dar 502, pero el endpoint del servicio funciona
+
+            _logger.info(
+                "Consultando TARIC UE código=%s país=%s trade=%s fecha=%s",
+                goods_code, country_code, trade_movement, reference_date,
+            )
             try:
-                return self._call_taric_with_requests(goods_code, country_code, reference_date, trade_movement)
+                return self._call_taric_with_requests(
+                    goods_code, country_code, reference_date, trade_movement
+                )
             except Exception as e:
                 error_msg = str(e)
                 _logger.warning("Error con método requests: %s", e)
-                # Si es un error de conexión, intentar con zeep como fallback
-                if '502' not in error_msg and 'Bad Gateway' not in error_msg:
+                if "502" not in error_msg and "Bad Gateway" not in error_msg:
                     try:
-                        _logger.info("Intentando con zeep como fallback...")
-                        return self._call_taric_with_zeep(goods_code, country_code, reference_date, trade_movement)
+                        return self._call_taric_with_zeep(
+                            goods_code, country_code, reference_date, trade_movement
+                        )
                     except Exception as e2:
-                        _logger.error("Ambos métodos fallaron. TARIC no está disponible.")
-                        raise UserError(_("TARIC no disponible: %s") % str(e2)) from e2
-                else:
-                    _logger.error("Servidor TARIC no disponible (502). Los usuarios pueden añadir documentos manualmente.")
-                    raise UserError(_(
-                        "El servicio TARIC de la UE no está disponible temporalmente (error 502). "
-                        "Intente más tarde o añada los documentos manualmente."
-                    ))
-
+                        raise UserError(_("TARIC UE no disponible: %s") % str(e2)) from e2
+                raise UserError(_(
+                    "El servicio TARIC de la UE no está disponible temporalmente (error 502). "
+                    "Intente más tarde o añada los documentos manualmente."
+                ))
         except UserError:
             raise
         except Exception as e:
-            _logger.exception("Error general consultando TARIC: %s", e)
+            _logger.exception("Error general consultando TARIC UE: %s", e)
             raise UserError(_("Error consultando TARIC: %s") % str(e)) from e
-    
+
+    def get_required_documents_legacy_entry(self, *args, **kwargs):
+        """Compatibilidad: no usado."""
+        return self.get_required_documents(*args, **kwargs)
+
     def _call_taric_with_requests(self, goods_code, country_code, reference_date, trade_movement):
         """Llama a TARIC usando requests exactamente igual que Postman."""
         import requests

@@ -43,6 +43,18 @@ class AduanaExpedienteFactura(models.Model):
     factura_mensaje_html = fields.Html(compute="_compute_factura_mensaje_html", store=False, sanitize=False)
     factura_datos_extraidos = fields.Text(string="Datos Extraídos", readonly=True)
     lineas_count = fields.Integer(string="Nº Líneas", compute="_compute_lineas_count", store=False)
+    peso_neto_total = fields.Float(
+        string="Peso neto total (kg)",
+        digits=(16, 3),
+        help="Opcional. Si se indica, se prorratea entre las líneas de esta factura "
+             "(por valor de línea; si no hay valor, por unidades; si no, a partes iguales).",
+    )
+    peso_bruto_total = fields.Float(
+        string="Peso bruto total (kg)",
+        digits=(16, 3),
+        help="Opcional. Si se indica, se prorratea entre las líneas de esta factura "
+             "(por valor de línea; si no hay valor, por unidades; si no, a partes iguales).",
+    )
 
     @api.depends("expediente_id", "expediente_id.line_ids", "expediente_id.line_ids.factura_id")
     def _compute_lineas_count(self):
@@ -51,6 +63,99 @@ class AduanaExpedienteFactura(models.Model):
                 rec.lineas_count = 0
             else:
                 rec.lineas_count = len(rec.expediente_id.line_ids.filtered(lambda l: l.factura_id == rec))
+
+    def _get_lineas_factura(self):
+        self.ensure_one()
+        if not self.expediente_id:
+            return self.env["aduana.expediente.line"]
+        return self.expediente_id.line_ids.filtered(lambda l: l.factura_id == self)
+
+    @staticmethod
+    def _prorratear_importe(total, weights, precision=3):
+        """Reparte `total` según `weights` (lista de floats >= 0). La última línea absorbe el resto."""
+        n = len(weights)
+        if n == 0:
+            return []
+        total = float(total or 0.0)
+        if total <= 0:
+            return [0.0] * n
+        safe = [max(float(w or 0.0), 0.0) for w in weights]
+        denom = sum(safe)
+        if denom <= 0:
+            safe = [1.0] * n
+            denom = float(n)
+        allocated = []
+        running = 0.0
+        for i, w in enumerate(safe):
+            if i == n - 1:
+                part = round(total - running, precision)
+            else:
+                part = round(total * (w / denom), precision)
+                # Evitar negativos por redondeo
+                part = max(part, 0.0)
+                running = round(running + part, precision)
+            allocated.append(part)
+        # Corregir deriva de redondeo si la última quedó negativa
+        if allocated and allocated[-1] < 0:
+            allocated[-1] = 0.0
+        return allocated
+
+    def _prorratear_pesos_a_lineas(self):
+        """Prorratea peso_neto_total / peso_bruto_total a las líneas de la factura."""
+        for rec in self:
+            neto = rec.peso_neto_total or 0.0
+            bruto = rec.peso_bruto_total or 0.0
+            if neto <= 0 and bruto <= 0:
+                continue
+            if neto > 0 and bruto > 0 and neto > bruto:
+                raise UserError(_(
+                    "En la factura «%s» el peso neto total (%.3f) no puede ser mayor "
+                    "que el peso bruto total (%.3f)."
+                ) % (rec.name or rec.numero_factura or rec.id, neto, bruto))
+            lines = rec._get_lineas_factura().sorted(key=lambda l: (l.item_number or 0, l.id))
+            if not lines:
+                continue
+            # Criterio: valor_linea → unidades → partes iguales
+            valores = [l.valor_linea or 0.0 for l in lines]
+            if sum(valores) > 0:
+                weights = valores
+            else:
+                unidades = [l.unidades or 0.0 for l in lines]
+                weights = unidades if sum(unidades) > 0 else [1.0] * len(lines)
+
+            neto_parts = rec._prorratear_importe(neto, weights) if neto > 0 else None
+            bruto_parts = rec._prorratear_importe(bruto, weights) if bruto > 0 else None
+            for idx, line in enumerate(lines):
+                vals = {}
+                if neto_parts is not None:
+                    vals["peso_neto"] = neto_parts[idx]
+                if bruto_parts is not None:
+                    vals["peso_bruto"] = bruto_parts[idx]
+                if vals:
+                    line.write(vals)
+
+    def action_prorratear_pesos(self):
+        """Botón: repartir pesos totales introducidos entre las líneas de la factura."""
+        for rec in self:
+            if (rec.peso_neto_total or 0) <= 0 and (rec.peso_bruto_total or 0) <= 0:
+                raise UserError(_(
+                    "Indique al menos el peso neto total o el peso bruto total de la factura «%s»."
+                ) % (rec.name or rec.numero_factura or rec.id))
+            if not rec._get_lineas_factura():
+                raise UserError(_(
+                    "La factura «%s» no tiene líneas vinculadas para prorratear."
+                ) % (rec.name or rec.numero_factura or rec.id))
+        self._prorratear_pesos_a_lineas()
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Pesos prorrateados"),
+                "message": _("Los pesos totales se han repartido entre las líneas de la factura."),
+                "type": "success",
+                "sticky": False,
+            },
+        }
 
     @api.depends("factura_estado_procesamiento", "factura_mensaje_error")
     def _compute_factura_mensaje_html(self):
@@ -141,8 +246,9 @@ class AduanaExpedienteFactura(models.Model):
                 "factura_procesada": False,
             })
             rec.with_delay(
+                channel="root.invoice_ocr",
                 description=_("Procesar factura PDF %s", rec.name),
-                max_retries=3,
+                max_retries=5,
                 identity_key=lambda job, rec_id=rec.id: f"process_pdf_factura_{rec_id}",
             ).process_pdf_job()
         return {
@@ -197,6 +303,15 @@ class AduanaExpedienteFactura(models.Model):
                 expedientes = expedientes | self.env["aduana.expediente"].browse(vals["expediente_id"])
             if expedientes:
                 expedientes._recompute_factura_estado_from_facturas()
+        # Si el operario introduce pesos totales, prorratear automáticamente a las líneas
+        if ("peso_neto_total" in vals or "peso_bruto_total" in vals) and not self.env.context.get(
+            "skip_prorrateo_pesos"
+        ):
+            to_prorate = self.filtered(
+                lambda r: (r.peso_neto_total or 0) > 0 or (r.peso_bruto_total or 0) > 0
+            )
+            if to_prorate:
+                to_prorate._prorratear_pesos_a_lineas()
         return result
 
     def unlink(self):
