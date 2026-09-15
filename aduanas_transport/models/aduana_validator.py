@@ -117,6 +117,45 @@ class AduanaValidator(models.AbstractModel):
                 )
         return errors
 
+    def _validate_taric_supporting_documents(self, expediente):
+        """Exige que los requisitos TARIC aplicables estén listos (código + referencia) para el DUA."""
+        errors = []
+        Doc = expediente.documento_requerido_ids
+        pendientes = Doc.filtered(
+            lambda d: d.aplicabilidad in ("required", "optional_benefit")
+            and d.estado_requisito == "pendiente_aportar"
+            and (d.codigo_documento or "").strip()
+            and (d.codigo_documento or "")[:1].upper() != "B"
+        )
+        for doc in pendientes:
+            line_no = doc.line_id.item_number if doc.line_id else "?"
+            code = (doc.codigo_documento or "").upper()
+            if code[:1] == "Y" or doc.tipo_requisito == "declaracion":
+                errors.append(_(
+                    "Línea %s: confirme la declaración TARIC %s (%s) antes de presentar."
+                ) % (line_no, code, doc.name or ""))
+            else:
+                errors.append(_(
+                    "Línea %s: aporte el documento TARIC %s (%s) con su referencia "
+                    "antes de presentar el DUA."
+                ) % (line_no, code, doc.name or ""))
+
+        a_enviar = Doc.filtered(
+            lambda d: d.estado_requisito in ("validado", "pendiente_revision")
+            and (d.codigo_documento or "").strip()
+            and (d.codigo_documento or "")[:1].upper() not in ("B",)
+            and (d.codigo_documento or "").upper() != "N380"
+        )
+        for doc in a_enviar:
+            payload = doc.get_aeat_supporting_payload()
+            if not payload:
+                line_no = doc.line_id.item_number if doc.line_id else "?"
+                errors.append(_(
+                    "Línea %s: el documento %s está registrado pero falta la "
+                    "referencia documental (nº de certificado) para enviarlo en el DUA."
+                ) % (line_no, (doc.codigo_documento or doc.name or "")))
+        return errors
+
     def _validate_delivery_terms_partner(self, delivery_partner):
         errors = []
         if not delivery_partner:
@@ -183,6 +222,7 @@ class AduanaValidator(models.AbstractModel):
                 errors.append(_("Línea %d: El valor de la línea debe ser mayor que 0") % idx)
         
         errors.extend(self._validate_n380_references(expediente))
+        errors.extend(self._validate_taric_supporting_documents(expediente))
         errors.extend(self._validate_delivery_terms_export(expediente))
 
         if errors:
@@ -284,6 +324,7 @@ class AduanaValidator(models.AbstractModel):
                 errors.append(_("Línea %d: El peso neto debe ser mayor que 0") % idx)
         
         errors.extend(self._validate_n380_references(expediente))
+        errors.extend(self._validate_taric_supporting_documents(expediente))
 
         if errors:
             raise ValidationError("\n".join(errors))

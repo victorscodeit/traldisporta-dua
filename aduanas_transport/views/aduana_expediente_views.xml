@@ -194,11 +194,11 @@
             </div>
             <field name="factura_ids" nolabel="1" colspan="2"
                    context="{'default_expediente_id': id}">
-              <tree>
+              <tree editable="bottom" multi_edit="0">
                 <field name="name"/>
                 <field name="numero_factura" string="Nº factura (N380)"/>
                 <field name="factura_procesada" column_invisible="1"/>
-                <field name="factura_pdf_filename"/>
+                <field name="factura_pdf_filename" optional="hide"/>
                 <field name="factura_estado_procesamiento" widget="badge"
                        decoration-success="factura_estado_procesamiento == 'completado'"
                        decoration-warning="factura_estado_procesamiento == 'advertencia'"
@@ -206,9 +206,9 @@
                        decoration-muted="factura_estado_procesamiento in ('sin_factura', 'pendiente')"
                        decoration-danger="factura_estado_procesamiento == 'error'"/>
                 <field name="lineas_count" string="Nº Líneas"/>
-                <field name="peso_neto_total" string="Peso neto total" optional="show"/>
-                <field name="peso_bruto_total" string="Peso bruto total" optional="show"/>
-                <field name="fecha_procesamiento"/>
+                <field name="peso_neto_total" string="Peso neto total (kg)"/>
+                <field name="peso_bruto_total" string="Peso bruto total (kg)"/>
+                <field name="fecha_procesamiento" optional="hide"/>
                 <button name="action_process_invoice_pdf" string="Procesar" type="object"
                         attrs="{'invisible': ['|', ('factura_procesada', '=', True), ('factura_estado_procesamiento', '==', 'procesando')]}"
                         icon="fa-play"/>
@@ -934,8 +934,12 @@ if records:
               <field name="description" readonly="1" nolabel="1" widget="text"
                      placeholder="No hay descripción disponible"/>
               <separator string="Referencia / notas"/>
+              <group>
+                <field name="referencia_documento"
+                       placeholder="Nº certificado / licencia (va al DUA)"/>
+              </group>
               <field name="notas" nolabel="1" widget="text"
-                     placeholder="Nº de licencia, referencia documental u observaciones"/>
+                     placeholder="Observaciones internas (opcional)"/>
               <field name="is_pdf" invisible="1"/>
               <field name="is_image" invisible="1"/>
               <!-- filename debe ser editable por el widget binary (no readonly en la vista) -->
@@ -945,6 +949,13 @@ if records:
                 <field name="documento_subido" filename="documento_filename" widget="binary"
                        string="Archivo PDF / documento"/>
               </group>
+              <div class="alert alert-info mt-2" role="status">
+                <p class="mb-0">
+                  Al presentar el DUA se enviará a AEAT el código
+                  <strong><field name="codigo_documento" readonly="1" nolabel="1" class="oe_inline"/></strong>
+                  con la referencia documental (no el PDF).
+                </p>
+              </div>
               <div class="alert alert-warning mt-2" role="status"
                    attrs="{'invisible': [('documento_subido', '!=', False)]}">
                 <p class="mb-0">Este documento aún no ha sido subido. Elija un archivo y pulse Guardar.</p>
@@ -1095,9 +1106,10 @@ if records:
               <field name="codigo_documento" string="Código" optional="show"/>
               <field name="tipo_requisito" string="Tipo"/>
               <field name="estado_requisito" string="Estado"/>
+              <field name="referencia_documento" string="Ref. DUA" optional="show"/>
               <field name="documento_subido" filename="documento_filename" optional="show"/>
               <field name="documento_filename" invisible="1"/>
-              <field name="notas" string="Referencia / notas" optional="show"/>
+              <field name="notas" string="Notas" optional="hide"/>
               <button name="action_adjuntar_requisito" type="object" string="Adjuntar"
                       attrs="{'invisible': [('tipo_requisito', '=', 'declaracion')]}"/>
               <button name="action_confirmar_declaracion" type="object" string="Confirmar declaración"

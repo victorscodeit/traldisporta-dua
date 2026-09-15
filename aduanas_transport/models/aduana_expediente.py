@@ -2226,6 +2226,69 @@ class AduanaExpediente(models.Model):
             return header[:35]
         return (self.name or default_label).strip()[:35]
 
+    def _get_line_taric_supporting_docs(self, line):
+        """Documentos TARIC de la línea listos para SupportingDocument (código + referencia)."""
+        self.ensure_one()
+        if not line:
+            return []
+        docs = self.documento_requerido_ids.filtered(lambda d: d.line_id == line)
+        payloads = []
+        seen = set()
+        for doc in docs.sorted(key=lambda d: ((d.codigo_documento or "").upper(), d.id)):
+            payload = doc.get_aeat_supporting_payload()
+            if not payload:
+                continue
+            key = (payload["type"], payload["reference"])
+            if key in seen:
+                continue
+            seen.add(key)
+            payloads.append(payload)
+        return payloads
+
+    def _build_goods_item_supporting_documents_xml(
+        self, line, item_num, n380_ref, ns_prefix="cc5"
+    ):
+        """
+        Bloques SupportingDocument por partida: N380 + certificados/declaraciones TARIC.
+        ns_prefix='cc5' para AES/CC515C; '' para H1/CC415A.
+        """
+        self.ensure_one()
+        p = ("%s:" % ns_prefix) if ns_prefix else ""
+        blocks = []
+        seq = 1
+        blocks.append(
+            "<%(p)sSupportingDocument>\n"
+            "<%(p)ssequenceNumber>%(seq)s</%(p)ssequenceNumber>\n"
+            "<%(p)stype>N380</%(p)stype>\n"
+            "<%(p)sreferenceNumber>%(ref)s</%(p)sreferenceNumber>\n"
+            "<%(p)sdocumentLineItemNumber>%(item)s</%(p)sdocumentLineItemNumber>\n"
+            "</%(p)sSupportingDocument>"
+            % {
+                "p": p,
+                "seq": seq,
+                "ref": xml_escape((n380_ref or "")[:35]),
+                "item": item_num,
+            }
+        )
+        for payload in self._get_line_taric_supporting_docs(line):
+            seq += 1
+            blocks.append(
+                "<%(p)sSupportingDocument>\n"
+                "<%(p)ssequenceNumber>%(seq)s</%(p)ssequenceNumber>\n"
+                "<%(p)stype>%(typ)s</%(p)stype>\n"
+                "<%(p)sreferenceNumber>%(ref)s</%(p)sreferenceNumber>\n"
+                "<%(p)sdocumentLineItemNumber>%(item)s</%(p)sdocumentLineItemNumber>\n"
+                "</%(p)sSupportingDocument>"
+                % {
+                    "p": p,
+                    "seq": seq,
+                    "typ": xml_escape(payload["type"]),
+                    "ref": xml_escape(payload["reference"]),
+                    "item": item_num,
+                }
+            )
+        return "\n".join(blocks)
+
     def _build_cc515c_native_body(self):
         """Genera el contenido del mensaje CC515C en formato nativo AES según GuiaWEBExp (no CUSDEC)."""
         self.ensure_one()
@@ -2416,6 +2479,9 @@ class AduanaExpediente(models.Model):
             desc = xml_escape((line.descripcion or "")[:350])
             pais_orig = line.pais_origen or pais_exp
             shipping_marks = (getattr(line, "shipping_marks", None) or ("%s" % item_num))[:35]
+            supporting_docs_xml = self._build_goods_item_supporting_documents_xml(
+                line, item_num, factura_ref, ns_prefix="cc5"
+            )
             goods_items_xml.append("""<cc5:GoodsItem>
 <cc5:declarationGoodsItemNumber>%s</cc5:declarationGoodsItemNumber>
 <cc5:statisticalValue>%s</cc5:statisticalValue>
@@ -2444,13 +2510,8 @@ class AduanaExpediente(models.Model):
 <cc5:numberOfPackages>%s</cc5:numberOfPackages>
 <cc5:shippingMarks>%s</cc5:shippingMarks>
 </cc5:Packaging>
-<cc5:SupportingDocument>
-<cc5:sequenceNumber>1</cc5:sequenceNumber>
-<cc5:type>N380</cc5:type>
-<cc5:referenceNumber>%s</cc5:referenceNumber>
-<cc5:documentLineItemNumber>%s</cc5:documentLineItemNumber>
-</cc5:SupportingDocument>
-        </cc5:GoodsItem>""" % (item_num, stat_val, pais_orig, xml_escape(region_dispatch), desc, hs, cn, gross, net, bultos, xml_escape(shipping_marks), xml_escape(factura_ref), item_num))
+%s
+        </cc5:GoodsItem>""" % (item_num, stat_val, pais_orig, xml_escape(region_dispatch), desc, hs, cn, gross, net, bultos, xml_escape(shipping_marks), supporting_docs_xml))
         goods_items_str = "\n".join(goods_items_xml)
         if not goods_items_str:
             raise UserError(_("Añada al menos una línea de mercancía al expediente para presentar el DUA."))
@@ -3466,6 +3527,9 @@ class AduanaExpediente(models.Model):
             n380_ref = self._get_line_n380_reference(line, default_label="FACTURA")
             packages_type = (line.type_of_packages or "CT").strip().upper()
             packages_count = int(line.bultos or 1)
+            supporting_docs_xml = self._build_goods_item_supporting_documents_xml(
+                line, goods_item_number, n380_ref, ns_prefix=""
+            )
             lines_xml.append("""<GoodsShipmentItem>
 <sequenceNumber>%s</sequenceNumber>
 <declarationGoodsItemNumber>%s</declarationGoodsItemNumber>
@@ -3497,12 +3561,7 @@ class AduanaExpediente(models.Model):
 <typeOfPackages>%s</typeOfPackages>
 %s</Packaging>
 %s
-<SupportingDocument>
-<sequenceNumber>1</sequenceNumber>
-<type>N380</type>
-<referenceNumber>%s</referenceNumber>
-<documentLineItemNumber>%s</documentLineItemNumber>
-</SupportingDocument>
+%s
 <CustomsValuation>
 <valuationMethod>%s</valuationMethod>
 </CustomsValuation>
@@ -3526,8 +3585,7 @@ class AduanaExpediente(models.Model):
                     else ""
                 ),
                 self._imp_previous_document_xml(line, packages_type),
-                xml_escape(n380_ref),
-                goods_item_number,
+                supporting_docs_xml,
                 xml_escape(valuation_method),
             ))
         if not lines_xml:
@@ -5692,6 +5750,12 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         help="Archivo del documento subido",
     )
     documento_filename = fields.Char(string="Nombre Archivo", help="Nombre del archivo subido")
+    referencia_documento = fields.Char(
+        string="Referencia documental",
+        help="Nº de certificado/licencia/declaración que se enviará a AEAT como "
+             "SupportingDocument/referenceNumber (máx. 35 caracteres). "
+             "Para códigos Y (declaración), si está vacío se usa el propio código.",
+    )
     fecha_subida = fields.Datetime(string="Fecha Subida", readonly=True, help="Fecha en que se subió el documento")
     subido_por = fields.Many2one("res.users", string="Subido por", readonly=True, help="Usuario que subió el documento")
     estado = fields.Selection([
@@ -5854,11 +5918,21 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         self.ensure_one()
         if not self.documento_subido:
             raise UserError(_("Seleccione un archivo PDF u otro documento antes de guardar."))
+        code = (self.codigo_documento or "").strip().upper()
+        ref = (self.referencia_documento or "").strip()
+        if not ref and self.notas:
+            ref = (self.notas or "").strip().splitlines()[0].strip()
+        if not ref and code[:1] != "Y":
+            raise UserError(_(
+                "Indique la referencia documental (nº de certificado/licencia) "
+                "que se enviará a AEAT en el DUA."
+            ))
         vals = {
             "estado": "subido",
             "estado_requisito": "pendiente_revision",
             "fecha_subida": fields.Datetime.now(),
             "subido_por": self.env.user.id,
+            "referencia_documento": (ref or code)[:35],
         }
         self.write(vals)
         return self._action_reload_taric_linea()
@@ -5868,9 +5942,12 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
         for rec in self:
             if rec.tipo_requisito != "declaracion" and (rec.codigo_documento or "")[:1] != "Y":
                 raise UserError(_("Este requisito no es una declaración TARIC."))
+            code = (rec.codigo_documento or "").strip().upper()
+            ref = (rec.referencia_documento or "").strip() or code
             rec.write({
                 "estado": "verificado",
                 "estado_requisito": "validado",
+                "referencia_documento": ref[:35],
                 "notas": rec.notas or _("Declaración confirmada por el operario."),
             })
         return self._action_reload_taric_linea()
@@ -5882,8 +5959,44 @@ class AduanaExpedienteDocumentoRequerido(models.Model):
 
     def action_marcar_validado(self):
         for rec in self:
-            rec.write({"estado_requisito": "validado", "estado": "verificado"})
+            code = (rec.codigo_documento or "").strip().upper()
+            ref = (rec.referencia_documento or "").strip()
+            if not ref and rec.notas:
+                ref = (rec.notas or "").strip().splitlines()[0].strip()
+            if not ref and code[:1] == "Y":
+                ref = code
+            if not ref:
+                raise UserError(_(
+                    "Antes de validar «%s», indique la referencia documental "
+                    "(nº de certificado) que irá en el DUA."
+                ) % (rec.name or code or rec.id))
+            rec.write({
+                "estado_requisito": "validado",
+                "estado": "verificado",
+                "referencia_documento": ref[:35],
+            })
         return self._action_reload_taric_linea()
+
+    def get_aeat_supporting_payload(self):
+        """Devuelve {type, reference} para SupportingDocument, o None si no procede."""
+        self.ensure_one()
+        if self.estado_requisito not in ("validado", "pendiente_revision"):
+            return None
+        if self.estado_requisito == "no_aplica" or self.aplicabilidad == "not_applicable":
+            return None
+        code = (self.codigo_documento or "").strip().upper()
+        if not code or code[:1] == "B" or code == "N380":
+            return None
+        # Códigos AEAT de documento suelen ser 4 caracteres (C400, Y900, N851…)
+        code = code[:4]
+        ref = (self.referencia_documento or "").strip()
+        if not ref and self.notas:
+            ref = (self.notas or "").strip().splitlines()[0].strip()
+        if not ref and code[:1] == "Y":
+            ref = code
+        if not ref:
+            return None
+        return {"type": code, "reference": ref[:35]}
 
     def _action_reload_taric_linea(self):
         """Recarga el popup de requisitos si la acción se lanza desde ahí."""
